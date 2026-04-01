@@ -8,7 +8,7 @@ SmartChatMsg.defaults = {
     messages = {}, -- { { id = "...", commandId = "...", guildIndex = n, guildName = "...", text = "..." }, ... }
 
     chatChannels = {}, -- [commandId] = { [guildKey] = "Zone"|"Guild"|"Officer" }
-    commandGuildSettings = {}, -- [commandId] = { [guildKey] = { reminderMinutes = n|nil, autoPopulateOnZone = bool, lastUsedAt = unixTime|nil, lastUsedParamText = "..."|nil, lastUsedGuildIndex = n|nil, lastAutoPopulateSentAtByZone = { [zoneKey] = unixTime, ... } }, ... }
+    commandGuildSettings = {}, -- [commandId] = { [guildKey] = { reminderMinutes = n|nil, autoPopulateOnZone = bool, autoPopulateCooldownMinutes = n, lastUsedAt = unixTime|nil, lastUsedParamText = "..."|nil, lastUsedGuildIndex = n|nil, lastAutoPopulateSentAtByZone = { [zoneKey] = unixTime, ... } }, ... }
 
     selectedMessagesCommand = nil, -- commandId
     selectedMessagesGuildIndex = nil,
@@ -229,6 +229,26 @@ function SmartChatMsg:NormalizeAutoPopulateOnZone(value)
     return value == true
 end
 
+function SmartChatMsg:NormalizeAutoPopulateCooldownMinutes(value)
+    if value == nil then
+        return 60
+    end
+
+    if type(value) == "string" then
+        value = self:Trim(value)
+        if value == "" then
+            return 60
+        end
+    end
+
+    local numericValue = tonumber(value)
+    if not numericValue or numericValue <= 0 or numericValue ~= math.floor(numericValue) then
+        return 60
+    end
+
+    return numericValue
+end
+
 function SmartChatMsg:GenerateUuid()
     local template = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
     return (template:gsub("[xy]", function(c)
@@ -325,6 +345,7 @@ function SmartChatMsg:BuildExportString()
                         self:EscapeImportExportField(guildKey),
                         self:EscapeImportExportField(settings.reminderMinutes or ""),
                         self:EscapeImportExportField(settings.autoPopulateOnZone == true and "1" or "0"),
+                        self:EscapeImportExportField(settings.autoPopulateCooldownMinutes or 60),
                         self:EscapeImportExportField(settings.lastUsedAt or ""),
                         self:EscapeImportExportField(settings.lastUsedParamText or ""),
                         self:EscapeImportExportField(settings.lastUsedGuildIndex or ""),
@@ -488,10 +509,24 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
             local guildKey = self:NormalizeKey(self:UnescapeImportExportField(parts[2] or ""))
             local reminderMinutes = self:NormalizeReminderMinutes(self:UnescapeImportExportField(parts[3] or ""))
             local autoPopulateOnZone = self:UnescapeImportExportField(parts[4] or "") == "1"
-            local lastUsedAt = tonumber(self:UnescapeImportExportField(parts[5] or ""))
-            local lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[6] or ""))
-            local lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[7] or ""))
-            local zoneTimestampText = self:UnescapeImportExportField(parts[8] or "")
+            local autoPopulateCooldownMinutes = 60
+            local lastUsedAt = nil
+            local lastUsedParamText = nil
+            local lastUsedGuildIndex = nil
+            local zoneTimestampText = ""
+
+            if parts[9] ~= nil then
+                autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(self:UnescapeImportExportField(parts[5] or ""))
+                lastUsedAt = tonumber(self:UnescapeImportExportField(parts[6] or ""))
+                lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[7] or ""))
+                lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[8] or ""))
+                zoneTimestampText = self:UnescapeImportExportField(parts[9] or "")
+            else
+                lastUsedAt = tonumber(self:UnescapeImportExportField(parts[5] or ""))
+                lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[6] or ""))
+                lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[7] or ""))
+                zoneTimestampText = self:UnescapeImportExportField(parts[8] or "")
+            end
 
             local lastAutoPopulateSentAtByZone = {}
             if zoneTimestampText ~= "" then
@@ -509,6 +544,7 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
                 imported.commandGuildSettings[commandId][guildKey] = {
                     reminderMinutes = reminderMinutes,
                     autoPopulateOnZone = autoPopulateOnZone,
+                    autoPopulateCooldownMinutes = autoPopulateCooldownMinutes,
                     lastUsedAt = lastUsedAt and math.floor(lastUsedAt) or nil,
                     lastUsedParamText = lastUsedParamText ~= "" and lastUsedParamText or nil,
                     lastUsedGuildIndex = lastUsedGuildIndex and math.floor(lastUsedGuildIndex) or nil,
@@ -621,6 +657,15 @@ function SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName)
     return false
 end
 
+function SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName)
+    local settings = self:GetCommandGuildSettings(commandId, guildName, false)
+    if settings and settings.autoPopulateCooldownMinutes ~= nil then
+        return self:NormalizeAutoPopulateCooldownMinutes(settings.autoPopulateCooldownMinutes)
+    end
+
+    return 60
+end
+
 function SmartChatMsg:GetGuildLastUsedAt(commandId, guildName)
     local settings = self:GetCommandGuildSettings(commandId, guildName, false)
     if not settings then
@@ -722,6 +767,21 @@ function SmartChatMsg:SetGuildAutoPopulateOnZone(commandId, guildName, autoPopul
     return true
 end
 
+function SmartChatMsg:SetGuildAutoPopulateCooldownMinutes(commandId, guildName, cooldownMinutes)
+    local command = self:GetCommandById(commandId)
+    if not command then
+        return false, "The selected Command no longer exists."
+    end
+
+    local settings = self:GetCommandGuildSettings(commandId, guildName, true)
+    if not settings then
+        return false, "Select a Guild first."
+    end
+
+    settings.autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(cooldownMinutes)
+    return true
+end
+
 function SmartChatMsg:SetGuildLastUsedState(commandId, guildName, lastUsedAt, paramText, guildIndex)
     local settings = self:GetCommandGuildSettings(commandId, guildName, true)
     if not settings then
@@ -766,12 +826,20 @@ function SmartChatMsg:GetCommandAutoPopulateOnZone(commandId)
     return self:GetGuildAutoPopulateOnZone(commandId, self:GetSelectedGuildNameForMessages())
 end
 
+function SmartChatMsg:GetCommandAutoPopulateCooldownMinutes(commandId)
+    return self:GetGuildAutoPopulateCooldownMinutes(commandId, self:GetSelectedGuildNameForMessages())
+end
+
 function SmartChatMsg:SetCommandReminderMinutes(commandId, reminderMinutes)
     return self:SetGuildReminderMinutes(commandId, self:GetSelectedGuildNameForMessages(), reminderMinutes)
 end
 
 function SmartChatMsg:SetCommandAutoPopulateOnZone(commandId, autoPopulateOnZone)
     return self:SetGuildAutoPopulateOnZone(commandId, self:GetSelectedGuildNameForMessages(), autoPopulateOnZone)
+end
+
+function SmartChatMsg:SetCommandAutoPopulateCooldownMinutes(commandId, cooldownMinutes)
+    return self:SetGuildAutoPopulateCooldownMinutes(commandId, self:GetSelectedGuildNameForMessages(), cooldownMinutes)
 end
 
 function SmartChatMsg:CommandNameExists(name, excludeId)

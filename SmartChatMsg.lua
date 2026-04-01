@@ -8,7 +8,6 @@ SmartChatMsg.pendingRestoreState = SmartChatMsg.pendingRestoreState or nil
 SmartChatMsg.restoreWatcherEventName = SmartChatMsg.name .. "_RestoreWatcher"
 SmartChatMsg.restoreWatcherTimeoutName = SmartChatMsg.name .. "_RestoreWatcherTimeout"
 SmartChatMsg.debugEnabled = SmartChatMsg.debugEnabled == true
-SmartChatMsg.autoPopulateCooldownSeconds = 60 * 60
 
 
 function SmartChatMsg:DebugLog(message)
@@ -844,13 +843,14 @@ function SmartChatMsg:ShouldSkipAutoPopulateForZone(commandId, guildName, zoneId
 
     local now = GetTimeStamp()
     local elapsed = now - lastSentAt
-    local cooldown = self.autoPopulateCooldownSeconds or 3600
+    local cooldownMinutes = self:GetGuildAutoPopulateCooldownMinutes(commandId, guildName)
+    local cooldownSeconds = (cooldownMinutes or 60) * 60
 
-    if elapsed < cooldown then
-        return true, elapsed, cooldown
+    if elapsed < cooldownSeconds then
+        return true, elapsed, cooldownSeconds
     end
 
-    return false, elapsed, cooldown
+    return false, elapsed, cooldownSeconds
 end
 
 function SmartChatMsg:MarkAutoPopulateSent(commandId, guildName, zoneId)

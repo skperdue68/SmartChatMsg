@@ -8,6 +8,7 @@ SmartChatMsg.settings = SmartChatMsg.settings or {
     pendingAutoPopulateOnZone = false,
     pendingGuildReminderMinutes = "",
     pendingGuildAutoPopulateOnZone = false,
+    pendingGuildAutoPopulateCooldownMinutes = "60",
     pendingImportExportText = "",
     editingOriginalCommandId = nil,
 
@@ -213,6 +214,7 @@ function SmartChatMsg.settings:InitializeState()
     self.pendingAutoPopulateOnZone = false
     self.pendingGuildReminderMinutes = ""
     self.pendingGuildAutoPopulateOnZone = false
+    self.pendingGuildAutoPopulateCooldownMinutes = "60"
     self.editingOriginalCommandId = nil
     self.editMode = false
     self.pendingNewMessageText = ""
@@ -244,10 +246,12 @@ function SmartChatMsg.settings:InitializeState()
         local reminderMinutes = SmartChatMsg:GetGuildReminderMinutes(commandId, guildName)
         self.pendingGuildReminderMinutes = reminderMinutes and tostring(reminderMinutes) or ""
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
+        self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
     else
         SmartChatMsg:SetSelectedMessagesChannel(nil)
         self.pendingGuildReminderMinutes = ""
         self.pendingGuildAutoPopulateOnZone = false
+        self.pendingGuildAutoPopulateCooldownMinutes = "60"
     end
 end
 
@@ -273,6 +277,11 @@ function SmartChatMsg.settings:SaveBehaviorSettings()
     end
 
     ok, err = SmartChatMsg:SetGuildAutoPopulateOnZone(commandId, guildName, self.pendingGuildAutoPopulateOnZone == true)
+    if not ok then
+        return false, err
+    end
+
+    ok, err = SmartChatMsg:SetGuildAutoPopulateCooldownMinutes(commandId, guildName, self.pendingGuildAutoPopulateCooldownMinutes)
     if not ok then
         return false, err
     end
@@ -303,10 +312,12 @@ function SmartChatMsg.settings:ResetNewMessageSection()
         local reminderMinutes = SmartChatMsg:GetGuildReminderMinutes(commandId, guildName)
         self.pendingGuildReminderMinutes = reminderMinutes and tostring(reminderMinutes) or ""
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
+        self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
     else
         SmartChatMsg:SetSelectedMessagesChannel(nil)
         self.pendingGuildReminderMinutes = ""
         self.pendingGuildAutoPopulateOnZone = false
+        self.pendingGuildAutoPopulateCooldownMinutes = "60"
     end
 
     SmartChatMsg:RefreshSettingsUI()
@@ -1004,11 +1015,50 @@ local function BuildMessagesBehaviorSettings(parent)
         SmartChatMsg:RefreshSettingsUI()
     end)
 
+    local cooldownLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesAutoPopulateCooldownLabel", container, CT_LABEL)
+    cooldownLabel:SetFont("ZoFontGame")
+    cooldownLabel:SetText("Cooldown (min)")
+    cooldownLabel:SetDimensions(110, 24)
+    cooldownLabel:SetAnchor(LEFT, autoPopulateCheckbox, RIGHT, 220, 0)
+
+    local cooldownBackdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesAutoPopulateCooldownBackdrop", container, "ZO_EditBackdrop")
+    cooldownBackdrop:SetDimensions(70, 30)
+    cooldownBackdrop:SetAnchor(LEFT, cooldownLabel, RIGHT, 8, 0)
+
+    local cooldownEditBox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesAutoPopulateCooldownEditBox", cooldownBackdrop, "ZO_DefaultEditForBackdrop")
+    cooldownEditBox:SetAnchorFill(cooldownBackdrop)
+    cooldownEditBox:SetMaxInputChars(4)
+    cooldownEditBox:SetText("")
+    cooldownEditBox:SetHandler("OnTextChanged", function(self)
+        local text = self:GetText() or ""
+        local digitsOnly = text:gsub("[^%d]", "")
+
+        if digitsOnly ~= text then
+            self:SetText(digitsOnly)
+            return
+        end
+
+        SmartChatMsg.settings.pendingGuildAutoPopulateCooldownMinutes = digitsOnly ~= "" and digitsOnly or "60"
+
+        local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
+        if not ok and err then
+            ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
+            return
+        end
+
+        SmartChatMsg:RefreshSettingsUI()
+    end)
+
     container.RefreshEditor = function()
         local shouldShow = SmartChatMsg:IsMessagesSelectionComplete()
 
         if reminderEditBox:GetText() ~= (SmartChatMsg.settings.pendingGuildReminderMinutes or "") then
             reminderEditBox:SetText(SmartChatMsg.settings.pendingGuildReminderMinutes or "")
+        end
+
+        local cooldownText = SmartChatMsg.settings.pendingGuildAutoPopulateCooldownMinutes or "60"
+        if cooldownEditBox:GetText() ~= cooldownText then
+            cooldownEditBox:SetText(cooldownText)
         end
 
         ZO_CheckButton_SetCheckState(autoPopulateCheckbox, SmartChatMsg.settings.pendingGuildAutoPopulateOnZone == true)
@@ -1017,6 +1067,7 @@ local function BuildMessagesBehaviorSettings(parent)
 
     SmartChatMsg.settings.controls.messagesBehaviorReminderEditBox = reminderEditBox
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCheckbox = autoPopulateCheckbox
+    SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCooldownEditBox = cooldownEditBox
     SmartChatMsg.settings.controls.messagesBehaviorSettings = container
 
     container:RefreshEditor()
