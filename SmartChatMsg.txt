@@ -1,0 +1,10 @@
+## Title: SmartChatMsg
+## Author: evainefaye
+## Version: 1.3.2
+## APIVersion: 101049
+## SavedVariables: SmartChatMsgSavedVars
+## DependsOn: LibAddonMenu-2.0
+
+SCM_SavedVars.lua
+SCM_Settings.lua
+SmartChatMsg.lua
