@@ -4,6 +4,7 @@
 ## APIVersion: 101049
 ## SavedVariables: SmartChatMsgSavedVars
 ## DependsOn: LibAddonMenu-2.0
+## OptionalDependsOn: LibDebugLogger
 
 SCM_SavedVars.lua
 SCM_Settings.lua

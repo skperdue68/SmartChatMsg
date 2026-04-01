@@ -984,7 +984,7 @@ end
 
 local function BuildMessagesBehaviorSettings(parent)
     local container = WINDOW_MANAGER:CreateControl("SCM_MessagesBehaviorSettingsContainer", parent, CT_CONTROL)
-    container:SetDimensions(ROW_WIDTH, 116)
+    container:SetDimensions(ROW_WIDTH, 154)
 
     local reminderLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesReminderLabel", container, CT_LABEL)
     reminderLabel:SetFont("ZoFontWinH4")
@@ -1071,7 +1071,7 @@ local function BuildMessagesBehaviorSettings(parent)
 
     local cooldownLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesAutoPopulateCooldownLabel", container, CT_LABEL)
     cooldownLabel:SetFont("ZoFontGame")
-    cooldownLabel:SetText("Cooldown (min)")
+    cooldownLabel:SetText("Cooldown (mins)")
     cooldownLabel:SetDimensions(110, 24)
     cooldownLabel:SetAnchor(LEFT, autoPopulateCheckbox, RIGHT, 220, 0)
 
@@ -1105,9 +1105,9 @@ local function BuildMessagesBehaviorSettings(parent)
 
     local revertLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesRevertWaitLabel", container, CT_LABEL)
     revertLabel:SetFont("ZoFontGame")
-    revertLabel:SetText("Revert Wait (sec)")
-    revertLabel:SetDimensions(120, 24)
-    revertLabel:SetAnchor(LEFT, cooldownBackdrop, RIGHT, 18, 0)
+    revertLabel:SetText("Change Chat Type After (secs)")
+    revertLabel:SetDimensions(260, 24)
+    revertLabel:SetAnchor(TOPLEFT, autoPopulateCheckbox, BOTTOMLEFT, 0, 14)
 
     local revertBackdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesRevertWaitBackdrop", container, "ZO_EditBackdrop")
     revertBackdrop:SetDimensions(70, 30)
@@ -1825,7 +1825,7 @@ function SmartChatMsg:CreateSettingsPanel()
                     type = "custom",
                     reference = "SCM_MessagesBehaviorSettingsHolder",
                     createFunc = function(control)
-                        control:SetHeight(116)
+                        control:SetHeight(154)
                         messagesBehaviorSettingsHolder = BuildMessagesBehaviorSettings(control)
                         messagesBehaviorSettingsHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
                     end,
@@ -1834,7 +1834,7 @@ function SmartChatMsg:CreateSettingsPanel()
                             messagesBehaviorSettingsHolder:RefreshEditor()
                         end
 
-                        control:SetHeight(SmartChatMsg:IsMessagesSelectionComplete() and 116 or 0)
+                        control:SetHeight(SmartChatMsg:IsMessagesSelectionComplete() and 154 or 0)
                     end,
                 },
                 {

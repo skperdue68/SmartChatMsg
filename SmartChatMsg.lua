@@ -9,6 +9,7 @@ SmartChatMsg.pendingRestoreState = SmartChatMsg.pendingRestoreState or nil
 SmartChatMsg.restoreWatcherEventName = SmartChatMsg.name .. "_RestoreWatcher"
 SmartChatMsg.restoreWatcherTimeoutName = SmartChatMsg.name .. "_RestoreWatcherTimeout"
 SmartChatMsg.debugEnabled = SmartChatMsg.debugEnabled == true
+SmartChatMsg.logger = SmartChatMsg.logger or nil
 
 
 function SmartChatMsg:DebugLog(message)
@@ -16,7 +17,13 @@ function SmartChatMsg:DebugLog(message)
         return
     end
 
-    d("[SmartChatMsg] " .. tostring(message))
+    local text = tostring(message)
+
+    if self.logger and self.logger.Debug then
+        self.logger:Debug(text)
+    end
+
+    d("[SmartChatMsg] " .. text)
 end
 
 function SmartChatMsg:FormatChatChannelInfo(channelInfo)
@@ -1366,6 +1373,12 @@ local function OnAddonLoaded(event, addonName)
     SmartChatMsg:ClearPendingRestoreState()
     SmartChatMsg:CreateSettingsPanel()
     SmartChatMsg:RegisterDynamicCommands()
+
+    if LibDebugLogger and LibDebugLogger.Create then
+        SmartChatMsg.logger = LibDebugLogger.Create("SmartChatMsg")
+    else
+        SmartChatMsg.logger = nil
+    end
 
     SLASH_COMMANDS["/scm"] = function()
         SmartChatMsg:OpenSettings()
