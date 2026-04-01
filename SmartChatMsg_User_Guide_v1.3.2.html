@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SmartChatMsg Detailed User Guide</title>
+  <style>
+    body { font-family: Arial, Helvetica, sans-serif; line-height: 1.55; color: #222; margin: 0; background: #f6f7fb; }
+    .page { max-width: 980px; margin: 0 auto; background: #fff; padding: 32px 42px 56px; box-shadow: 0 2px 14px rgba(0,0,0,.08); }
+    h1, h2, h3 { color: #1b2a52; }
+    h1 { margin-top: 0; font-size: 2.1rem; }
+    h2 { margin-top: 2rem; border-bottom: 2px solid #e7ebf3; padding-bottom: .35rem; }
+    h3 { margin-top: 1.25rem; }
+    .lead { font-size: 1.05rem; }
+    .meta, .note, .tip, .warning { padding: 12px 14px; border-radius: 8px; margin: 14px 0; }
+    .meta { background: #eef4ff; }
+    .note { background: #f7f8fc; border-left: 4px solid #6a86c7; }
+    .tip { background: #edf9f0; border-left: 4px solid #2d8a46; }
+    .warning { background: #fff4e8; border-left: 4px solid #d07a00; }
+    code, pre { font-family: Consolas, Monaco, monospace; }
+    code { background: #f0f2f7; padding: 1px 5px; border-radius: 4px; }
+    pre { background: #111827; color: #f3f4f6; padding: 14px; border-radius: 8px; overflow: auto; }
+    table { width: 100%; border-collapse: collapse; margin: 14px 0; }
+    th, td { text-align: left; border: 1px solid #d9dfeb; padding: 10px 12px; vertical-align: top; }
+    th { background: #f2f5fb; }
+    ul, ol { padding-left: 1.35rem; }
+    .toc a { color: #2549a3; text-decoration: none; }
+    .small { color: #5f6470; font-size: .95rem; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <h1>SmartChatMsg Detailed User Guide</h1>
+    <div class="meta">
+      <strong>Addon:</strong> SmartChatMsg<br />
+      <strong>Version:</strong> 1.3.3<br />
+      <strong>Game:</strong> The Elder Scrolls Online<br />
+      <strong>Dependency:</strong> LibAddonMenu-2.0
+    </div>
+
+    <p class="lead">SmartChatMsg lets you create custom slash commands that pull from saved message lists, choose a message for you, and place it into the correct chat channel. It is designed for guild recruitment, scheduled announcements, repeated informational posts, and other messages you want to reuse without manually typing them every time.</p>
+
+    <div class="toc note">
+      <strong>Contents</strong>
+      <ol>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#quickstart">Quick Start</a></li>
+        <li><a href="#commands">How Commands Work</a></li>
+        <li><a href="#messages">Managing Messages</a></li>
+        <li><a href="#guilds">Guild Selection and the Any Option</a></li>
+        <li><a href="#channels">Chat Channel Behavior</a></li>
+        <li><a href="#tokens">Message Tokens and Substitutions</a></li>
+        <li><a href="#reminders">Reminders and Auto Populate</a></li>
+        <li><a href="#importexport">Import and Export</a></li>
+        <li><a href="#examples">Example Setups</a></li>
+        <li><a href="#troubleshooting">Troubleshooting</a></li>
+      </ol>
+    </div>
+
+    <h2 id="overview">1) Overview</h2>
+    <p>SmartChatMsg is built around three core ideas:</p>
+    <ul>
+      <li><strong>Commands</strong> such as <code>/recruit</code> or <code>/trial</code>.</li>
+      <li><strong>Guild-aware message groups</strong> so the same command can behave differently depending on the selected guild.</li>
+      <li><strong>Saved output channels</strong> so the addon knows whether a message should go to Zone, Guild, or Officer chat.</li>
+    </ul>
+
+    <p>When you run a SmartChatMsg slash command, the addon looks up the matching command, resolves the guild context, retrieves a saved message, applies substitutions such as <code>%time%</code>, <code>%guild%</code>, and <code>%zone%</code>, and then places the final text into the appropriate chat buffer.</p>
+
+    <h2 id="quickstart">2) Quick Start</h2>
+    <ol>
+      <li>Open the addon settings in ESO.</li>
+      <li>Create a new command name, for example <code>recruit</code>.</li>
+      <li>Go to the <strong>Messages</strong> section.</li>
+      <li>Select the command.</li>
+      <li>Select a guild, or choose <strong>Any (Guild/Officer only)</strong>.</li>
+      <li>Choose the output channel.</li>
+      <li>Add one or more saved messages.</li>
+      <li>Use the slash command in chat, such as <code>/recruit 1</code>, <code>/recruit g1</code>, or <code>/recruit o1</code>.</li>
+    </ol>
+
+    <div class="tip">
+      <strong>Tip:</strong> Save several variants of the same message. SmartChatMsg can rotate among them so your posts do not feel repetitive.
+    </div>
+
+    <h2 id="commands">3) How Commands Work</h2>
+    <p>Each command name becomes a slash command. If you create a command named <code>recruit</code>, you can use it as <code>/recruit</code>.</p>
+
+    <h3>Supported parameter formats</h3>
+    <table>
+      <tr><th>Format</th><th>Meaning</th></tr>
+      <tr><td><code>/command 1</code> to <code>/command 5</code></td><td>Use the guild in slot 1 through 5.</td></tr>
+      <tr><td><code>/command g1</code> to <code>/command g5</code></td><td>Force Guild chat for guild slot 1 through 5.</td></tr>
+      <tr><td><code>/command o1</code> to <code>/command o5</code></td><td>Force Officer chat for guild slot 1 through 5.</td></tr>
+      <tr><td><code>/command</code></td><td>Uses the Default Guild if one is configured.</td></tr>
+    </table>
+
+    <div class="warning">
+      If no parameter is provided and no Default Guild is set, the slash command cannot resolve a guild target.
+    </div>
+
+    <h3>What happens when you run a command</h3>
+    <ol>
+      <li>The addon identifies the command.</li>
+      <li>It resolves the target guild from the parameter or Default Guild.</li>
+      <li>It chooses the saved channel for that command and guild context, unless a channel override was provided by <code>g#</code> or <code>o#</code>.</li>
+      <li>It retrieves a matching saved message.</li>
+      <li>It applies substitutions to the retrieved text.</li>
+      <li>It places the finished text into the chat input buffer.</li>
+      <li>It restores your previous chat channel after the message is sent, or after the restore timeout.</li>
+    </ol>
+
+    <h2 id="messages">4) Managing Messages</h2>
+    <p>Messages are stored under a specific <strong>Command + Guild</strong> pairing. You can save a single message or multiple alternatives.</p>
+
+    <h3>Suggested workflow</h3>
+    <ol>
+      <li>Select the command.</li>
+      <li>Select the guild context.</li>
+      <li>Select the output channel.</li>
+      <li>Add multiple message variants.</li>
+      <li>Save and test the slash command.</li>
+    </ol>
+
+    <h3>Why save multiple variants</h3>
+    <p>Saving multiple versions of the same announcement lets SmartChatMsg rotate messages rather than repeating the exact same line every time.</p>
+
+    <p>Example message set for one recruitment command:</p>
+    <pre>Join %guild% this %time% for trials and events.
+%guild% is recruiting active players in %zone%.
+Good %time%! %guild% is looking for social and PvE members.</pre>
+
+    <h2 id="guilds">5) Guild Selection and the Any Option</h2>
+    <h3>Normal guild selection</h3>
+    <p>Normally, messages are saved for one specific guild. If you save messages for guild slot 2, those messages are intended for that guild's name and saved behavior.</p>
+
+    <h3>Any (Guild/Officer only)</h3>
+    <p>The <strong>Any</strong> selection lets you save a generic guild-facing message group that can be reused with <em>any actual guild</em>.</p>
+
+    <p>This is useful when the same message wording should work for several guilds without maintaining separate copies.</p>
+
+    <table>
+      <tr><th>Behavior</th><th>Result</th></tr>
+      <tr><td>Saved under <strong>Any</strong> + Guild chat</td><td>May be used for any guild when the command resolves to a real guild slot.</td></tr>
+      <tr><td>Saved under <strong>Any</strong> + Officer chat</td><td>May be used for any guild's officer channel.</td></tr>
+      <tr><td>Saved under <strong>Any</strong> + Zone chat</td><td>Not allowed.</td></tr>
+    </table>
+
+    <div class="warning">
+      Messages saved under <strong>Any</strong> are restricted to <strong>Guild</strong> or <strong>Officer</strong> output. They are not valid for Zone chat.
+    </div>
+
+    <h2 id="channels">6) Chat Channel Behavior</h2>
+    <h3>Supported saved output channels</h3>
+    <ul>
+      <li><strong>Zone</strong></li>
+      <li><strong>Guild</strong></li>
+      <li><strong>Officer</strong></li>
+    </ul>
+
+    <h3>Automatic channel restore</h3>
+    <p>After SmartChatMsg fills the chat input, it watches for the outgoing message and restores your previous chat channel. If it does not detect the sent message, a fallback timeout restores the previous channel automatically.</p>
+
+    <div class="note">
+      This behavior helps prevent getting stuck in the wrong chat tab after using a command.
+    </div>
+
+    <h2 id="tokens">7) Message Tokens and Substitutions</h2>
+    <p>SmartChatMsg supports built-in tokens that are replaced in the retrieved message before it is sent to the chat buffer.</p>
+
+    <table>
+      <tr><th>Token</th><th>Description</th><th>Example output</th></tr>
+      <tr><td><code>%time%</code></td><td>Replaced with <code>morning</code>, <code>afternoon</code>, or <code>evening</code>.</td><td><code>Good evening</code></td></tr>
+      <tr><td><code>%guild%</code></td><td>Replaced with the resolved guild name for the current command context.</td><td><code>The Silver Wolves</code></td></tr>
+      <tr><td><code>%zone%</code></td><td>Replaced with the player's current zone name.</td><td><code>Stormhaven</code></td></tr>
+    </table>
+
+    <h3>Case-insensitive tokens</h3>
+    <p>Tokens are case-insensitive. These all work:</p>
+    <pre>%time%
+%Time%
+%TIME%
+%guild%
+%GUILD%
+%zone%
+%Zone%</pre>
+
+    <h3>Inline replacements are supported</h3>
+    <p>Tokens can appear anywhere in the message:</p>
+    <pre>Good %time%, %guild%!
+Recruiting now in %zone%.
+Welcome to %GUILD% this %TIME%.</pre>
+
+    <h3>Important note about %guild%</h3>
+    <p><code>%guild%</code> is based on the resolved guild context for the command. It does not require you to currently be in Guild or Officer chat in order to substitute the guild name.</p>
+
+    <h2 id="reminders">8) Reminders and Auto Populate</h2>
+    <h3>Reminder Minutes</h3>
+    <p>You can set reminder minutes for the currently selected <strong>Command + Guild</strong>. After a command is used, SmartChatMsg can remind you if that command has not been used again within the configured interval.</p>
+
+    <h3>Auto Populate On Zone</h3>
+    <p>You can also enable automatic population when changing zones. This setting is stored per <strong>Command + Guild</strong>.</p>
+
+    <div class="note">
+      Auto Populate only triggers in parent zones. This helps reduce unwanted triggers while moving through sub-zones or interiors.
+    </div>
+
+    <h3>Reminder memory</h3>
+    <p>Reminder tracking also remembers the last parameter used, such as the selected guild number, so reminder messages can reflect the most recent command context.</p>
+
+    <h2 id="importexport">9) Import and Export</h2>
+    <p>SmartChatMsg includes a full settings backup system.</p>
+
+    <h3>Export</h3>
+    <ul>
+      <li>Creates a text backup string.</li>
+      <li>Displays a success message.</li>
+      <li>Places the export data in the text box.</li>
+      <li>Includes a <strong>Copy</strong> button to make copying easier.</li>
+    </ul>
+
+    <h3>Import</h3>
+    <ul>
+      <li>Accepts a previously exported SmartChatMsg backup string.</li>
+      <li>Shows a confirmation prompt before replacing existing settings.</li>
+      <li>Clears the text box after a successful import.</li>
+      <li>Displays a success message.</li>
+    </ul>
+
+    <div class="warning">
+      Import replaces your existing SmartChatMsg settings. Export first if you want a backup before importing a different configuration.
+    </div>
+
+    <h2 id="examples">10) Example Setups</h2>
+    <h3>Example A: Zone recruitment for one guild</h3>
+    <ol>
+      <li>Create command <code>recruit</code>.</li>
+      <li>Select guild slot 1 in the Messages section.</li>
+      <li>Set channel to <strong>Zone</strong>.</li>
+      <li>Add several messages using <code>%guild%</code> and <code>%time%</code>.</li>
+      <li>Use <code>/recruit 1</code>.</li>
+    </ol>
+
+    <h3>Example B: Generic officer notice for any guild</h3>
+    <ol>
+      <li>Create command <code>officermsg</code>.</li>
+      <li>Select <strong>Any (Guild/Officer only)</strong>.</li>
+      <li>Set channel to <strong>Officer</strong>.</li>
+      <li>Add messages such as <code>Good %time%, officers of %guild%.</code></li>
+      <li>Use <code>/officermsg o2</code> or another officer parameter for the intended guild slot.</li>
+    </ol>
+
+    <h3>Example C: Default Guild shortcut</h3>
+    <ol>
+      <li>Set a Default Guild.</li>
+      <li>Create command <code>trial</code>.</li>
+      <li>Save messages for that guild.</li>
+      <li>Use <code>/trial</code> without parameters.</li>
+    </ol>
+
+    <h2 id="troubleshooting">11) Troubleshooting</h2>
+    <h3>The command says it needs 1-5, g1-g5, or o1-o5</h3>
+    <p>The command was used without a valid parameter and no Default Guild is set.</p>
+
+    <h3>No message appears</h3>
+    <p>Verify that you have:</p>
+    <ul>
+      <li>Selected the correct command</li>
+      <li>Saved messages for the intended guild context</li>
+      <li>Saved a valid output channel</li>
+    </ul>
+
+    <h3>Any does not work with Zone</h3>
+    <p>This is expected. The Any option is restricted to Guild and Officer output.</p>
+
+    <h3>%guild% or %zone% was not replaced</h3>
+    <p>Check that the token is typed with percent signs, such as <code>%guild%</code> or <code>%zone%</code>. Token matching is case-insensitive, but the percent-based token shape still matters.</p>
+
+    <h3>My channel did not switch back</h3>
+    <p>The addon includes both direct message detection and a fallback timeout restore. If restore did not occur immediately, wait for the timeout. If the issue persists, test with fewer addon conflicts.</p>
+
+    <h2>12) Best Practices</h2>
+    <ul>
+      <li>Keep command names short and easy to remember.</li>
+      <li>Use several message variants for the same purpose.</li>
+      <li>Use <code>%time%</code>, <code>%guild%</code>, and <code>%zone%</code> to keep messages feeling fresh.</li>
+      <li>Use <strong>Any</strong> only for true cross-guild Guild/Officer messages.</li>
+      <li>Export your settings before major changes.</li>
+    </ul>
+
+    <p class="small">Prepared for SmartChatMsg v1.3.3.</p>
+  </div>
+</body>
+</html>

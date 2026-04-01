@@ -8,7 +8,7 @@ SmartChatMsg.defaults = {
     messages = {}, -- { { id = "...", commandId = "...", guildIndex = n, guildName = "...", text = "..." }, ... }
 
     chatChannels = {}, -- [commandId] = { [guildKey] = "Zone"|"Guild"|"Officer" }
-    commandGuildSettings = {}, -- [commandId] = { [guildKey] = { reminderMinutes = n|nil, autoPopulateOnZone = bool, lastUsedAt = unixTime|nil, lastUsedParamText = "..."|nil, lastUsedGuildIndex = n|nil }, ... }
+    commandGuildSettings = {}, -- [commandId] = { [guildKey] = { reminderMinutes = n|nil, autoPopulateOnZone = bool, lastUsedAt = unixTime|nil, lastUsedParamText = "..."|nil, lastUsedGuildIndex = n|nil, lastAutoPopulateSentAtByZone = { [zoneKey] = unixTime, ... } }, ... }
 
     selectedMessagesCommand = nil, -- commandId
     selectedMessagesGuildIndex = nil,
@@ -85,12 +85,24 @@ function SmartChatMsg:InitializeSavedVars()
             for guildKey, settings in pairs(byGuild) do
                 local normalizedGuildKey = self:NormalizeKey(guildKey)
                 if normalizedGuildKey and type(settings) == "table" then
+                    local cleanedZoneTimestamps = {}
+
+                    if type(settings.lastAutoPopulateSentAtByZone) == "table" then
+                        for zoneKey, timestamp in pairs(settings.lastAutoPopulateSentAtByZone) do
+                            local normalizedZoneKey = tostring(zoneKey or "")
+                            if normalizedZoneKey ~= "" and type(timestamp) == "number" and timestamp >= 0 then
+                                cleanedZoneTimestamps[normalizedZoneKey] = math.floor(timestamp)
+                            end
+                        end
+                    end
+
                     cleanedByGuild[normalizedGuildKey] = {
                         reminderMinutes = self:NormalizeReminderMinutes(settings.reminderMinutes),
                         autoPopulateOnZone = self:NormalizeAutoPopulateOnZone(settings.autoPopulateOnZone),
                         lastUsedAt = (type(settings.lastUsedAt) == "number" and settings.lastUsedAt >= 0) and math.floor(settings.lastUsedAt) or nil,
                         lastUsedParamText = self:Trim(settings.lastUsedParamText or ""),
                         lastUsedGuildIndex = (type(settings.lastUsedGuildIndex) == "number" and settings.lastUsedGuildIndex >= 1 and settings.lastUsedGuildIndex <= 5 and settings.lastUsedGuildIndex == math.floor(settings.lastUsedGuildIndex)) and settings.lastUsedGuildIndex or nil,
+                        lastAutoPopulateSentAtByZone = cleanedZoneTimestamps,
                     }
 
                     if cleanedByGuild[normalizedGuildKey].lastUsedParamText == "" then
@@ -298,6 +310,15 @@ function SmartChatMsg:BuildExportString()
         if type(byGuild) == "table" then
             for guildKey, settings in pairs(byGuild) do
                 if type(settings) == "table" then
+                    local zonePairs = {}
+                    if type(settings.lastAutoPopulateSentAtByZone) == "table" then
+                        for zoneKey, timestamp in pairs(settings.lastAutoPopulateSentAtByZone) do
+                            if type(timestamp) == "number" and timestamp > 0 then
+                                table.insert(zonePairs, tostring(zoneKey) .. "=" .. tostring(math.floor(timestamp)))
+                            end
+                        end
+                    end
+
                     table.insert(lines, table.concat({
                         "GUILDSETTING",
                         self:EscapeImportExportField(commandId),
@@ -307,6 +328,7 @@ function SmartChatMsg:BuildExportString()
                         self:EscapeImportExportField(settings.lastUsedAt or ""),
                         self:EscapeImportExportField(settings.lastUsedParamText or ""),
                         self:EscapeImportExportField(settings.lastUsedGuildIndex or ""),
+                        self:EscapeImportExportField(table.concat(zonePairs, ",")),
                     }, "|"))
                 end
             end
@@ -469,6 +491,18 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
             local lastUsedAt = tonumber(self:UnescapeImportExportField(parts[5] or ""))
             local lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[6] or ""))
             local lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[7] or ""))
+            local zoneTimestampText = self:UnescapeImportExportField(parts[8] or "")
+
+            local lastAutoPopulateSentAtByZone = {}
+            if zoneTimestampText ~= "" then
+                for pairText in string.gmatch(zoneTimestampText, "([^,]+)") do
+                    local zoneKey, timestampText = pairText:match("^([^=]+)=(%d+)$")
+                    local timestamp = tonumber(timestampText)
+                    if zoneKey and zoneKey ~= "" and timestamp and timestamp > 0 then
+                        lastAutoPopulateSentAtByZone[zoneKey] = math.floor(timestamp)
+                    end
+                end
+            end
 
             if commandIds[commandId] and guildKey then
                 imported.commandGuildSettings[commandId] = imported.commandGuildSettings[commandId] or {}
@@ -478,6 +512,7 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
                     lastUsedAt = lastUsedAt and math.floor(lastUsedAt) or nil,
                     lastUsedParamText = lastUsedParamText ~= "" and lastUsedParamText or nil,
                     lastUsedGuildIndex = lastUsedGuildIndex and math.floor(lastUsedGuildIndex) or nil,
+                    lastAutoPopulateSentAtByZone = lastAutoPopulateSentAtByZone,
                 }
             end
         elseif recordType == "ACTIVE" then
@@ -616,6 +651,45 @@ function SmartChatMsg:GetGuildLastUsedGuildIndex(commandId, guildName)
     end
 
     return value
+end
+
+function SmartChatMsg:GetGuildAutoPopulateLastSentAt(commandId, guildName, zoneId)
+    local settings = self:GetCommandGuildSettings(commandId, guildName, false)
+    if not settings or type(settings.lastAutoPopulateSentAtByZone) ~= "table" then
+        return nil
+    end
+
+    local zoneKey = tostring(zoneId or "")
+    if zoneKey == "" then
+        return nil
+    end
+
+    local value = settings.lastAutoPopulateSentAtByZone[zoneKey]
+    if type(value) ~= "number" or value <= 0 then
+        return nil
+    end
+
+    return math.floor(value)
+end
+
+function SmartChatMsg:SetGuildAutoPopulateLastSentAt(commandId, guildName, zoneId, timestamp)
+    local settings = self:GetCommandGuildSettings(commandId, guildName, true)
+    if not settings then
+        return
+    end
+
+    settings.lastAutoPopulateSentAtByZone = settings.lastAutoPopulateSentAtByZone or {}
+
+    local zoneKey = tostring(zoneId or "")
+    if zoneKey == "" then
+        return
+    end
+
+    if type(timestamp) == "number" and timestamp > 0 then
+        settings.lastAutoPopulateSentAtByZone[zoneKey] = math.floor(timestamp)
+    else
+        settings.lastAutoPopulateSentAtByZone[zoneKey] = nil
+    end
 end
 
 function SmartChatMsg:SetGuildReminderMinutes(commandId, guildName, reminderMinutes)

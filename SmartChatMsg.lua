@@ -8,6 +8,7 @@ SmartChatMsg.pendingRestoreState = SmartChatMsg.pendingRestoreState or nil
 SmartChatMsg.restoreWatcherEventName = SmartChatMsg.name .. "_RestoreWatcher"
 SmartChatMsg.restoreWatcherTimeoutName = SmartChatMsg.name .. "_RestoreWatcherTimeout"
 SmartChatMsg.debugEnabled = SmartChatMsg.debugEnabled == true
+SmartChatMsg.autoPopulateCooldownSeconds = 60 * 60
 
 
 function SmartChatMsg:DebugLog(message)
@@ -697,13 +698,24 @@ function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fr
         return
     end
 
+    local metadata = state.metadata
+    if type(metadata) == "table" and metadata.autoPopulate == true then
+        self:DebugLog(string.format(
+            "Auto populate debug: confirmed sent by watcher for commandId=%s guildName=%s zoneId=%s",
+            tostring(metadata.commandId),
+            tostring(metadata.guildName),
+            tostring(metadata.zoneId)
+        ))
+        self:MarkAutoPopulateSent(metadata.commandId, metadata.guildName, metadata.zoneId)
+    end
+
     self:DebugLog("Watcher matched populated message; restoring previous channel")
     local restored = self:RestoreChatChannel(state.previousChannel)
     self:DebugLog("Restore attempt after watcher match restored=" .. tostring(restored))
     self:ClearPendingRestoreState("watcher matched outgoing message")
 end
 
-function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText)
+function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, metadata)
     self:ClearPendingRestoreState("arming new restore state")
 
     if not previousChannelInfo or not previousChannelInfo.id then
@@ -720,6 +732,7 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText)
     self.pendingRestoreState = {
         previousChannel = previousChannelInfo,
         expectedText = normalizedExpected,
+        metadata = type(metadata) == "table" and metadata or nil,
         armedAt = GetFrameTimeMilliseconds and GetFrameTimeMilliseconds() or nil,
     }
 
@@ -808,6 +821,51 @@ function SmartChatMsg:IsInParentZone(zoneId)
     return false
 end
 
+function SmartChatMsg:GetAutoPopulateZoneDisplayName(zoneId)
+    if type(zoneId) ~= "number" or zoneId == 0 then
+        return "unknown"
+    end
+
+    if GetZoneNameById then
+        local zoneName = self:Trim(GetZoneNameById(zoneId) or "")
+        if zoneName ~= "" then
+            return zoneName
+        end
+    end
+
+    return tostring(zoneId)
+end
+
+function SmartChatMsg:ShouldSkipAutoPopulateForZone(commandId, guildName, zoneId)
+    local lastSentAt = self:GetGuildAutoPopulateLastSentAt(commandId, guildName, zoneId)
+    if type(lastSentAt) ~= "number" or lastSentAt <= 0 then
+        return false, nil, nil
+    end
+
+    local now = GetTimeStamp()
+    local elapsed = now - lastSentAt
+    local cooldown = self.autoPopulateCooldownSeconds or 3600
+
+    if elapsed < cooldown then
+        return true, elapsed, cooldown
+    end
+
+    return false, elapsed, cooldown
+end
+
+function SmartChatMsg:MarkAutoPopulateSent(commandId, guildName, zoneId)
+    local timestamp = GetTimeStamp()
+    self:SetGuildAutoPopulateLastSentAt(commandId, guildName, zoneId, timestamp)
+
+    self:DebugLog(string.format(
+        "Auto populate debug: marked sent commandId=%s guildName=%s zoneId=%s sentAt=%s",
+        tostring(commandId),
+        tostring(guildName),
+        tostring(zoneId),
+        tostring(timestamp)
+    ))
+end
+
 
 function SmartChatMsg:HandleZoneAutoPopulate()
     local currentZoneId = GetZoneId(GetUnitZoneIndex("player"))
@@ -849,6 +907,19 @@ function SmartChatMsg:HandleZoneAutoPopulate()
         return
     end
 
+    local shouldSkip, elapsed, cooldown = self:ShouldSkipAutoPopulateForZone(active.commandId, active.guildName, currentZoneId)
+    if shouldSkip then
+        self:DebugLog(string.format(
+            "Auto populate debug: skipped for commandId=%s guildName=%s zoneId=%s because elapsed=%s cooldown=%s",
+            tostring(active.commandId),
+            tostring(active.guildName),
+            tostring(currentZoneId),
+            tostring(elapsed),
+            tostring(cooldown)
+        ))
+        return
+    end
+
     self:DebugLog(string.format(
         "Auto populate debug: firing for commandId=%s guildName=%s currentZoneId=%s previousZoneId=%s",
         tostring(active.commandId),
@@ -857,7 +928,18 @@ function SmartChatMsg:HandleZoneAutoPopulate()
         tostring(previousZoneId)
     ))
 
-    local ok, err = self:PopulateChatBufferForCommand(active.commandId, active.guildName)
+    local ok, err = self:PopulateChatBufferForCommand(
+        active.commandId,
+        active.guildName,
+        nil,
+        {
+            autoPopulate = true,
+            commandId = active.commandId,
+            guildName = active.guildName,
+            zoneId = currentZoneId,
+        }
+    )
+
     if not ok then
         self:ClearActiveAutoPopulate()
         ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
@@ -867,7 +949,8 @@ function SmartChatMsg:HandleZoneAutoPopulate()
     local command = self:GetCommandById(active.commandId)
     if command then
         local commandName = self:BuildSlashCommandName(command.name or "") or "command"
-        local message = string.format("Auto populated %s after zoning. Use /noautopop to stop.", commandName)
+        local zoneName = self:GetAutoPopulateZoneDisplayName(currentZoneId)
+        local message = string.format("Auto populated %s for %s. Use /noautopop to stop.", commandName, zoneName)
         if CENTER_SCREEN_ANNOUNCE then
             CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
         else
@@ -878,7 +961,7 @@ function SmartChatMsg:HandleZoneAutoPopulate()
     PlaySound(SOUNDS.DEFAULT_CLICK)
 end
 
-function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channelOverride)
+function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channelOverride, restoreMetadata)
     self:DebugLog(string.format(
         "PopulateChatBufferForCommand start commandId=%s guildName=%s channelOverride=%s",
         tostring(commandId),
@@ -920,7 +1003,7 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
     local previousChannelInfo = self:GetPreciseChatChannelInfo()
     self:DebugLog("PopulateChatBufferForCommand previous channel=" .. self:FormatChatChannelInfo(previousChannelInfo))
 
-    local armedRestore = self:ArmPendingRestoreState(previousChannelInfo, resolvedMessageText)
+    local armedRestore = self:ArmPendingRestoreState(previousChannelInfo, resolvedMessageText, restoreMetadata)
     self:DebugLog("PopulateChatBufferForCommand armedRestore=" .. tostring(armedRestore))
 
     if channel == "Zone" then
