@@ -645,9 +645,16 @@ function SmartChatMsg:IsOutgoingChatMessageType(messageType)
     return false
 end
 
-function SmartChatMsg:ClearPendingRestoreState()
+function SmartChatMsg:ClearPendingRestoreState(reason)
     if self.pendingRestoreState then
-        self:DebugLog("Clearing pending restore state")
+        self:DebugLog(string.format(
+            "Clearing pending restore state reason=%s previousChannel=%s expectedText=%s",
+            tostring(reason or "unspecified"),
+            self:FormatChatChannelInfo(self.pendingRestoreState.previousChannel),
+            tostring(self.pendingRestoreState.expectedText or "")
+        ))
+    else
+        self:DebugLog("ClearPendingRestoreState called with no pending state reason=" .. tostring(reason or "unspecified"))
     end
 
     self.pendingRestoreState = nil
@@ -658,11 +665,20 @@ end
 function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fromName, text, isCustomerService)
     local state = self.pendingRestoreState
     if not state then
+        self:DebugLog("HandleRestoreWatcherChatMessage called without pending state")
         return
     end
 
+    self:DebugLog(string.format(
+        "Chat watcher eventCode=%s messageType=%s fromName=%s text=%s",
+        tostring(eventCode),
+        tostring(messageType),
+        tostring(fromName or ""),
+        tostring(text or "")
+    ))
+
     if not self:IsOutgoingChatMessageType(messageType) then
-        self:DebugLog(string.format("[SmartChatMsg] Chat watcher saw event type=%s accepted=%s text=%s", tostring(messageType), tostring(self:IsOutgoingChatMessageType(messageType)), tostring(text or "")))
+        self:DebugLog(string.format("Chat watcher ignored non-outgoing event type=%s text=%s", tostring(messageType), tostring(text or "")))
         return
     end
 
@@ -682,27 +698,29 @@ function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fr
     end
 
     self:DebugLog("Watcher matched populated message; restoring previous channel")
-    self:RestoreChatChannel(state.previousChannel)
-    self:ClearPendingRestoreState()
+    local restored = self:RestoreChatChannel(state.previousChannel)
+    self:DebugLog("Restore attempt after watcher match restored=" .. tostring(restored))
+    self:ClearPendingRestoreState("watcher matched outgoing message")
 end
 
 function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText)
-    self:ClearPendingRestoreState()
+    self:ClearPendingRestoreState("arming new restore state")
 
     if not previousChannelInfo or not previousChannelInfo.id then
         self:DebugLog("ArmPendingRestoreState skipped: no previous channel info")
-        return
+        return false
     end
 
     local normalizedExpected = self:NormalizeChatText(expectedText)
     if normalizedExpected == "" then
         self:DebugLog("ArmPendingRestoreState skipped: expected text normalized to empty")
-        return
+        return false
     end
 
     self.pendingRestoreState = {
         previousChannel = previousChannelInfo,
         expectedText = normalizedExpected,
+        armedAt = GetFrameTimeMilliseconds and GetFrameTimeMilliseconds() or nil,
     }
 
     self:DebugLog("Armed restore watcher with previous channel: " .. self:FormatChatChannelInfo(previousChannelInfo))
@@ -717,9 +735,17 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText)
     )
 
     EVENT_MANAGER:RegisterForUpdate(self.restoreWatcherTimeoutName, 60000, function()
+        local pendingState = SmartChatMsg.pendingRestoreState
         SmartChatMsg:DebugLog("Restore watcher timed out after 60 seconds")
-        SmartChatMsg:ClearPendingRestoreState()
+        if pendingState and pendingState.previousChannel then
+            SmartChatMsg:DebugLog("Timeout restore attempting previous channel: " .. SmartChatMsg:FormatChatChannelInfo(pendingState.previousChannel))
+            local restored = SmartChatMsg:RestoreChatChannel(pendingState.previousChannel)
+            SmartChatMsg:DebugLog("Timeout restore result=" .. tostring(restored))
+        end
+        SmartChatMsg:ClearPendingRestoreState("restore timeout")
     end)
+
+    return true
 end
 
 function SmartChatMsg:SetActiveAutoPopulate(commandId, guildName)
@@ -853,29 +879,52 @@ function SmartChatMsg:HandleZoneAutoPopulate()
 end
 
 function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channelOverride)
+    self:DebugLog(string.format(
+        "PopulateChatBufferForCommand start commandId=%s guildName=%s channelOverride=%s",
+        tostring(commandId),
+        tostring(guildName),
+        tostring(channelOverride)
+    ))
+
     local messages = self:GetMessageEntriesForCommandAndGuild(commandId, guildName)
+    self:DebugLog("PopulateChatBufferForCommand message count=" .. tostring(#messages))
     if #messages == 0 then
+        self:DebugLog("PopulateChatBufferForCommand aborted: no saved messages")
         return false, "No messages are saved for that command and guild."
     end
 
     local selectedEntry = self:SelectWeightedMessageEntry(messages)
     if not selectedEntry then
+        self:DebugLog("PopulateChatBufferForCommand aborted: no selected entry")
         return false, "No messages are saved for that command and guild."
     end
 
+    self:DebugLog("PopulateChatBufferForCommand selected entry id=" .. tostring(selectedEntry.id or "nil"))
+
     local messageText = self:Trim(selectedEntry.text or "")
     if messageText == "" then
+        self:DebugLog("PopulateChatBufferForCommand aborted: selected message text was empty")
         return false, "The selected message is empty."
     end
 
     local resolvedMessageText = self:Trim(self:ApplyMessageSubstitutions(messageText, commandId, guildName) or "")
+    self:DebugLog("PopulateChatBufferForCommand resolved text=" .. tostring(resolvedMessageText))
     if resolvedMessageText == "" then
+        self:DebugLog("PopulateChatBufferForCommand aborted: resolved message text was empty")
         return false, "The selected message is empty after substitutions."
     end
 
     local channel = channelOverride or self:GetSavedChatChannel(commandId, guildName)
+    self:DebugLog("PopulateChatBufferForCommand resolved channel=" .. tostring(channel))
+
+    local previousChannelInfo = self:GetPreciseChatChannelInfo()
+    self:DebugLog("PopulateChatBufferForCommand previous channel=" .. self:FormatChatChannelInfo(previousChannelInfo))
+
+    local armedRestore = self:ArmPendingRestoreState(previousChannelInfo, resolvedMessageText)
+    self:DebugLog("PopulateChatBufferForCommand armedRestore=" .. tostring(armedRestore))
 
     if channel == "Zone" then
+        self:DebugLog("PopulateChatBufferForCommand starting chat input for Zone")
         StartChatInput(resolvedMessageText, CHAT_CHANNEL_ZONE)
         self:MarkMessageEntryUsed(selectedEntry)
         return true
@@ -883,21 +932,28 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
 
     if channel == "Guild" or channel == "Officer" then
         local guildSlot = self:GetGuildSlotByName(guildName)
+        self:DebugLog("PopulateChatBufferForCommand guildSlot=" .. tostring(guildSlot))
         if not guildSlot then
+            self:ClearPendingRestoreState("guild slot unavailable before StartChatInput")
             return false, "That guild is not currently available."
         end
 
         if channel == "Guild" then
-            StartChatInput(resolvedMessageText, CHAT_CHANNEL_GUILD_1 + (guildSlot - 1))
+            local channelId = CHAT_CHANNEL_GUILD_1 + (guildSlot - 1)
+            self:DebugLog("PopulateChatBufferForCommand starting chat input for Guild channelId=" .. tostring(channelId))
+            StartChatInput(resolvedMessageText, channelId)
             self:MarkMessageEntryUsed(selectedEntry)
             return true
         end
 
-        StartChatInput(resolvedMessageText, CHAT_CHANNEL_OFFICER_1 + (guildSlot - 1))
+        local channelId = CHAT_CHANNEL_OFFICER_1 + (guildSlot - 1)
+        self:DebugLog("PopulateChatBufferForCommand starting chat input for Officer channelId=" .. tostring(channelId))
+        StartChatInput(resolvedMessageText, channelId)
         self:MarkMessageEntryUsed(selectedEntry)
         return true
     end
 
+    self:ClearPendingRestoreState("no saved chat channel resolved")
     return false, "No chat channel is saved for that command and guild."
 end
 
@@ -970,6 +1026,16 @@ function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, raw
         ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, string.format("Guild slot %d is not available.", guildSlot))
         return
     end
+
+    self:DebugLog(string.format(
+        "HandleDynamicSlashCommand commandId=%s slashCommand=%s guildSlot=%s guildName=%s channelOverride=%s rawParam=%s",
+        tostring(commandId),
+        tostring(slashCommandName),
+        tostring(guildSlot),
+        tostring(guildName),
+        tostring(channelOverride),
+        tostring(trimmedParam)
+    ))
 
     local ok, err = self:PopulateChatBufferForCommand(commandId, guildName, channelOverride)
     if not ok then
