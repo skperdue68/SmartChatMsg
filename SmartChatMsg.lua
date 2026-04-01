@@ -1,0 +1,1068 @@
+SmartChatMsg = SmartChatMsg or {}
+SmartChatMsg.name = "SmartChatMsg"
+SmartChatMsg.dynamicCommands = SmartChatMsg.dynamicCommands or {}
+SmartChatMsg.commandReminderTimers = SmartChatMsg.commandReminderTimers or {}
+SmartChatMsg.lastKnownZoneId = SmartChatMsg.lastKnownZoneId or nil
+SmartChatMsg.hasSeenInitialPlayerActivated = SmartChatMsg.hasSeenInitialPlayerActivated or false
+SmartChatMsg.pendingRestoreState = SmartChatMsg.pendingRestoreState or nil
+SmartChatMsg.restoreWatcherEventName = SmartChatMsg.name .. "_RestoreWatcher"
+SmartChatMsg.restoreWatcherTimeoutName = SmartChatMsg.name .. "_RestoreWatcherTimeout"
+SmartChatMsg.debugEnabled = SmartChatMsg.debugEnabled == true
+
+
+function SmartChatMsg:DebugLog(message)
+    if not self.debugEnabled then
+        return
+    end
+
+    d("[SmartChatMsg] " .. tostring(message))
+end
+
+function SmartChatMsg:FormatChatChannelInfo(channelInfo)
+    if not channelInfo then
+        return "nil"
+    end
+
+    return string.format(
+        "short=%s kind=%s index=%s id=%s target=%s",
+        tostring(channelInfo.short or "unknown"),
+        tostring(channelInfo.kind or "unknown"),
+        tostring(channelInfo.index or "-"),
+        tostring(channelInfo.id or "nil"),
+        tostring(channelInfo.target or "none")
+    )
+end
+
+function SmartChatMsg:BuildSlashCommandName(commandName)
+    if type(commandName) ~= "string" then
+        return nil
+    end
+
+
+function SmartChatMsg:GetCurrentTimeTokenValue()
+    local hour = tonumber(os.date("%H")) or 12
+    if hour < 12 then
+        return "morning"
+    elseif hour < 18 then
+        return "afternoon"
+    end
+
+    return "evening"
+end
+
+function SmartChatMsg:GetCurrentZoneName()
+    local zoneName = GetUnitZone("player")
+    zoneName = self:Trim(zoneName or "")
+    if zoneName ~= "" then
+        return zoneName
+    end
+
+    local zoneId = GetZoneId(GetUnitZoneIndex("player"))
+    if zoneId and zoneId ~= 0 and GetZoneNameById then
+        zoneName = self:Trim(GetZoneNameById(zoneId) or "")
+        if zoneName ~= "" then
+            return zoneName
+        end
+    end
+
+    return nil
+end
+
+function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName)
+    local result = tostring(text or "")
+
+    local substitutions = {
+        ["time"] = self:GetCurrentTimeTokenValue(),
+        ["guild"] = self:Trim(guildName or ""),
+        ["zone"] = self:GetCurrentZoneName() or "",
+    }
+
+    result = result:gsub("%%([%a]+)%%", function(tokenName)
+        local normalizedToken = zo_strlower(tokenName or "")
+        local replacement = substitutions[normalizedToken]
+        if replacement ~= nil and replacement ~= "" then
+            return replacement
+        end
+
+        return "%" .. tostring(tokenName or "") .. "%"
+    end)
+
+    return result
+end
+
+    local trimmed = self:Trim(commandName)
+    if trimmed == "" then
+        return nil
+    end
+
+    local cleaned = zo_strlower(trimmed):gsub("[^%w]", "")
+    if cleaned == "" then
+        return nil
+    end
+
+    return "/" .. cleaned
+end
+
+function SmartChatMsg:ShowCommandTestNotification(commandName, parameterValue)
+    local message = string.format("SmartChatMsg test: command %s called with parameter %s", tostring(commandName), tostring(parameterValue))
+
+    d(message)
+
+    if CENTER_SCREEN_ANNOUNCE then
+        CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
+    end
+end
+
+function SmartChatMsg:GetGuildSlotByName(guildName)
+    if type(guildName) ~= "string" or guildName == "" then
+        return nil
+    end
+
+    for guildIndex = 1, 5 do
+        local guildId = GetGuildId(guildIndex)
+        if guildId and guildId ~= 0 then
+            local currentGuildName = GetGuildName(guildId)
+            if currentGuildName and self:StringsEqualIgnoreCase(currentGuildName, guildName) then
+                return guildIndex
+            end
+        end
+    end
+
+    return nil
+end
+
+function SmartChatMsg:GetMessageEntriesForCommandAndGuild(commandId, guildName)
+    local results = {}
+
+    if type(commandId) ~= "string" or commandId == "" then
+        return results
+    end
+
+    if type(guildName) ~= "string" or guildName == "" then
+        return results
+    end
+
+    for _, entry in ipairs(self.savedVars.messages or {}) do
+        if type(entry) == "table" and entry.commandId == commandId then
+            local entryGuildName = entry.guildName
+
+            if (not entryGuildName or entryGuildName == "") and entry.guildIndex then
+                entryGuildName = self:GetGuildNameByIndex(entry.guildIndex)
+            end
+
+            if entryGuildName and self:StringsEqualIgnoreCase(entryGuildName, guildName) then
+                table.insert(results, entry)
+            end
+        end
+    end
+
+    return results
+end
+
+
+function SmartChatMsg:GetMessageUsageTimestamp(entry)
+    local value = type(entry) == "table" and entry.lastUsedAt or nil
+    if type(value) ~= "number" or value < 0 then
+        return nil
+    end
+
+    return math.floor(value)
+end
+
+function SmartChatMsg:GetMessageUseCount(entry)
+    local value = type(entry) == "table" and entry.useCount or nil
+    if type(value) ~= "number" or value < 0 then
+        return 0
+    end
+
+    return math.floor(value)
+end
+
+function SmartChatMsg:SelectWeightedMessageEntry(messages)
+    if type(messages) ~= "table" or #messages == 0 then
+        return nil
+    end
+
+    local ranked = {}
+    for _, entry in ipairs(messages) do
+        if type(entry) == "table" then
+            table.insert(ranked, entry)
+        end
+    end
+
+    if #ranked == 0 then
+        return nil
+    end
+
+    table.sort(ranked, function(a, b)
+        local aLastUsed = self:GetMessageUsageTimestamp(a)
+        local bLastUsed = self:GetMessageUsageTimestamp(b)
+
+        if aLastUsed == nil and bLastUsed ~= nil then
+            return true
+        end
+
+        if aLastUsed ~= nil and bLastUsed == nil then
+            return false
+        end
+
+        if aLastUsed ~= bLastUsed then
+            return (aLastUsed or 0) < (bLastUsed or 0)
+        end
+
+        local aUseCount = self:GetMessageUseCount(a)
+        local bUseCount = self:GetMessageUseCount(b)
+
+        if aUseCount ~= bUseCount then
+            return aUseCount < bUseCount
+        end
+
+        return tostring(a.id or "") < tostring(b.id or "")
+    end)
+
+    local totalWeight = 0
+    for index = 1, #ranked do
+        totalWeight = totalWeight + (#ranked - index + 1)
+    end
+
+    local roll = zo_random(1, totalWeight)
+    local runningWeight = 0
+
+    for index, entry in ipairs(ranked) do
+        runningWeight = runningWeight + (#ranked - index + 1)
+        if roll <= runningWeight then
+            return entry
+        end
+    end
+
+    return ranked[1]
+end
+
+function SmartChatMsg:MarkMessageEntryUsed(entry)
+    if type(entry) ~= "table" then
+        return
+    end
+
+    entry.useCount = self:GetMessageUseCount(entry) + 1
+    entry.lastUsedAt = GetTimeStamp()
+end
+
+function SmartChatMsg:MarkCommandUsed(commandId, guildName, paramText, guildIndex)
+    local command = self:GetCommandById(commandId)
+    if not command then
+        self:DebugLog("Reminder debug: MarkCommandUsed aborted, command not found for commandId=" .. tostring(commandId))
+        return
+    end
+
+    local timestamp = GetTimeStamp()
+    command.lastUsedAt = timestamp
+    self:SetGuildLastUsedState(commandId, guildName, timestamp, paramText, guildIndex)
+
+    self:DebugLog(string.format(
+        "Reminder debug: MarkCommandUsed commandId=%s guildName=%s guildIndex=%s lastUsedAt=%s paramText=%s",
+        tostring(commandId),
+        tostring(guildName),
+        tostring(guildIndex),
+        tostring(timestamp),
+        tostring(paramText or "")
+    ))
+end
+
+function SmartChatMsg:GetReminderTimerName(commandId, guildName)
+    if type(commandId) ~= "string" or commandId == "" then
+        return nil
+    end
+
+    local guildKey = self:NormalizeKey(guildName) or "default"
+    return "SmartChatMsgReminder_" .. commandId .. "_" .. guildKey
+end
+
+function SmartChatMsg:ClearCommandReminder(commandId, guildName)
+    local timerName = self:GetReminderTimerName(commandId, guildName)
+    if timerName then
+        self:DebugLog("Reminder debug: clearing timer " .. tostring(timerName))
+        EVENT_MANAGER:UnregisterForUpdate(timerName)
+    else
+        self:DebugLog("Reminder debug: ClearCommandReminder had no timerName for commandId=" .. tostring(commandId))
+    end
+end
+
+function SmartChatMsg:ShowCommandReminder(commandId, guildName)
+    local command = self:GetCommandById(commandId)
+    if not command then
+        self:DebugLog("Reminder debug: ShowCommandReminder aborted, command not found for commandId=" .. tostring(commandId))
+        return
+    end
+
+    local reminderMinutes = self:GetGuildReminderMinutes(commandId, guildName)
+    if not reminderMinutes then
+        self:DebugLog("Reminder debug: ShowCommandReminder aborted, no reminderMinutes for commandId=" .. tostring(commandId))
+        return
+    end
+
+    self:DebugLog(string.format(
+        "Reminder debug: showing reminder for commandId=%s commandName=%s guildName=%s reminderMinutes=%s",
+        tostring(commandId),
+        tostring(command.name or "unknown"),
+        tostring(guildName),
+        tostring(reminderMinutes)
+    ))
+
+    local commandName = command.name or "Command"
+    local reminderTarget = guildName or "selected guild"
+    local lastUsedParamText = self:GetGuildLastUsedParamText(commandId, guildName)
+    local lastUsedGuildIndex = self:GetGuildLastUsedGuildIndex(commandId, guildName)
+
+    local commandInvocation = self:BuildSlashCommandName(commandName) or ("/" .. tostring(commandName))
+    if lastUsedParamText and lastUsedParamText ~= "" then
+        commandInvocation = commandInvocation .. " " .. tostring(lastUsedParamText)
+    elseif lastUsedGuildIndex then
+        commandInvocation = commandInvocation .. " " .. tostring(lastUsedGuildIndex)
+    end
+
+    local message = string.format(
+        "Reminder: %s for %s has not been used for %d minute%s. Last command: %s",
+        commandName,
+        reminderTarget,
+        reminderMinutes,
+        reminderMinutes == 1 and "" or "s",
+        commandInvocation
+    )
+
+    d(message)
+
+    local reminderSound = SOUNDS.MESSAGE_BROADCAST
+    PlaySound(reminderSound)
+    ZO_Alert(UI_ALERT_CATEGORY_ALERT, reminderSound, message)
+
+    if CENTER_SCREEN_ANNOUNCE then
+        CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, reminderSound, message)
+    end
+end
+
+function SmartChatMsg:ScheduleCommandReminder(commandId, guildName)
+    local command = self:GetCommandById(commandId)
+    if not command then
+        self:DebugLog("Reminder debug: schedule aborted, command not found for commandId=" .. tostring(commandId))
+        return
+    end
+
+    local reminderMinutes = self:GetGuildReminderMinutes(commandId, guildName)
+    self:ClearCommandReminder(commandId, guildName)
+
+    if not reminderMinutes then
+        self:DebugLog(string.format(
+            "Reminder debug: schedule aborted, no reminderMinutes for commandId=%s commandName=%s guildName=%s",
+            tostring(commandId),
+            tostring(command.name or "unknown"),
+            tostring(guildName)
+        ))
+        return
+    end
+
+    local lastUsedAt = self:GetGuildLastUsedAt(commandId, guildName)
+    if type(lastUsedAt) ~= "number" or lastUsedAt <= 0 then
+        self:DebugLog(string.format(
+            "Reminder debug: schedule aborted, invalid lastUsedAt=%s for commandId=%s commandName=%s guildName=%s",
+            tostring(lastUsedAt),
+            tostring(commandId),
+            tostring(command.name or "unknown"),
+            tostring(guildName)
+        ))
+        return
+    end
+
+    local timerName = self:GetReminderTimerName(commandId, guildName)
+    if not timerName then
+        self:DebugLog("Reminder debug: schedule aborted, timerName was nil for commandId=" .. tostring(commandId))
+        return
+    end
+
+    local delayMs = reminderMinutes * 60 * 1000
+    self:DebugLog(string.format(
+        "Reminder debug: scheduling timer timerName=%s commandId=%s commandName=%s guildName=%s reminderMinutes=%s delayMs=%s lastUsedAt=%s",
+        tostring(timerName),
+        tostring(commandId),
+        tostring(command.name or "unknown"),
+        tostring(guildName),
+        tostring(reminderMinutes),
+        tostring(delayMs),
+        tostring(lastUsedAt)
+    ))
+
+    EVENT_MANAGER:RegisterForUpdate(timerName, delayMs, function()
+        self:DebugLog(string.format(
+            "Reminder debug: timer fired timerName=%s commandId=%s guildName=%s",
+            tostring(timerName),
+            tostring(commandId),
+            tostring(guildName)
+        ))
+
+        EVENT_MANAGER:UnregisterForUpdate(timerName)
+
+        local currentCommand = self:GetCommandById(commandId)
+        if not currentCommand then
+            self:DebugLog("Reminder debug: timer aborted, command no longer exists for commandId=" .. tostring(commandId))
+            return
+        end
+
+        local currentLastUsedAt = self:GetGuildLastUsedAt(commandId, guildName)
+        self:DebugLog(string.format(
+            "Reminder debug: timer validating commandId=%s guildName=%s storedLastUsedAt=%s currentLastUsedAt=%s",
+            tostring(commandId),
+            tostring(guildName),
+            tostring(lastUsedAt),
+            tostring(currentLastUsedAt)
+        ))
+
+        if currentLastUsedAt ~= lastUsedAt then
+            self:DebugLog(string.format(
+                "Reminder debug: timer aborted because lastUsedAt changed for commandId=%s guildName=%s old=%s new=%s",
+                tostring(commandId),
+                tostring(guildName),
+                tostring(lastUsedAt),
+                tostring(currentLastUsedAt)
+            ))
+            return
+        end
+
+        self:DebugLog("Reminder debug: timer validation passed, calling ShowCommandReminder for commandId=" .. tostring(commandId))
+        self:ShowCommandReminder(commandId, guildName)
+    end)
+end
+
+function SmartChatMsg:ClearActiveAutoPopulate()
+    self.savedVars.activeAutoPopulate = nil
+end
+
+function SmartChatMsg:GetPreciseChatChannelInfo()
+    if not CHAT_SYSTEM then
+        return nil
+    end
+
+    local cd, target = CHAT_SYSTEM:GetCurrentChannelData()
+    if not cd then
+        return nil
+    end
+
+    local id = cd.id
+    local info = {
+        id = id,
+        target = target,
+        kind = "unknown",
+        index = nil,
+        short = "unknown",
+    }
+
+    if id == CHAT_CHANNEL_ZONE then
+        info.kind = "zone"
+        info.short = "zone"
+    elseif id == CHAT_CHANNEL_PARTY then
+        info.kind = "group"
+        info.short = "group"
+    elseif id == CHAT_CHANNEL_SAY then
+        info.kind = "say"
+        info.short = "say"
+    elseif id == CHAT_CHANNEL_YELL then
+        info.kind = "yell"
+        info.short = "yell"
+    elseif id == CHAT_CHANNEL_EMOTE then
+        info.kind = "emote"
+        info.short = "emote"
+    elseif id == CHAT_CHANNEL_WHISPER or id == CHAT_CHANNEL_WHISPER_SENT then
+        info.kind = "tell"
+        info.short = "tell"
+    elseif id >= CHAT_CHANNEL_GUILD_1 and id <= CHAT_CHANNEL_GUILD_5 then
+        local index = id - CHAT_CHANNEL_GUILD_1 + 1
+        info.kind = "guild"
+        info.index = index
+        info.short = "g" .. index
+    elseif id >= CHAT_CHANNEL_OFFICER_1 and id <= CHAT_CHANNEL_OFFICER_5 then
+        local index = id - CHAT_CHANNEL_OFFICER_1 + 1
+        info.kind = "officer"
+        info.index = index
+        info.short = "o" .. index
+    end
+
+    return info
+end
+
+function SmartChatMsg:RestoreChatChannel(channelInfo)
+    if not channelInfo or not CHAT_SYSTEM or not channelInfo.id then
+        self:DebugLog("RestoreChatChannel aborted: missing channel info")
+        return false
+    end
+
+    self:DebugLog("Restoring chat channel: " .. self:FormatChatChannelInfo(channelInfo))
+    CHAT_SYSTEM:SetChannel(channelInfo.id, channelInfo.target)
+    return true
+end
+
+function SmartChatMsg:NormalizeChatText(text)
+    local value = self:Trim(text or "")
+    value = zo_strlower(value)
+
+    value = value:gsub("|c%x%x%x%x%x%x", "")
+    value = value:gsub("|r", "")
+    value = value:gsub("[%c]", " ")
+    value = value:gsub("[%p]", " ")
+    value = value:gsub("%s+", " ")
+
+    return self:Trim(value)
+end
+
+function SmartChatMsg:GetLevenshteinDistance(a, b)
+    a = a or ""
+    b = b or ""
+
+    local lenA = #a
+    local lenB = #b
+
+    if lenA == 0 then
+        return lenB
+    end
+
+    if lenB == 0 then
+        return lenA
+    end
+
+    local matrix = {}
+
+    for i = 0, lenA do
+        matrix[i] = {}
+        matrix[i][0] = i
+    end
+
+    for j = 0, lenB do
+        matrix[0][j] = j
+    end
+
+    for i = 1, lenA do
+        local charA = a:sub(i, i)
+
+        for j = 1, lenB do
+            local cost = (charA == b:sub(j, j)) and 0 or 1
+
+            local deletion = matrix[i - 1][j] + 1
+            local insertion = matrix[i][j - 1] + 1
+            local substitution = matrix[i - 1][j - 1] + cost
+
+            matrix[i][j] = math.min(deletion, insertion, substitution)
+        end
+    end
+
+    return matrix[lenA][lenB]
+end
+
+function SmartChatMsg:GetFuzzyMessageMatchDetails(expectedText, actualText)
+    local expected = self:NormalizeChatText(expectedText)
+    local actual = self:NormalizeChatText(actualText)
+
+    local details = {
+        expected = expected,
+        actual = actual,
+        matched = false,
+        method = "none",
+        similarity = 0,
+        distance = nil,
+    }
+
+    if expected == "" or actual == "" then
+        return details
+    end
+
+    if expected == actual then
+        details.matched = true
+        details.method = "exact"
+        details.similarity = 1
+        details.distance = 0
+        return details
+    end
+
+    if expected:find(actual, 1, true) or actual:find(expected, 1, true) then
+        local shorterLength = math.min(#expected, #actual)
+        details.method = "contains"
+        details.matched = shorterLength >= math.max(8, math.floor(math.min(#expected, #actual) * 0.8))
+        details.similarity = shorterLength / math.max(#expected, #actual)
+        return details
+    end
+
+    local distance = self:GetLevenshteinDistance(expected, actual)
+    local longest = math.max(#expected, #actual)
+    local similarity = 1 - (distance / longest)
+
+    details.method = "levenshtein"
+    details.distance = distance
+    details.similarity = similarity
+    details.matched = similarity >= 0.82
+
+    return details
+end
+
+function SmartChatMsg:IsFuzzyMessageMatch(expectedText, actualText)
+    return self:GetFuzzyMessageMatchDetails(expectedText, actualText).matched
+end
+
+function SmartChatMsg:IsOutgoingChatMessageType(messageType)
+    if type(messageType) ~= "number" then
+        return false
+    end
+
+    -- Channel ids
+    if messageType == CHAT_CHANNEL_SAY
+        or messageType == CHAT_CHANNEL_YELL
+        or messageType == CHAT_CHANNEL_EMOTE
+        or messageType == CHAT_CHANNEL_PARTY
+        or messageType == CHAT_CHANNEL_ZONE
+        or messageType == CHAT_CHANNEL_WHISPER
+        or messageType == CHAT_CHANNEL_WHISPER_SENT
+        or (messageType >= CHAT_CHANNEL_GUILD_1 and messageType <= CHAT_CHANNEL_GUILD_5)
+        or (messageType >= CHAT_CHANNEL_OFFICER_1 and messageType <= CHAT_CHANNEL_OFFICER_5) then
+        return true
+    end
+
+    -- Category ids fallback
+    if messageType == CHAT_CATEGORY_SAY
+        or messageType == CHAT_CATEGORY_YELL
+        or messageType == CHAT_CATEGORY_EMOTE
+        or messageType == CHAT_CATEGORY_PARTY
+        or messageType == CHAT_CATEGORY_ZONE
+        or messageType == CHAT_CATEGORY_WHISPER_SENT
+        or messageType == CHAT_CATEGORY_WHISPER
+        or messageType == CHAT_CATEGORY_GUILD_1
+        or messageType == CHAT_CATEGORY_GUILD_2
+        or messageType == CHAT_CATEGORY_GUILD_3
+        or messageType == CHAT_CATEGORY_GUILD_4
+        or messageType == CHAT_CATEGORY_GUILD_5
+        or messageType == CHAT_CATEGORY_OFFICER_1
+        or messageType == CHAT_CATEGORY_OFFICER_2
+        or messageType == CHAT_CATEGORY_OFFICER_3
+        or messageType == CHAT_CATEGORY_OFFICER_4
+        or messageType == CHAT_CATEGORY_OFFICER_5 then
+        return true
+    end
+
+    return false
+end
+
+function SmartChatMsg:ClearPendingRestoreState()
+    if self.pendingRestoreState then
+        self:DebugLog("Clearing pending restore state")
+    end
+
+    self.pendingRestoreState = nil
+    EVENT_MANAGER:UnregisterForEvent(self.restoreWatcherEventName, EVENT_CHAT_MESSAGE_CHANNEL)
+    EVENT_MANAGER:UnregisterForUpdate(self.restoreWatcherTimeoutName)
+end
+
+function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fromName, text, isCustomerService)
+    local state = self.pendingRestoreState
+    if not state then
+        return
+    end
+
+    if not self:IsOutgoingChatMessageType(messageType) then
+        self:DebugLog(string.format("[SmartChatMsg] Chat watcher saw event type=%s accepted=%s text=%s", tostring(messageType), tostring(self:IsOutgoingChatMessageType(messageType)), tostring(text or "")))
+        return
+    end
+
+    local details = self:GetFuzzyMessageMatchDetails(state.expectedText, text or "")
+    self:DebugLog(string.format(
+        "Watcher saw outgoing message type=%s method=%s matched=%s similarity=%.3f expected=%s actual=%s",
+        tostring(messageType),
+        tostring(details.method),
+        tostring(details.matched),
+        tonumber(details.similarity or 0),
+        tostring(details.expected),
+        tostring(details.actual)
+    ))
+
+    if not details.matched then
+        return
+    end
+
+    self:DebugLog("Watcher matched populated message; restoring previous channel")
+    self:RestoreChatChannel(state.previousChannel)
+    self:ClearPendingRestoreState()
+end
+
+function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText)
+    self:ClearPendingRestoreState()
+
+    if not previousChannelInfo or not previousChannelInfo.id then
+        self:DebugLog("ArmPendingRestoreState skipped: no previous channel info")
+        return
+    end
+
+    local normalizedExpected = self:NormalizeChatText(expectedText)
+    if normalizedExpected == "" then
+        self:DebugLog("ArmPendingRestoreState skipped: expected text normalized to empty")
+        return
+    end
+
+    self.pendingRestoreState = {
+        previousChannel = previousChannelInfo,
+        expectedText = normalizedExpected,
+    }
+
+    self:DebugLog("Armed restore watcher with previous channel: " .. self:FormatChatChannelInfo(previousChannelInfo))
+    self:DebugLog("Expected outgoing text: " .. tostring(normalizedExpected))
+
+    EVENT_MANAGER:RegisterForEvent(
+        self.restoreWatcherEventName,
+        EVENT_CHAT_MESSAGE_CHANNEL,
+        function(...)
+            SmartChatMsg:HandleRestoreWatcherChatMessage(...)
+        end
+    )
+
+    EVENT_MANAGER:RegisterForUpdate(self.restoreWatcherTimeoutName, 60000, function()
+        SmartChatMsg:DebugLog("Restore watcher timed out after 60 seconds")
+        SmartChatMsg:ClearPendingRestoreState()
+    end)
+end
+
+function SmartChatMsg:SetActiveAutoPopulate(commandId, guildName)
+    local command = self:GetCommandById(commandId)
+    if not command then
+        self:ClearActiveAutoPopulate()
+        return
+    end
+
+    if not self:GetGuildAutoPopulateOnZone(commandId, guildName) then
+        self:ClearActiveAutoPopulate()
+        return
+    end
+
+    local normalizedGuildName = self:Trim(guildName or "")
+    if normalizedGuildName == "" then
+        self:ClearActiveAutoPopulate()
+        return
+    end
+
+    self.savedVars.activeAutoPopulate = {
+        commandId = commandId,
+        guildName = normalizedGuildName,
+    }
+end
+
+function SmartChatMsg:GetActiveAutoPopulate()
+    local active = self.savedVars.activeAutoPopulate
+    if type(active) ~= "table" then
+        return nil
+    end
+
+    if type(active.commandId) ~= "string" or active.commandId == "" then
+        return nil
+    end
+
+    if type(active.guildName) ~= "string" or active.guildName == "" then
+        return nil
+    end
+
+    local command = self:GetCommandById(active.commandId)
+    if not command or not self:GetGuildAutoPopulateOnZone(active.commandId, active.guildName) then
+        return nil
+    end
+
+    return active
+end
+
+
+function SmartChatMsg:IsInParentZone(zoneId)
+    if type(zoneId) ~= "number" or zoneId == 0 then
+        return false
+    end
+
+    local parentZoneId = GetParentZoneId(zoneId)
+    if not parentZoneId or parentZoneId == 0 or parentZoneId == zoneId then
+        return true
+    end
+
+    return false
+end
+
+
+function SmartChatMsg:HandleZoneAutoPopulate()
+    local currentZoneId = GetZoneId(GetUnitZoneIndex("player"))
+    local previousZoneId = self.lastKnownZoneId
+
+    self.lastKnownZoneId = currentZoneId
+
+    if not self.hasSeenInitialPlayerActivated then
+        self.hasSeenInitialPlayerActivated = true
+        self:DebugLog("Auto populate debug: initial player activation seen, skipping")
+        return
+    end
+
+    if not currentZoneId or currentZoneId == 0 then
+        self:DebugLog("Auto populate debug: current zone id was invalid")
+        return
+    end
+
+    if not previousZoneId or previousZoneId == 0 or previousZoneId == currentZoneId then
+        self:DebugLog(string.format(
+            "Auto populate debug: zone change ignored previousZoneId=%s currentZoneId=%s",
+            tostring(previousZoneId),
+            tostring(currentZoneId)
+        ))
+        return
+    end
+
+    if not self:IsInParentZone(currentZoneId) then
+        self:DebugLog(string.format(
+            "Auto populate debug: skipped because currentZoneId=%s is not a parent zone",
+            tostring(currentZoneId)
+        ))
+        return
+    end
+
+    local active = self:GetActiveAutoPopulate()
+    if not active then
+        self:DebugLog("Auto populate debug: no active auto populate command")
+        return
+    end
+
+    self:DebugLog(string.format(
+        "Auto populate debug: firing for commandId=%s guildName=%s currentZoneId=%s previousZoneId=%s",
+        tostring(active.commandId),
+        tostring(active.guildName),
+        tostring(currentZoneId),
+        tostring(previousZoneId)
+    ))
+
+    local ok, err = self:PopulateChatBufferForCommand(active.commandId, active.guildName)
+    if not ok then
+        self:ClearActiveAutoPopulate()
+        ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
+        return
+    end
+
+    local command = self:GetCommandById(active.commandId)
+    if command then
+        local commandName = self:BuildSlashCommandName(command.name or "") or "command"
+        local message = string.format("Auto populated %s after zoning. Use /noautopop to stop.", commandName)
+        if CENTER_SCREEN_ANNOUNCE then
+            CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
+        else
+            d(message)
+        end
+    end
+
+    PlaySound(SOUNDS.DEFAULT_CLICK)
+end
+
+function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channelOverride)
+    local messages = self:GetMessageEntriesForCommandAndGuild(commandId, guildName)
+    if #messages == 0 then
+        return false, "No messages are saved for that command and guild."
+    end
+
+    local selectedEntry = self:SelectWeightedMessageEntry(messages)
+    if not selectedEntry then
+        return false, "No messages are saved for that command and guild."
+    end
+
+    local messageText = self:Trim(selectedEntry.text or "")
+    if messageText == "" then
+        return false, "The selected message is empty."
+    end
+
+    local resolvedMessageText = self:Trim(self:ApplyMessageSubstitutions(messageText, commandId, guildName) or "")
+    if resolvedMessageText == "" then
+        return false, "The selected message is empty after substitutions."
+    end
+
+    local channel = channelOverride or self:GetSavedChatChannel(commandId, guildName)
+
+    if channel == "Zone" then
+        StartChatInput(resolvedMessageText, CHAT_CHANNEL_ZONE)
+        self:MarkMessageEntryUsed(selectedEntry)
+        return true
+    end
+
+    if channel == "Guild" or channel == "Officer" then
+        local guildSlot = self:GetGuildSlotByName(guildName)
+        if not guildSlot then
+            return false, "That guild is not currently available."
+        end
+
+        if channel == "Guild" then
+            StartChatInput(resolvedMessageText, CHAT_CHANNEL_GUILD_1 + (guildSlot - 1))
+            self:MarkMessageEntryUsed(selectedEntry)
+            return true
+        end
+
+        StartChatInput(resolvedMessageText, CHAT_CHANNEL_OFFICER_1 + (guildSlot - 1))
+        self:MarkMessageEntryUsed(selectedEntry)
+        return true
+    end
+
+    return false, "No chat channel is saved for that command and guild."
+end
+
+function SmartChatMsg:ParseCommandParameter(rawParam)
+    local trimmed = zo_strlower(self:Trim(rawParam or ""))
+    if trimmed == "" then
+        return nil
+    end
+
+    local numericParam = tonumber(trimmed)
+    if numericParam and numericParam >= 1 and numericParam <= 5 and numericParam == math.floor(numericParam) then
+        return {
+            guildSlot = numericParam,
+            channelOverride = nil, -- use saved channel
+            reminderParamText = tostring(numericParam),
+        }
+    end
+
+    local prefix, slotText = trimmed:match("^([go])([1-5])$")
+    if prefix and slotText then
+        local guildSlot = tonumber(slotText)
+        return {
+            guildSlot = guildSlot,
+            channelOverride = (prefix == "g") and "Guild" or "Officer",
+            reminderParamText = trimmed,
+        }
+    end
+
+    return false
+end
+
+function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, rawParam)
+    local trimmedParam = self:Trim(rawParam or "")
+    local guildSlot = nil
+    local channelOverride = nil
+    local reminderParamText = nil
+
+    if trimmedParam ~= "" then
+        local parsed = self:ParseCommandParameter(trimmedParam)
+
+        if parsed == false then
+            ZO_Alert(
+                UI_ALERT_CATEGORY_ERROR,
+                SOUNDS.NEGATIVE_CLICK,
+                string.format("%s requires 1-5, g1-g5, or o1-o5.", slashCommandName)
+            )
+            return
+        end
+
+        guildSlot = parsed.guildSlot
+        channelOverride = parsed.channelOverride
+        reminderParamText = parsed.reminderParamText
+    else
+        guildSlot = self:GetDefaultGuildIndex()
+
+        if not guildSlot then
+            ZO_Alert(
+                UI_ALERT_CATEGORY_ERROR,
+                SOUNDS.NEGATIVE_CLICK,
+                string.format("%s requires 1-5, g1-g5, or o1-o5, or a Default Guild must be set.", slashCommandName)
+            )
+            return
+        end
+
+        reminderParamText = tostring(guildSlot)
+    end
+
+    local guildName = self:GetGuildNameByIndex(guildSlot)
+    if not guildName then
+        ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, string.format("Guild slot %d is not available.", guildSlot))
+        return
+    end
+
+    local ok, err = self:PopulateChatBufferForCommand(commandId, guildName, channelOverride)
+    if not ok then
+        ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
+        return
+    end
+
+    self:MarkCommandUsed(commandId, guildName, reminderParamText)
+    self:ScheduleCommandReminder(commandId, guildName)
+    self:SetActiveAutoPopulate(commandId, guildName)
+
+    PlaySound(SOUNDS.DEFAULT_CLICK)
+end
+
+function SmartChatMsg:UnregisterDynamicCommands()
+    for slashCommandName, _ in pairs(self.dynamicCommands) do
+        SLASH_COMMANDS[slashCommandName] = nil
+    end
+
+    self.dynamicCommands = {}
+end
+
+function SmartChatMsg:RegisterDynamicCommands()
+    self:UnregisterDynamicCommands()
+
+    local seenCommands = {}
+
+    for _, command in ipairs(self:GetCommands()) do
+        if type(command) == "table" and type(command.id) == "string" and type(command.name) == "string" then
+            local slashCommandName = self:BuildSlashCommandName(command.name)
+
+            if slashCommandName and not seenCommands[slashCommandName] then
+                seenCommands[slashCommandName] = true
+                self.dynamicCommands[slashCommandName] = command.id
+
+                SLASH_COMMANDS[slashCommandName] = function(paramText)
+                    SmartChatMsg:HandleDynamicSlashCommand(command.id, slashCommandName, paramText)
+                end
+            end
+        end
+    end
+end
+
+local function OnAddonLoaded(event, addonName)
+    if addonName ~= SmartChatMsg.name then
+        return
+    end
+
+    EVENT_MANAGER:UnregisterForEvent(SmartChatMsg.name, EVENT_ADD_ON_LOADED)
+
+    SmartChatMsg:InitializeSavedVars()
+    SmartChatMsg:ClearPendingRestoreState()
+    SmartChatMsg:CreateSettingsPanel()
+    SmartChatMsg:RegisterDynamicCommands()
+
+    SLASH_COMMANDS["/scm"] = function()
+        SmartChatMsg:OpenSettings()
+    end
+
+    SLASH_COMMANDS["/noautopop"] = function()
+        SmartChatMsg:ClearActiveAutoPopulate()
+        SmartChatMsg:ClearPendingRestoreState()
+        local message = "SmartChatMsg auto populate on zone has been turned off."
+        if CENTER_SCREEN_ANNOUNCE then
+            CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
+        else
+            d(message)
+        end
+    end
+
+    SLASH_COMMANDS["/scmdebug"] = function(paramText)
+        local normalized = zo_strlower(SmartChatMsg:Trim(paramText or ""))
+
+        if normalized == "" then
+            SmartChatMsg.debugEnabled = not SmartChatMsg.debugEnabled
+        elseif normalized == "on" or normalized == "1" or normalized == "true" then
+            SmartChatMsg.debugEnabled = true
+        elseif normalized == "off" or normalized == "0" or normalized == "false" then
+            SmartChatMsg.debugEnabled = false
+        elseif normalized == "status" then
+            d("[SmartChatMsg] Debug is " .. (SmartChatMsg.debugEnabled and "ON" or "OFF"))
+            return
+        else
+            d("[SmartChatMsg] Usage: /scmdebug, /scmdebug on, /scmdebug off, /scmdebug status")
+            return
+        end
+
+        d("[SmartChatMsg] Debug is now " .. (SmartChatMsg.debugEnabled and "ON" or "OFF"))
+    end
+
+    EVENT_MANAGER:RegisterForEvent(SmartChatMsg.name .. "_PlayerActivated", EVENT_PLAYER_ACTIVATED, function()
+        SmartChatMsg:HandleZoneAutoPopulate()
+    end)
+end
+
+EVENT_MANAGER:RegisterForEvent(SmartChatMsg.name, EVENT_ADD_ON_LOADED, OnAddonLoaded)
