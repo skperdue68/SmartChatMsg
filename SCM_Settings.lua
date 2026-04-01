@@ -7,6 +7,7 @@ SmartChatMsg.settings = SmartChatMsg.settings or {
     pendingReminderMinutes = "",
     pendingAutoPopulateOnZone = false,
     pendingGuildReminderMinutes = "",
+    pendingGuildReminderRetryMinutes = "5",
     pendingGuildAutoPopulateOnZone = false,
     pendingGuildAutoPopulateCooldownMinutes = "60",
     pendingImportExportText = "",
@@ -245,11 +246,13 @@ function SmartChatMsg.settings:InitializeState()
 
         local reminderMinutes = SmartChatMsg:GetGuildReminderMinutes(commandId, guildName)
         self.pendingGuildReminderMinutes = reminderMinutes and tostring(reminderMinutes) or ""
+        self.pendingGuildReminderRetryMinutes = tostring(SmartChatMsg:GetGuildReminderRetryMinutes(commandId, guildName) or 5)
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
         self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
     else
         SmartChatMsg:SetSelectedMessagesChannel(nil)
         self.pendingGuildReminderMinutes = ""
+        self.pendingGuildReminderRetryMinutes = "5"
         self.pendingGuildAutoPopulateOnZone = false
         self.pendingGuildAutoPopulateCooldownMinutes = "60"
     end
@@ -272,6 +275,11 @@ function SmartChatMsg.settings:SaveBehaviorSettings()
     end
 
     local ok, err = SmartChatMsg:SetGuildReminderMinutes(commandId, guildName, self.pendingGuildReminderMinutes)
+    if not ok then
+        return false, err
+    end
+
+    ok, err = SmartChatMsg:SetGuildReminderRetryMinutes(commandId, guildName, self.pendingGuildReminderRetryMinutes)
     if not ok then
         return false, err
     end
@@ -311,11 +319,13 @@ function SmartChatMsg.settings:ResetNewMessageSection()
 
         local reminderMinutes = SmartChatMsg:GetGuildReminderMinutes(commandId, guildName)
         self.pendingGuildReminderMinutes = reminderMinutes and tostring(reminderMinutes) or ""
+        self.pendingGuildReminderRetryMinutes = tostring(SmartChatMsg:GetGuildReminderRetryMinutes(commandId, guildName) or 5)
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
         self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
     else
         SmartChatMsg:SetSelectedMessagesChannel(nil)
         self.pendingGuildReminderMinutes = ""
+        self.pendingGuildReminderRetryMinutes = "5"
         self.pendingGuildAutoPopulateOnZone = false
         self.pendingGuildAutoPopulateCooldownMinutes = "60"
     end
@@ -968,7 +978,7 @@ local function BuildMessagesBehaviorSettings(parent)
 
     local reminderLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesReminderLabel", container, CT_LABEL)
     reminderLabel:SetFont("ZoFontWinH4")
-    reminderLabel:SetText("Set Timer to remind in minutes")
+    reminderLabel:SetText("Repeat After")
     reminderLabel:SetDimensions(ROW_WIDTH, 30)
     reminderLabel:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 0)
 
@@ -990,6 +1000,40 @@ local function BuildMessagesBehaviorSettings(parent)
         end
 
         SmartChatMsg.settings.pendingGuildReminderMinutes = digitsOnly
+
+        local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
+        if not ok and err then
+            ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
+            return
+        end
+
+        SmartChatMsg:RefreshSettingsUI()
+    end)
+
+    local reminderRetryLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesReminderRetryLabel", container, CT_LABEL)
+    reminderRetryLabel:SetFont("ZoFontGame")
+    reminderRetryLabel:SetText("Try Again (min)")
+    reminderRetryLabel:SetDimensions(110, 24)
+    reminderRetryLabel:SetAnchor(LEFT, reminderBackdrop, RIGHT, 18, 0)
+
+    local reminderRetryBackdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesReminderRetryBackdrop", container, "ZO_EditBackdrop")
+    reminderRetryBackdrop:SetDimensions(70, 30)
+    reminderRetryBackdrop:SetAnchor(LEFT, reminderRetryLabel, RIGHT, 8, 0)
+
+    local reminderRetryEditBox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesReminderRetryEditBox", reminderRetryBackdrop, "ZO_DefaultEditForBackdrop")
+    reminderRetryEditBox:SetAnchorFill(reminderRetryBackdrop)
+    reminderRetryEditBox:SetMaxInputChars(4)
+    reminderRetryEditBox:SetText("")
+    reminderRetryEditBox:SetHandler("OnTextChanged", function(self)
+        local text = self:GetText() or ""
+        local digitsOnly = text:gsub("[^%d]", "")
+
+        if digitsOnly ~= text then
+            self:SetText(digitsOnly)
+            return
+        end
+
+        SmartChatMsg.settings.pendingGuildReminderRetryMinutes = digitsOnly ~= "" and digitsOnly or "5"
 
         local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
         if not ok and err then
@@ -1056,6 +1100,11 @@ local function BuildMessagesBehaviorSettings(parent)
             reminderEditBox:SetText(SmartChatMsg.settings.pendingGuildReminderMinutes or "")
         end
 
+        local reminderRetryText = SmartChatMsg.settings.pendingGuildReminderRetryMinutes or "5"
+        if reminderRetryEditBox:GetText() ~= reminderRetryText then
+            reminderRetryEditBox:SetText(reminderRetryText)
+        end
+
         local cooldownText = SmartChatMsg.settings.pendingGuildAutoPopulateCooldownMinutes or "60"
         if cooldownEditBox:GetText() ~= cooldownText then
             cooldownEditBox:SetText(cooldownText)
@@ -1066,6 +1115,7 @@ local function BuildMessagesBehaviorSettings(parent)
     end
 
     SmartChatMsg.settings.controls.messagesBehaviorReminderEditBox = reminderEditBox
+    SmartChatMsg.settings.controls.messagesBehaviorReminderRetryEditBox = reminderRetryEditBox
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCheckbox = autoPopulateCheckbox
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCooldownEditBox = cooldownEditBox
     SmartChatMsg.settings.controls.messagesBehaviorSettings = container

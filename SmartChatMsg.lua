@@ -287,57 +287,142 @@ function SmartChatMsg:ClearCommandReminder(commandId, guildName)
     end
 end
 
-function SmartChatMsg:ShowCommandReminder(commandId, guildName)
-    local command = self:GetCommandById(commandId)
-    if not command then
-        self:DebugLog("Reminder debug: ShowCommandReminder aborted, command not found for commandId=" .. tostring(commandId))
-        return
-    end
-
-    local reminderMinutes = self:GetGuildReminderMinutes(commandId, guildName)
-    if not reminderMinutes then
-        self:DebugLog("Reminder debug: ShowCommandReminder aborted, no reminderMinutes for commandId=" .. tostring(commandId))
+function SmartChatMsg:HandleReminderPopulateSuccess(metadata)
+    if type(metadata) ~= "table" then
         return
     end
 
     self:DebugLog(string.format(
-        "Reminder debug: showing reminder for commandId=%s commandName=%s guildName=%s reminderMinutes=%s",
-        tostring(commandId),
-        tostring(command.name or "unknown"),
-        tostring(guildName),
-        tostring(reminderMinutes)
+        "Reminder debug: confirmed sent by watcher for commandId=%s guildName=%s",
+        tostring(metadata.commandId),
+        tostring(metadata.guildName)
     ))
 
-    local commandName = command.name or "Command"
-    local reminderTarget = guildName or "selected guild"
-    local lastUsedParamText = self:GetGuildLastUsedParamText(commandId, guildName)
-    local lastUsedGuildIndex = self:GetGuildLastUsedGuildIndex(commandId, guildName)
+    self:MarkCommandUsed(metadata.commandId, metadata.guildName, metadata.paramText, metadata.guildIndex)
+    self:ScheduleCommandReminder(metadata.commandId, metadata.guildName)
+end
 
-    local commandInvocation = self:BuildSlashCommandName(commandName) or ("/" .. tostring(commandName))
-    if lastUsedParamText and lastUsedParamText ~= "" then
-        commandInvocation = commandInvocation .. " " .. tostring(lastUsedParamText)
-    elseif lastUsedGuildIndex then
-        commandInvocation = commandInvocation .. " " .. tostring(lastUsedGuildIndex)
+function SmartChatMsg:HandleReminderPopulateTimeout(metadata)
+    if type(metadata) ~= "table" then
+        return
     end
 
-    local message = string.format(
-        "Reminder: %s for %s has not been used for %d minute%s. Last command: %s",
-        commandName,
-        reminderTarget,
-        reminderMinutes,
-        reminderMinutes == 1 and "" or "s",
-        commandInvocation
-    )
+    local commandId = metadata.commandId
+    local guildName = metadata.guildName
+    local expectedLastUsedAt = metadata.lastUsedAt
 
-    d(message)
+    if type(commandId) ~= "string" or commandId == "" or type(guildName) ~= "string" or guildName == "" then
+        return
+    end
 
-    local reminderSound = SOUNDS.MESSAGE_BROADCAST
-    PlaySound(reminderSound)
-    ZO_Alert(UI_ALERT_CATEGORY_ALERT, reminderSound, message)
+    local currentLastUsedAt = self:GetGuildLastUsedAt(commandId, guildName)
+    self:DebugLog(string.format(
+        "Reminder debug: timeout handling commandId=%s guildName=%s expectedLastUsedAt=%s currentLastUsedAt=%s",
+        tostring(commandId),
+        tostring(guildName),
+        tostring(expectedLastUsedAt),
+        tostring(currentLastUsedAt)
+    ))
 
+    if currentLastUsedAt ~= expectedLastUsedAt then
+        self:DebugLog(string.format(
+            "Reminder debug: timeout retry skipped because lastUsedAt changed for commandId=%s guildName=%s",
+            tostring(commandId),
+            tostring(guildName)
+        ))
+        return
+    end
+
+    local retryMinutes = self:GetGuildReminderRetryMinutes(commandId, guildName) or 5
+    local timerName = self:GetReminderTimerName(commandId, guildName)
+    if not timerName then
+        return
+    end
+
+    local delayMs = retryMinutes * 60 * 1000
+    self:DebugLog(string.format(
+        "Reminder debug: scheduling retry timer timerName=%s commandId=%s guildName=%s retryMinutes=%s delayMs=%s",
+        tostring(timerName),
+        tostring(commandId),
+        tostring(guildName),
+        tostring(retryMinutes),
+        tostring(delayMs)
+    ))
+
+    EVENT_MANAGER:RegisterForUpdate(timerName, delayMs, function()
+        self:DebugLog(string.format(
+            "Reminder debug: retry timer fired timerName=%s commandId=%s guildName=%s",
+            tostring(timerName),
+            tostring(commandId),
+            tostring(guildName)
+        ))
+
+        EVENT_MANAGER:UnregisterForUpdate(timerName)
+        self:TriggerReminderPopulate(commandId, guildName, expectedLastUsedAt, "retry")
+    end)
+end
+
+function SmartChatMsg:TriggerReminderPopulate(commandId, guildName, expectedLastUsedAt, reason)
+    local command = self:GetCommandById(commandId)
+    if not command then
+        self:DebugLog("Reminder debug: populate aborted, command not found for commandId=" .. tostring(commandId))
+        return
+    end
+
+    if not self:GetGuildReminderMinutes(commandId, guildName) then
+        self:DebugLog("Reminder debug: populate aborted, repeat-after is not configured for commandId=" .. tostring(commandId))
+        return
+    end
+
+    local currentLastUsedAt = self:GetGuildLastUsedAt(commandId, guildName)
+    self:DebugLog(string.format(
+        "Reminder debug: attempting populate commandId=%s guildName=%s reason=%s expectedLastUsedAt=%s currentLastUsedAt=%s",
+        tostring(commandId),
+        tostring(guildName),
+        tostring(reason or "initial"),
+        tostring(expectedLastUsedAt),
+        tostring(currentLastUsedAt)
+    ))
+
+    if currentLastUsedAt ~= expectedLastUsedAt then
+        self:DebugLog(string.format(
+            "Reminder debug: populate skipped because lastUsedAt changed for commandId=%s guildName=%s",
+            tostring(commandId),
+            tostring(guildName)
+        ))
+        return
+    end
+
+    local metadata = {
+        reminderRepeat = true,
+        commandId = commandId,
+        guildName = guildName,
+        lastUsedAt = expectedLastUsedAt,
+        paramText = self:GetGuildLastUsedParamText(commandId, guildName),
+        guildIndex = self:GetGuildLastUsedGuildIndex(commandId, guildName),
+        reason = reason or "initial",
+    }
+
+    local ok, err = self:PopulateChatBufferForCommand(commandId, guildName, nil, metadata)
+    if not ok then
+        self:DebugLog(string.format(
+            "Reminder debug: populate failed commandId=%s guildName=%s err=%s",
+            tostring(commandId),
+            tostring(guildName),
+            tostring(err)
+        ))
+        return
+    end
+
+    local commandName = self:BuildSlashCommandName(command.name or "") or "command"
+    local message = string.format("Repeat populated %s. It will retry again if not sent.", commandName)
     if CENTER_SCREEN_ANNOUNCE then
-        CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, reminderSound, message)
+        CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
+    else
+        d(message)
     end
+
+    PlaySound(SOUNDS.DEFAULT_CLICK)
 end
 
 function SmartChatMsg:ScheduleCommandReminder(commandId, guildName)
@@ -352,7 +437,7 @@ function SmartChatMsg:ScheduleCommandReminder(commandId, guildName)
 
     if not reminderMinutes then
         self:DebugLog(string.format(
-            "Reminder debug: schedule aborted, no reminderMinutes for commandId=%s commandName=%s guildName=%s",
+            "Reminder debug: schedule aborted, no repeat-after configured for commandId=%s commandName=%s guildName=%s",
             tostring(commandId),
             tostring(command.name or "unknown"),
             tostring(guildName)
@@ -380,7 +465,7 @@ function SmartChatMsg:ScheduleCommandReminder(commandId, guildName)
 
     local delayMs = reminderMinutes * 60 * 1000
     self:DebugLog(string.format(
-        "Reminder debug: scheduling timer timerName=%s commandId=%s commandName=%s guildName=%s reminderMinutes=%s delayMs=%s lastUsedAt=%s",
+        "Reminder debug: scheduling repeat-after timer timerName=%s commandId=%s commandName=%s guildName=%s repeatAfterMinutes=%s delayMs=%s lastUsedAt=%s",
         tostring(timerName),
         tostring(commandId),
         tostring(command.name or "unknown"),
@@ -392,42 +477,14 @@ function SmartChatMsg:ScheduleCommandReminder(commandId, guildName)
 
     EVENT_MANAGER:RegisterForUpdate(timerName, delayMs, function()
         self:DebugLog(string.format(
-            "Reminder debug: timer fired timerName=%s commandId=%s guildName=%s",
+            "Reminder debug: repeat-after timer fired timerName=%s commandId=%s guildName=%s",
             tostring(timerName),
             tostring(commandId),
             tostring(guildName)
         ))
 
         EVENT_MANAGER:UnregisterForUpdate(timerName)
-
-        local currentCommand = self:GetCommandById(commandId)
-        if not currentCommand then
-            self:DebugLog("Reminder debug: timer aborted, command no longer exists for commandId=" .. tostring(commandId))
-            return
-        end
-
-        local currentLastUsedAt = self:GetGuildLastUsedAt(commandId, guildName)
-        self:DebugLog(string.format(
-            "Reminder debug: timer validating commandId=%s guildName=%s storedLastUsedAt=%s currentLastUsedAt=%s",
-            tostring(commandId),
-            tostring(guildName),
-            tostring(lastUsedAt),
-            tostring(currentLastUsedAt)
-        ))
-
-        if currentLastUsedAt ~= lastUsedAt then
-            self:DebugLog(string.format(
-                "Reminder debug: timer aborted because lastUsedAt changed for commandId=%s guildName=%s old=%s new=%s",
-                tostring(commandId),
-                tostring(guildName),
-                tostring(lastUsedAt),
-                tostring(currentLastUsedAt)
-            ))
-            return
-        end
-
-        self:DebugLog("Reminder debug: timer validation passed, calling ShowCommandReminder for commandId=" .. tostring(commandId))
-        self:ShowCommandReminder(commandId, guildName)
+        self:TriggerReminderPopulate(commandId, guildName, lastUsedAt, "initial")
     end)
 end
 
@@ -706,6 +763,8 @@ function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fr
             tostring(metadata.zoneId)
         ))
         self:MarkAutoPopulateSent(metadata.commandId, metadata.guildName, metadata.zoneId)
+    elseif type(metadata) == "table" and metadata.reminderRepeat == true then
+        self:HandleReminderPopulateSuccess(metadata)
     end
 
     self:DebugLog("Watcher matched populated message; restoring previous channel")
@@ -754,6 +813,11 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
             local restored = SmartChatMsg:RestoreChatChannel(pendingState.previousChannel)
             SmartChatMsg:DebugLog("Timeout restore result=" .. tostring(restored))
         end
+
+        if pendingState and type(pendingState.metadata) == "table" and pendingState.metadata.reminderRepeat == true then
+            SmartChatMsg:HandleReminderPopulateTimeout(pendingState.metadata)
+        end
+
         SmartChatMsg:ClearPendingRestoreState("restore timeout")
     end)
 
