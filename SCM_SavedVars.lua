@@ -8,7 +8,7 @@ SmartChatMsg.defaults = {
     messages = {}, -- { { id = "...", commandId = "...", guildIndex = n, guildName = "...", text = "..." }, ... }
 
     chatChannels = {}, -- [commandId] = { [guildKey] = "Zone"|"Guild"|"Officer" }
-    commandGuildSettings = {}, -- [commandId] = { [guildKey] = { reminderMinutes = n|nil, reminderRetryMinutes = n, autoPopulateOnZone = bool, autoPopulateCooldownMinutes = n, lastUsedAt = unixTime|nil, lastUsedParamText = "..."|nil, lastUsedGuildIndex = n|nil, lastAutoPopulateSentAtByZone = { [zoneKey] = unixTime, ... } }, ... }
+    commandGuildSettings = {}, -- [commandId] = { [guildKey] = { reminderMinutes = n|nil, reminderRetryMinutes = n, autoPopulateOnZone = bool, autoPopulateCooldownMinutes = n, revertChatSeconds = n, lastUsedAt = unixTime|nil, lastUsedParamText = "..."|nil, lastUsedGuildIndex = n|nil, lastAutoPopulateSentAtByZone = { [zoneKey] = unixTime, ... } }, ... }
 
     selectedMessagesCommand = nil, -- commandId
     selectedMessagesGuildIndex = nil,
@@ -98,7 +98,10 @@ function SmartChatMsg:InitializeSavedVars()
 
                     cleanedByGuild[normalizedGuildKey] = {
                         reminderMinutes = self:NormalizeReminderMinutes(settings.reminderMinutes),
+                        reminderRetryMinutes = self:NormalizeReminderRetryMinutes(settings.reminderRetryMinutes),
                         autoPopulateOnZone = self:NormalizeAutoPopulateOnZone(settings.autoPopulateOnZone),
+                        autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(settings.autoPopulateCooldownMinutes),
+                        revertChatSeconds = self:NormalizeRevertChatSeconds(settings.revertChatSeconds),
                         lastUsedAt = (type(settings.lastUsedAt) == "number" and settings.lastUsedAt >= 0) and math.floor(settings.lastUsedAt) or nil,
                         lastUsedParamText = self:Trim(settings.lastUsedParamText or ""),
                         lastUsedGuildIndex = (type(settings.lastUsedGuildIndex) == "number" and settings.lastUsedGuildIndex >= 1 and settings.lastUsedGuildIndex <= 5 and settings.lastUsedGuildIndex == math.floor(settings.lastUsedGuildIndex)) and settings.lastUsedGuildIndex or nil,
@@ -149,6 +152,12 @@ function SmartChatMsg:InitializeSavedVars()
                     end
                     if settings.autoPopulateOnZone == nil and legacyAutoPopulateOnZone ~= nil then
                         settings.autoPopulateOnZone = legacyAutoPopulateOnZone
+                    end
+                    if settings.autoPopulateCooldownMinutes == nil then
+                        settings.autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(nil)
+                    end
+                    if settings.revertChatSeconds == nil then
+                        settings.revertChatSeconds = self:NormalizeRevertChatSeconds(nil)
                     end
                 end
             end
@@ -272,6 +281,26 @@ function SmartChatMsg:NormalizeAutoPopulateCooldownMinutes(value)
     return numericValue
 end
 
+function SmartChatMsg:NormalizeRevertChatSeconds(value)
+    if value == nil then
+        return 60
+    end
+
+    if type(value) == "string" then
+        value = self:Trim(value)
+        if value == "" then
+            return 60
+        end
+    end
+
+    local numericValue = tonumber(value)
+    if not numericValue or numericValue <= 0 or numericValue ~= math.floor(numericValue) then
+        return 60
+    end
+
+    return numericValue
+end
+
 function SmartChatMsg:GenerateUuid()
     local template = "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx"
     return (template:gsub("[xy]", function(c)
@@ -370,6 +399,7 @@ function SmartChatMsg:BuildExportString()
                         self:EscapeImportExportField(settings.reminderRetryMinutes or 5),
                         self:EscapeImportExportField(settings.autoPopulateOnZone == true and "1" or "0"),
                         self:EscapeImportExportField(settings.autoPopulateCooldownMinutes or 60),
+                        self:EscapeImportExportField(settings.revertChatSeconds or 60),
                         self:EscapeImportExportField(settings.lastUsedAt or ""),
                         self:EscapeImportExportField(settings.lastUsedParamText or ""),
                         self:EscapeImportExportField(settings.lastUsedGuildIndex or ""),
@@ -535,12 +565,22 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
             local reminderRetryMinutes = 5
             local autoPopulateOnZone = false
             local autoPopulateCooldownMinutes = 60
+            local revertChatSeconds = 60
             local lastUsedAt = nil
             local lastUsedParamText = nil
             local lastUsedGuildIndex = nil
             local zoneTimestampText = ""
 
-            if parts[10] ~= nil then
+            if parts[11] ~= nil then
+                reminderRetryMinutes = self:NormalizeReminderRetryMinutes(self:UnescapeImportExportField(parts[4] or ""))
+                autoPopulateOnZone = self:UnescapeImportExportField(parts[5] or "") == "1"
+                autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(self:UnescapeImportExportField(parts[6] or ""))
+                revertChatSeconds = self:NormalizeRevertChatSeconds(self:UnescapeImportExportField(parts[7] or ""))
+                lastUsedAt = tonumber(self:UnescapeImportExportField(parts[8] or ""))
+                lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[9] or ""))
+                lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[10] or ""))
+                zoneTimestampText = self:UnescapeImportExportField(parts[11] or "")
+            elseif parts[10] ~= nil then
                 reminderRetryMinutes = self:NormalizeReminderRetryMinutes(self:UnescapeImportExportField(parts[4] or ""))
                 autoPopulateOnZone = self:UnescapeImportExportField(parts[5] or "") == "1"
                 autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(self:UnescapeImportExportField(parts[6] or ""))
@@ -581,6 +621,7 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
                     reminderRetryMinutes = reminderRetryMinutes,
                     autoPopulateOnZone = autoPopulateOnZone,
                     autoPopulateCooldownMinutes = autoPopulateCooldownMinutes,
+                    revertChatSeconds = revertChatSeconds,
                     lastUsedAt = lastUsedAt and math.floor(lastUsedAt) or nil,
                     lastUsedParamText = lastUsedParamText ~= "" and lastUsedParamText or nil,
                     lastUsedGuildIndex = lastUsedGuildIndex and math.floor(lastUsedGuildIndex) or nil,
@@ -706,6 +747,15 @@ function SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName)
     local settings = self:GetCommandGuildSettings(commandId, guildName, false)
     if settings and settings.autoPopulateCooldownMinutes ~= nil then
         return self:NormalizeAutoPopulateCooldownMinutes(settings.autoPopulateCooldownMinutes)
+    end
+
+    return 60
+end
+
+function SmartChatMsg:GetGuildRevertChatSeconds(commandId, guildName)
+    local settings = self:GetCommandGuildSettings(commandId, guildName, false)
+    if settings and settings.revertChatSeconds ~= nil then
+        return self:NormalizeRevertChatSeconds(settings.revertChatSeconds)
     end
 
     return 60
@@ -842,6 +892,21 @@ function SmartChatMsg:SetGuildAutoPopulateCooldownMinutes(commandId, guildName, 
     return true
 end
 
+function SmartChatMsg:SetGuildRevertChatSeconds(commandId, guildName, revertSeconds)
+    local command = self:GetCommandById(commandId)
+    if not command then
+        return false, "The selected Command no longer exists."
+    end
+
+    local settings = self:GetCommandGuildSettings(commandId, guildName, true)
+    if not settings then
+        return false, "Select a Guild first."
+    end
+
+    settings.revertChatSeconds = self:NormalizeRevertChatSeconds(revertSeconds)
+    return true
+end
+
 function SmartChatMsg:SetGuildLastUsedState(commandId, guildName, lastUsedAt, paramText, guildIndex)
     local settings = self:GetCommandGuildSettings(commandId, guildName, true)
     if not settings then
@@ -894,6 +959,10 @@ function SmartChatMsg:GetCommandAutoPopulateCooldownMinutes(commandId)
     return self:GetGuildAutoPopulateCooldownMinutes(commandId, self:GetSelectedGuildNameForMessages())
 end
 
+function SmartChatMsg:GetCommandRevertChatSeconds(commandId)
+    return self:GetGuildRevertChatSeconds(commandId, self:GetSelectedGuildNameForMessages())
+end
+
 function SmartChatMsg:SetCommandReminderMinutes(commandId, reminderMinutes)
     return self:SetGuildReminderMinutes(commandId, self:GetSelectedGuildNameForMessages(), reminderMinutes)
 end
@@ -908,6 +977,10 @@ end
 
 function SmartChatMsg:SetCommandAutoPopulateCooldownMinutes(commandId, cooldownMinutes)
     return self:SetGuildAutoPopulateCooldownMinutes(commandId, self:GetSelectedGuildNameForMessages(), cooldownMinutes)
+end
+
+function SmartChatMsg:SetCommandRevertChatSeconds(commandId, revertSeconds)
+    return self:SetGuildRevertChatSeconds(commandId, self:GetSelectedGuildNameForMessages(), revertSeconds)
 end
 
 function SmartChatMsg:CommandNameExists(name, excludeId)

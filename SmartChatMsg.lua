@@ -2,6 +2,7 @@ SmartChatMsg = SmartChatMsg or {}
 SmartChatMsg.name = "SmartChatMsg"
 SmartChatMsg.dynamicCommands = SmartChatMsg.dynamicCommands or {}
 SmartChatMsg.commandReminderTimers = SmartChatMsg.commandReminderTimers or {}
+SmartChatMsg.activeReminderStates = SmartChatMsg.activeReminderStates or {}
 SmartChatMsg.lastKnownZoneId = SmartChatMsg.lastKnownZoneId or nil
 SmartChatMsg.hasSeenInitialPlayerActivated = SmartChatMsg.hasSeenInitialPlayerActivated or false
 SmartChatMsg.pendingRestoreState = SmartChatMsg.pendingRestoreState or nil
@@ -277,6 +278,51 @@ function SmartChatMsg:GetReminderTimerName(commandId, guildName)
     return "SmartChatMsgReminder_" .. commandId .. "_" .. guildKey
 end
 
+function SmartChatMsg:GetReminderStateKey(commandId, guildName)
+    if type(commandId) ~= "string" or commandId == "" then
+        return nil
+    end
+
+    local guildKey = self:NormalizeKey(guildName)
+    if not guildKey then
+        return nil
+    end
+
+    return commandId .. "::" .. guildKey
+end
+
+function SmartChatMsg:SetReminderAutomationActive(commandId, guildName, isActive)
+    local stateKey = self:GetReminderStateKey(commandId, guildName)
+    if not stateKey then
+        return
+    end
+
+    if isActive then
+        self.activeReminderStates[stateKey] = true
+    else
+        self.activeReminderStates[stateKey] = nil
+    end
+end
+
+function SmartChatMsg:IsReminderAutomationActive(commandId, guildName)
+    local stateKey = self:GetReminderStateKey(commandId, guildName)
+    return stateKey and self.activeReminderStates[stateKey] == true or false
+end
+
+function SmartChatMsg:DeactivateReminderAutomation(commandId, guildName, reason)
+    self:SetReminderAutomationActive(commandId, guildName, false)
+    self:ClearCommandReminder(commandId, guildName)
+
+    local pendingState = self.pendingRestoreState
+    local metadata = pendingState and pendingState.metadata or nil
+    if type(metadata) == "table"
+        and metadata.reminderRepeat == true
+        and metadata.commandId == commandId
+        and self:StringsEqualIgnoreCase(metadata.guildName or "", guildName or "") then
+        self:ClearPendingRestoreState(reason or "reminder automation deactivated")
+    end
+end
+
 function SmartChatMsg:ClearCommandReminder(commandId, guildName)
     local timerName = self:GetReminderTimerName(commandId, guildName)
     if timerName then
@@ -304,6 +350,11 @@ end
 
 function SmartChatMsg:HandleReminderPopulateTimeout(metadata)
     if type(metadata) ~= "table" then
+        return
+    end
+
+    if not self:IsReminderAutomationActive(metadata.commandId, metadata.guildName) then
+        self:DebugLog("Reminder debug: timeout ignored because reminder automation is inactive")
         return
     end
 
@@ -363,6 +414,11 @@ function SmartChatMsg:HandleReminderPopulateTimeout(metadata)
 end
 
 function SmartChatMsg:TriggerReminderPopulate(commandId, guildName, expectedLastUsedAt, reason)
+    if not self:IsReminderAutomationActive(commandId, guildName) then
+        self:DebugLog("Reminder debug: populate skipped because reminder automation is inactive")
+        return
+    end
+
     local command = self:GetCommandById(commandId)
     if not command then
         self:DebugLog("Reminder debug: populate aborted, command not found for commandId=" .. tostring(commandId))
@@ -414,15 +470,11 @@ function SmartChatMsg:TriggerReminderPopulate(commandId, guildName, expectedLast
         return
     end
 
-    local commandName = self:BuildSlashCommandName(command.name or "") or "command"
-    local message = string.format("Repeat populated %s. It will retry again if not sent.", commandName)
-    if CENTER_SCREEN_ANNOUNCE then
-        CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
-    else
-        d(message)
-    end
-
-    PlaySound(SOUNDS.DEFAULT_CLICK)
+    self:DebugLog(string.format(
+        "Reminder debug: populate armed successfully for commandId=%s guildName=%s",
+        tostring(commandId),
+        tostring(guildName)
+    ))
 end
 
 function SmartChatMsg:ScheduleCommandReminder(commandId, guildName)
@@ -436,6 +488,7 @@ function SmartChatMsg:ScheduleCommandReminder(commandId, guildName)
     self:ClearCommandReminder(commandId, guildName)
 
     if not reminderMinutes then
+        self:SetReminderAutomationActive(commandId, guildName, false)
         self:DebugLog(string.format(
             "Reminder debug: schedule aborted, no repeat-after configured for commandId=%s commandName=%s guildName=%s",
             tostring(commandId),
@@ -444,6 +497,8 @@ function SmartChatMsg:ScheduleCommandReminder(commandId, guildName)
         ))
         return
     end
+
+    self:SetReminderAutomationActive(commandId, guildName, true)
 
     local lastUsedAt = self:GetGuildLastUsedAt(commandId, guildName)
     if type(lastUsedAt) ~= "number" or lastUsedAt <= 0 then
@@ -454,6 +509,7 @@ function SmartChatMsg:ScheduleCommandReminder(commandId, guildName)
             tostring(command.name or "unknown"),
             tostring(guildName)
         ))
+        self:SetReminderAutomationActive(commandId, guildName, false)
         return
     end
 
@@ -490,6 +546,29 @@ end
 
 function SmartChatMsg:ClearActiveAutoPopulate()
     self.savedVars.activeAutoPopulate = nil
+end
+
+function SmartChatMsg:ToggleOffActiveAutoPopulateIfMatching(commandId, guildName)
+    local active = self:GetActiveAutoPopulate()
+    if not active then
+        return false
+    end
+
+    if active.commandId == commandId and self:StringsEqualIgnoreCase(active.guildName, guildName) then
+        local pendingState = self.pendingRestoreState
+        local metadata = pendingState and pendingState.metadata or nil
+        if type(metadata) == "table"
+            and metadata.autoPopulate == true
+            and metadata.commandId == commandId
+            and self:StringsEqualIgnoreCase(metadata.guildName or "", guildName or "") then
+            self:ClearPendingRestoreState("matching auto populate toggled off")
+        end
+
+        self:ClearActiveAutoPopulate()
+        return true
+    end
+
+    return false
 end
 
 function SmartChatMsg:GetPreciseChatChannelInfo()
@@ -773,6 +852,14 @@ function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fr
     self:ClearPendingRestoreState("watcher matched outgoing message")
 end
 
+function SmartChatMsg:GetRestoreWatcherTimeoutSeconds(metadata)
+    if type(metadata) == "table" and type(metadata.commandId) == "string" and type(metadata.guildName) == "string" then
+        return self:GetGuildRevertChatSeconds(metadata.commandId, metadata.guildName) or 60
+    end
+
+    return 60
+end
+
 function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, metadata)
     self:ClearPendingRestoreState("arming new restore state")
 
@@ -787,15 +874,19 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
         return false
     end
 
+    local timeoutSeconds = self:GetRestoreWatcherTimeoutSeconds(metadata)
+
     self.pendingRestoreState = {
         previousChannel = previousChannelInfo,
         expectedText = normalizedExpected,
         metadata = type(metadata) == "table" and metadata or nil,
+        timeoutSeconds = timeoutSeconds,
         armedAt = GetFrameTimeMilliseconds and GetFrameTimeMilliseconds() or nil,
     }
 
     self:DebugLog("Armed restore watcher with previous channel: " .. self:FormatChatChannelInfo(previousChannelInfo))
     self:DebugLog("Expected outgoing text: " .. tostring(normalizedExpected))
+    self:DebugLog("Restore watcher timeout seconds: " .. tostring(timeoutSeconds))
 
     EVENT_MANAGER:RegisterForEvent(
         self.restoreWatcherEventName,
@@ -805,9 +896,10 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
         end
     )
 
-    EVENT_MANAGER:RegisterForUpdate(self.restoreWatcherTimeoutName, 60000, function()
+    EVENT_MANAGER:RegisterForUpdate(self.restoreWatcherTimeoutName, timeoutSeconds * 1000, function()
         local pendingState = SmartChatMsg.pendingRestoreState
-        SmartChatMsg:DebugLog("Restore watcher timed out after 60 seconds")
+        local pendingTimeoutSeconds = pendingState and pendingState.timeoutSeconds or timeoutSeconds
+        SmartChatMsg:DebugLog("Restore watcher timed out after " .. tostring(pendingTimeoutSeconds) .. " seconds")
         if pendingState and pendingState.previousChannel then
             SmartChatMsg:DebugLog("Timeout restore attempting previous channel: " .. SmartChatMsg:FormatChatChannelInfo(pendingState.previousChannel))
             local restored = SmartChatMsg:RestoreChatChannel(pendingState.previousChannel)
@@ -1014,7 +1106,7 @@ function SmartChatMsg:HandleZoneAutoPopulate()
     if command then
         local commandName = self:BuildSlashCommandName(command.name or "") or "command"
         local zoneName = self:GetAutoPopulateZoneDisplayName(currentZoneId)
-        local message = string.format("Auto populated %s for %s. Use /noautopop to stop.", commandName, zoneName)
+        local message = string.format("Auto populated %s for %s. Run the command again to turn it off.", commandName, zoneName)
         if CENTER_SCREEN_ANNOUNCE then
             CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
         else
@@ -1184,15 +1276,50 @@ function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, raw
         tostring(trimmedParam)
     ))
 
+    local toggledMessages = {}
+
+    if self:ToggleOffActiveAutoPopulateIfMatching(commandId, guildName) then
+        table.insert(toggledMessages, string.format("%s auto populate has been turned off.", slashCommandName))
+    end
+
+    if self:IsReminderAutomationActive(commandId, guildName) then
+        self:DeactivateReminderAutomation(commandId, guildName, "matching reminder toggled off")
+        table.insert(toggledMessages, string.format("%s repeat-after has been turned off.", slashCommandName))
+    end
+
+    if #toggledMessages > 0 then
+        local message = table.concat(toggledMessages, " ")
+        if CENTER_SCREEN_ANNOUNCE then
+            CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
+        else
+            d(message)
+        end
+        PlaySound(SOUNDS.DEFAULT_CLICK)
+        return
+    end
+
+    local activeAutoPopulate = self:GetActiveAutoPopulate()
+    if activeAutoPopulate and self:GetGuildAutoPopulateOnZone(commandId, guildName) then
+        ZO_Alert(
+            UI_ALERT_CATEGORY_ERROR,
+            SOUNDS.NEGATIVE_CLICK,
+            string.format("%s cannot start auto populate because %s is already running for %s.", slashCommandName, self:BuildSlashCommandName(self:GetCommandNameById(activeAutoPopulate.commandId) or "command") or "another command", tostring(activeAutoPopulate.guildName))
+        )
+        return
+    end
+
     local ok, err = self:PopulateChatBufferForCommand(commandId, guildName, channelOverride)
     if not ok then
         ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
         return
     end
 
-    self:MarkCommandUsed(commandId, guildName, reminderParamText)
+    self:MarkCommandUsed(commandId, guildName, reminderParamText, guildSlot)
     self:ScheduleCommandReminder(commandId, guildName)
-    self:SetActiveAutoPopulate(commandId, guildName)
+
+    if self:GetGuildAutoPopulateOnZone(commandId, guildName) then
+        self:SetActiveAutoPopulate(commandId, guildName)
+    end
 
     PlaySound(SOUNDS.DEFAULT_CLICK)
 end
@@ -1234,23 +1361,14 @@ local function OnAddonLoaded(event, addonName)
     EVENT_MANAGER:UnregisterForEvent(SmartChatMsg.name, EVENT_ADD_ON_LOADED)
 
     SmartChatMsg:InitializeSavedVars()
+    SmartChatMsg:ClearActiveAutoPopulate()
+    SmartChatMsg.activeReminderStates = {}
     SmartChatMsg:ClearPendingRestoreState()
     SmartChatMsg:CreateSettingsPanel()
     SmartChatMsg:RegisterDynamicCommands()
 
     SLASH_COMMANDS["/scm"] = function()
         SmartChatMsg:OpenSettings()
-    end
-
-    SLASH_COMMANDS["/noautopop"] = function()
-        SmartChatMsg:ClearActiveAutoPopulate()
-        SmartChatMsg:ClearPendingRestoreState()
-        local message = "SmartChatMsg auto populate on zone has been turned off."
-        if CENTER_SCREEN_ANNOUNCE then
-            CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
-        else
-            d(message)
-        end
     end
 
     SLASH_COMMANDS["/scmdebug"] = function(paramText)

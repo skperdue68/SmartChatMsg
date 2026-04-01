@@ -10,6 +10,7 @@ SmartChatMsg.settings = SmartChatMsg.settings or {
     pendingGuildReminderRetryMinutes = "5",
     pendingGuildAutoPopulateOnZone = false,
     pendingGuildAutoPopulateCooldownMinutes = "60",
+    pendingGuildRevertChatSeconds = "60",
     pendingImportExportText = "",
     editingOriginalCommandId = nil,
 
@@ -249,12 +250,14 @@ function SmartChatMsg.settings:InitializeState()
         self.pendingGuildReminderRetryMinutes = tostring(SmartChatMsg:GetGuildReminderRetryMinutes(commandId, guildName) or 5)
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
         self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
+        self.pendingGuildRevertChatSeconds = tostring(SmartChatMsg:GetGuildRevertChatSeconds(commandId, guildName) or 60)
     else
         SmartChatMsg:SetSelectedMessagesChannel(nil)
         self.pendingGuildReminderMinutes = ""
         self.pendingGuildReminderRetryMinutes = "5"
         self.pendingGuildAutoPopulateOnZone = false
         self.pendingGuildAutoPopulateCooldownMinutes = "60"
+        self.pendingGuildRevertChatSeconds = "60"
     end
 end
 
@@ -294,6 +297,11 @@ function SmartChatMsg.settings:SaveBehaviorSettings()
         return false, err
     end
 
+    ok, err = SmartChatMsg:SetGuildRevertChatSeconds(commandId, guildName, self.pendingGuildRevertChatSeconds)
+    if not ok then
+        return false, err
+    end
+
     return true
 end
 
@@ -322,12 +330,14 @@ function SmartChatMsg.settings:ResetNewMessageSection()
         self.pendingGuildReminderRetryMinutes = tostring(SmartChatMsg:GetGuildReminderRetryMinutes(commandId, guildName) or 5)
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
         self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
+        self.pendingGuildRevertChatSeconds = tostring(SmartChatMsg:GetGuildRevertChatSeconds(commandId, guildName) or 60)
     else
         SmartChatMsg:SetSelectedMessagesChannel(nil)
         self.pendingGuildReminderMinutes = ""
         self.pendingGuildReminderRetryMinutes = "5"
         self.pendingGuildAutoPopulateOnZone = false
         self.pendingGuildAutoPopulateCooldownMinutes = "60"
+        self.pendingGuildRevertChatSeconds = "60"
     end
 
     SmartChatMsg:RefreshSettingsUI()
@@ -1093,6 +1103,40 @@ local function BuildMessagesBehaviorSettings(parent)
         SmartChatMsg:RefreshSettingsUI()
     end)
 
+    local revertLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesRevertWaitLabel", container, CT_LABEL)
+    revertLabel:SetFont("ZoFontGame")
+    revertLabel:SetText("Revert Wait (sec)")
+    revertLabel:SetDimensions(120, 24)
+    revertLabel:SetAnchor(LEFT, cooldownBackdrop, RIGHT, 18, 0)
+
+    local revertBackdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesRevertWaitBackdrop", container, "ZO_EditBackdrop")
+    revertBackdrop:SetDimensions(70, 30)
+    revertBackdrop:SetAnchor(LEFT, revertLabel, RIGHT, 8, 0)
+
+    local revertEditBox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesRevertWaitEditBox", revertBackdrop, "ZO_DefaultEditForBackdrop")
+    revertEditBox:SetAnchorFill(revertBackdrop)
+    revertEditBox:SetMaxInputChars(4)
+    revertEditBox:SetText("")
+    revertEditBox:SetHandler("OnTextChanged", function(self)
+        local text = self:GetText() or ""
+        local digitsOnly = text:gsub("[^%d]", "")
+
+        if digitsOnly ~= text then
+            self:SetText(digitsOnly)
+            return
+        end
+
+        SmartChatMsg.settings.pendingGuildRevertChatSeconds = digitsOnly ~= "" and digitsOnly or "60"
+
+        local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
+        if not ok and err then
+            ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
+            return
+        end
+
+        SmartChatMsg:RefreshSettingsUI()
+    end)
+
     container.RefreshEditor = function()
         local shouldShow = SmartChatMsg:IsMessagesSelectionComplete()
 
@@ -1110,6 +1154,11 @@ local function BuildMessagesBehaviorSettings(parent)
             cooldownEditBox:SetText(cooldownText)
         end
 
+        local revertText = SmartChatMsg.settings.pendingGuildRevertChatSeconds or "60"
+        if revertEditBox:GetText() ~= revertText then
+            revertEditBox:SetText(revertText)
+        end
+
         ZO_CheckButton_SetCheckState(autoPopulateCheckbox, SmartChatMsg.settings.pendingGuildAutoPopulateOnZone == true)
         container:SetHidden(not shouldShow)
     end
@@ -1118,6 +1167,7 @@ local function BuildMessagesBehaviorSettings(parent)
     SmartChatMsg.settings.controls.messagesBehaviorReminderRetryEditBox = reminderRetryEditBox
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCheckbox = autoPopulateCheckbox
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCooldownEditBox = cooldownEditBox
+    SmartChatMsg.settings.controls.messagesBehaviorRevertWaitEditBox = revertEditBox
     SmartChatMsg.settings.controls.messagesBehaviorSettings = container
 
     container:RefreshEditor()
