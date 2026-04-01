@@ -2,7 +2,7 @@ SmartChatMsg = SmartChatMsg or {}
 SmartChatMsg.name = SmartChatMsg.name or "SmartChatMsg"
 
 SmartChatMsg.defaults = {
-    commands = {}, -- { { id = "...", name = "...", reminderMinutes = n|nil, autoPopulateOnZone = bool, lastUsedAt = unixTime|nil }, ... }
+    commands = {}, -- { { id = "...", name = "...", reminderMinutes = n|nil, lastUsedAt = unixTime|nil }, ... }
     selectedCommand = nil, -- commandId
 
     messages = {}, -- { { id = "...", commandId = "...", guildIndex = n, guildName = "...", text = "..." }, ... }
@@ -67,7 +67,6 @@ function SmartChatMsg:InitializeSavedVars()
         if type(command) == "table" then
             command.name = self:SanitizeCommandName(command.name or "")
             command.reminderMinutes = self:NormalizeReminderMinutes(command.reminderMinutes)
-            command.autoPopulateOnZone = command.autoPopulateOnZone == true
 
             if type(command.lastUsedAt) ~= "number" or command.lastUsedAt < 0 then
                 command.lastUsedAt = nil
@@ -105,7 +104,9 @@ function SmartChatMsg:InitializeSavedVars()
 
     for _, command in ipairs(self.savedVars.commands) do
         if type(command) == "table" and type(command.id) == "string" and command.id ~= "" then
-            if command.reminderMinutes ~= nil or command.autoPopulateOnZone ~= nil then
+            local legacyAutoPopulateOnZone = self:NormalizeAutoPopulateOnZone(command.autoPopulateOnZone)
+
+            if command.reminderMinutes ~= nil or legacyAutoPopulateOnZone ~= nil then
                 local knownGuildNames = {}
                 if type(self.savedVars.chatChannels[command.id]) == "table" then
                     for guildKey, _ in pairs(self.savedVars.chatChannels[command.id]) do
@@ -131,11 +132,13 @@ function SmartChatMsg:InitializeSavedVars()
                     if settings.reminderMinutes == nil then
                         settings.reminderMinutes = self:NormalizeReminderMinutes(command.reminderMinutes)
                     end
-                    if settings.autoPopulateOnZone == nil then
-                        settings.autoPopulateOnZone = self:NormalizeAutoPopulateOnZone(command.autoPopulateOnZone)
+                    if settings.autoPopulateOnZone == nil and legacyAutoPopulateOnZone ~= nil then
+                        settings.autoPopulateOnZone = legacyAutoPopulateOnZone
                     end
                 end
             end
+
+            command.autoPopulateOnZone = nil
         end
     end
 
@@ -258,7 +261,6 @@ function SmartChatMsg:BuildExportString()
                 self:EscapeImportExportField(command.id or ""),
                 self:EscapeImportExportField(command.name or ""),
                 self:EscapeImportExportField(command.reminderMinutes or ""),
-                self:EscapeImportExportField(command.autoPopulateOnZone == true and "1" or "0"),
                 self:EscapeImportExportField(command.lastUsedAt or ""),
             }, "|"))
         end
@@ -401,8 +403,16 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
             local id = self:UnescapeImportExportField(parts[1] or "")
             local name = self:SanitizeCommandName(self:UnescapeImportExportField(parts[2] or ""))
             local reminderMinutes = self:NormalizeReminderMinutes(self:UnescapeImportExportField(parts[3] or ""))
-            local autoPopulateOnZone = self:UnescapeImportExportField(parts[4] or "") == "1"
-            local lastUsedAt = tonumber(self:UnescapeImportExportField(parts[5] or ""))
+            local lastUsedAt = nil
+
+            if parts[5] ~= nil then
+                -- Legacy format: COMMAND|id|name|reminderMinutes|autoPopulateOnZone|lastUsedAt
+                lastUsedAt = tonumber(self:UnescapeImportExportField(parts[5] or ""))
+            else
+                -- Current format: COMMAND|id|name|reminderMinutes|lastUsedAt
+                lastUsedAt = tonumber(self:UnescapeImportExportField(parts[4] or ""))
+            end
+
             local importedNameExists = false
 
             for _, existingCommand in ipairs(imported.commands) do
@@ -418,7 +428,6 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
                     id = id,
                     name = name,
                     reminderMinutes = reminderMinutes,
-                    autoPopulateOnZone = autoPopulateOnZone,
                     lastUsedAt = lastUsedAt and math.floor(lastUsedAt) or nil,
                 })
             end
@@ -574,12 +583,7 @@ function SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName)
         return self:NormalizeAutoPopulateOnZone(settings.autoPopulateOnZone)
     end
 
-    local command = self:GetCommandById(commandId)
-    if not command then
-        return false
-    end
-
-    return self:NormalizeAutoPopulateOnZone(command.autoPopulateOnZone)
+    return false
 end
 
 function SmartChatMsg:GetGuildLastUsedAt(commandId, guildName)
@@ -812,7 +816,6 @@ function SmartChatMsg:AddCommand(name, reminderMinutes, autoPopulateOnZone)
         id = self:GenerateUuid(),
         name = sanitized,
         reminderMinutes = nil,
-        autoPopulateOnZone = false,
         lastUsedAt = nil,
     }
 
