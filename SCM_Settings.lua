@@ -230,11 +230,54 @@ function SmartChatMsg.settings:InitializeState()
     if not SmartChatMsg:CanUseMessagesSection() then
         SmartChatMsg:SetMessagesSelectedCommand(nil)
         SmartChatMsg:SetSelectedGuildIndex(nil)
+    elseif SmartChatMsg:IsMessagesSelectionComplete() then
+        local commandId = SmartChatMsg.savedVars.selectedMessagesCommand
+        local guildName = SmartChatMsg:GetSelectedGuildNameForMessages()
+        local savedChannel = SmartChatMsg:GetSavedChatChannel(commandId, guildName)
+
+        if savedChannel then
+            SmartChatMsg:SetSelectedMessagesChannel(savedChannel)
+        else
+            SmartChatMsg:SetSelectedMessagesChannel(nil)
+        end
+
+        local reminderMinutes = SmartChatMsg:GetGuildReminderMinutes(commandId, guildName)
+        self.pendingGuildReminderMinutes = reminderMinutes and tostring(reminderMinutes) or ""
+        self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
+    else
+        SmartChatMsg:SetSelectedMessagesChannel(nil)
+        self.pendingGuildReminderMinutes = ""
+        self.pendingGuildAutoPopulateOnZone = false
     end
 end
 
 function SmartChatMsg.settings:IsEditorVisible()
     return self.createMode or self.editMode
+end
+
+function SmartChatMsg.settings:SaveBehaviorSettings()
+    if not SmartChatMsg:IsMessagesSelectionComplete() then
+        return true
+    end
+
+    local commandId = SmartChatMsg.savedVars.selectedMessagesCommand
+    local guildName = SmartChatMsg:GetSelectedGuildNameForMessages()
+
+    if not commandId or not guildName then
+        return true
+    end
+
+    local ok, err = SmartChatMsg:SetGuildReminderMinutes(commandId, guildName, self.pendingGuildReminderMinutes)
+    if not ok then
+        return false, err
+    end
+
+    ok, err = SmartChatMsg:SetGuildAutoPopulateOnZone(commandId, guildName, self.pendingGuildAutoPopulateOnZone == true)
+    if not ok then
+        return false, err
+    end
+
+    return true
 end
 
 function SmartChatMsg.settings:ResetNewMessageSection()
@@ -494,6 +537,12 @@ function SmartChatMsg.settings:SaveMessagesSection()
     local selectedChannel = SmartChatMsg:GetSelectedMessagesChannel()
     if selectedChannel == "Select a Chat Channel" then
         ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, "Select a Chat Channel first.")
+        return
+    end
+
+    local ok, err = self:SaveBehaviorSettings()
+    if not ok then
+        ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
         return
     end
 
@@ -908,7 +957,7 @@ local function BuildMessagesBehaviorSettings(parent)
 
     local reminderLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesReminderLabel", container, CT_LABEL)
     reminderLabel:SetFont("ZoFontWinH4")
-    reminderLabel:SetText("Reminder Minutes for this Command + Guild")
+    reminderLabel:SetText("Set Timer to remind in minutes")
     reminderLabel:SetDimensions(ROW_WIDTH, 30)
     reminderLabel:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 0)
 
@@ -930,20 +979,41 @@ local function BuildMessagesBehaviorSettings(parent)
         end
 
         SmartChatMsg.settings.pendingGuildReminderMinutes = digitsOnly
+
+        local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
+        if not ok and err then
+            ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
+            return
+        end
+
+        SmartChatMsg:RefreshSettingsUI()
     end)
 
     local autoPopulateCheckbox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesAutoPopulateCheckbox", container, "ZO_CheckButton")
     autoPopulateCheckbox:SetAnchor(TOPLEFT, reminderBackdrop, BOTTOMLEFT, 0, 14)
-    ZO_CheckButton_SetLabelText(autoPopulateCheckbox, "Auto Populate On Zone for this Command + Guild")
+    ZO_CheckButton_SetLabelText(autoPopulateCheckbox, "Auto Send Message to chat on Zone")
     ZO_CheckButton_SetToggleFunction(autoPopulateCheckbox, function(_, checked)
         SmartChatMsg.settings.pendingGuildAutoPopulateOnZone = checked == true
+
+        local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
+        if not ok and err then
+            ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
+            return
+        end
+
+        SmartChatMsg:RefreshSettingsUI()
     end)
 
-    local autoPopulateDescription = WINDOW_MANAGER:CreateControl("SCM_MessagesAutoPopulateDescription", container, CT_LABEL)
-    autoPopulateDescription:SetFont("ZoFontGame")
-    autoPopulateDescription:SetDimensions(ROW_WIDTH - 36, 36)
-    autoPopulateDescription:SetAnchor(TOPLEFT, autoPopulateCheckbox, BOTTOMLEFT, 24, 2)
-    autoPopulateDescription:SetText("These settings apply only to the currently selected Command and Guild. Reminders also remember the parameter used, such as the guild number.")
+    container.RefreshEditor = function()
+        local shouldShow = SmartChatMsg:IsMessagesSelectionComplete()
+
+        if reminderEditBox:GetText() ~= (SmartChatMsg.settings.pendingGuildReminderMinutes or "") then
+            reminderEditBox:SetText(SmartChatMsg.settings.pendingGuildReminderMinutes or "")
+        end
+
+        ZO_CheckButton_SetCheckState(autoPopulateCheckbox, SmartChatMsg.settings.pendingGuildAutoPopulateOnZone == true)
+        container:SetHidden(not shouldShow)
+    end
 
     SmartChatMsg.settings.controls.messagesBehaviorReminderEditBox = reminderEditBox
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCheckbox = autoPopulateCheckbox
@@ -1429,7 +1499,7 @@ function SmartChatMsg:CreateSettingsPanel()
         name = "SmartChatMsg",
         displayName = "SmartChatMsg",
         author = "evainefaye",
-        version = "1.3.2",
+        version = "1.3.0",
         registerForRefresh = true,
         registerForDefaults = false,
     }
