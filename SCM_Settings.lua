@@ -10,7 +10,7 @@ SmartChatMsg.settings = SmartChatMsg.settings or {
     pendingGuildReminderRetryMinutes = "5",
     pendingGuildAutoPopulateOnZone = false,
     pendingGuildAutoPopulateCooldownMinutes = "60",
-    pendingGuildRevertChatSeconds = "60",
+    pendingGeneralRevertChatSeconds = "60",
     pendingImportExportText = "",
     editingOriginalCommandId = nil,
 
@@ -217,6 +217,7 @@ function SmartChatMsg.settings:InitializeState()
     self.pendingGuildReminderMinutes = ""
     self.pendingGuildAutoPopulateOnZone = false
     self.pendingGuildAutoPopulateCooldownMinutes = "60"
+    self.pendingGeneralRevertChatSeconds = tostring(SmartChatMsg:GetRevertChatSeconds() or 60)
     self.editingOriginalCommandId = nil
     self.editMode = false
     self.pendingNewMessageText = ""
@@ -250,14 +251,12 @@ function SmartChatMsg.settings:InitializeState()
         self.pendingGuildReminderRetryMinutes = tostring(SmartChatMsg:GetGuildReminderRetryMinutes(commandId, guildName) or 5)
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
         self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
-        self.pendingGuildRevertChatSeconds = tostring(SmartChatMsg:GetGuildRevertChatSeconds(commandId, guildName) or 60)
     else
         SmartChatMsg:SetSelectedMessagesChannel(nil)
         self.pendingGuildReminderMinutes = ""
         self.pendingGuildReminderRetryMinutes = "5"
         self.pendingGuildAutoPopulateOnZone = false
         self.pendingGuildAutoPopulateCooldownMinutes = "60"
-        self.pendingGuildRevertChatSeconds = "60"
     end
 end
 
@@ -297,11 +296,16 @@ function SmartChatMsg.settings:SaveBehaviorSettings()
         return false, err
     end
 
-    ok, err = SmartChatMsg:SetGuildRevertChatSeconds(commandId, guildName, self.pendingGuildRevertChatSeconds)
+    return true
+end
+
+function SmartChatMsg.settings:SaveGeneralSettings()
+    local ok, err = SmartChatMsg:SetRevertChatSeconds(self.pendingGeneralRevertChatSeconds)
     if not ok then
         return false, err
     end
 
+    self.pendingGeneralRevertChatSeconds = tostring(SmartChatMsg:GetRevertChatSeconds() or 60)
     return true
 end
 
@@ -330,14 +334,12 @@ function SmartChatMsg.settings:ResetNewMessageSection()
         self.pendingGuildReminderRetryMinutes = tostring(SmartChatMsg:GetGuildReminderRetryMinutes(commandId, guildName) or 5)
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
         self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
-        self.pendingGuildRevertChatSeconds = tostring(SmartChatMsg:GetGuildRevertChatSeconds(commandId, guildName) or 60)
     else
         SmartChatMsg:SetSelectedMessagesChannel(nil)
         self.pendingGuildReminderMinutes = ""
         self.pendingGuildReminderRetryMinutes = "5"
         self.pendingGuildAutoPopulateOnZone = false
         self.pendingGuildAutoPopulateCooldownMinutes = "60"
-        self.pendingGuildRevertChatSeconds = "60"
     end
 
     SmartChatMsg:RefreshSettingsUI()
@@ -504,30 +506,6 @@ function SmartChatMsg.settings:ImportSettings()
             PlaySound(SOUNDS.MESSAGE_BROADCAST)
         end,
     })
-end
-
-function SmartChatMsg.settings:CopyExportText()
-    local text = self.pendingImportExportText or ""
-    if SmartChatMsg:Trim(text) == "" then
-        ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, "Nothing to copy. Export settings first.")
-        return
-    end
-
-    if self.controls.importExportEditBox then
-        self.controls.importExportEditBox:SetText(text)
-        self.controls.importExportEditBox:TakeFocus()
-    end
-
-    local message = "Export text selected. Press Ctrl+C to copy."
-    d(message)
-
-    if CENTER_SCREEN_ANNOUNCE then
-        CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
-    else
-        ZO_Alert(UI_ALERT_CATEGORY_ALERT, SOUNDS.DEFAULT_CLICK, message)
-    end
-
-    PlaySound(SOUNDS.DEFAULT_CLICK)
 end
 
 function SmartChatMsg.settings:ClearImportExportText()
@@ -837,25 +815,6 @@ local function BuildMessagesCommandDropdown(parent)
     return container
 end
 
-local function BuildMessagesChannelDescription(parent)
-    local container = WINDOW_MANAGER:CreateControl("SCM_MessagesChannelDescriptionContainer", parent, CT_CONTROL)
-    container:SetDimensions(ROW_WIDTH, 24)
-
-    local label = WINDOW_MANAGER:CreateControl("SCM_MessagesChannelDescriptionLabel", container, CT_LABEL)
-    label:SetFont("ZoFontGame")
-    label:SetDimensions(ROW_WIDTH, 24)
-    label:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 0)
-    label:SetText("Select a Chat Channel for output")
-
-    container.RefreshDescription = function()
-        container:SetHidden(not SmartChatMsg:IsMessagesSelectionComplete())
-    end
-
-    container:RefreshDescription()
-    SmartChatMsg.settings.controls.messagesChannelDescription = container
-    return container
-end
-
 local function BuildMessagesGuildDropdown(parent)
     local container = WINDOW_MANAGER:CreateControl("SCM_MessagesGuildDropdownContainer", parent, CT_CONTROL)
     container:SetDimensions(ROW_WIDTH, 40)
@@ -945,7 +904,7 @@ local function BuildMessagesChannelDropdown(parent)
 
     local label = WINDOW_MANAGER:CreateControl("SCM_MessagesChannelDropdownLabel", container, CT_LABEL)
     label:SetFont("ZoFontWinH4")
-    label:SetText("Chat Channel")
+    label:SetText("Output Channel")
     label:SetDimensions(LABEL_WIDTH, 30)
     label:SetAnchor(LEFT, container, LEFT, 0, 0)
 
@@ -984,17 +943,17 @@ end
 
 local function BuildMessagesBehaviorSettings(parent)
     local container = WINDOW_MANAGER:CreateControl("SCM_MessagesBehaviorSettingsContainer", parent, CT_CONTROL)
-    container:SetDimensions(ROW_WIDTH, 154)
+    container:SetDimensions(ROW_WIDTH, 110)
 
     local reminderLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesReminderLabel", container, CT_LABEL)
     reminderLabel:SetFont("ZoFontWinH4")
-    reminderLabel:SetText("Repeat After")
-    reminderLabel:SetDimensions(ROW_WIDTH, 30)
+    reminderLabel:SetText("Repeat After (mins)")
+    reminderLabel:SetDimensions(180, 30)
     reminderLabel:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 0)
 
     local reminderBackdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesReminderBackdrop", container, "ZO_EditBackdrop")
     reminderBackdrop:SetDimensions(120, 30)
-    reminderBackdrop:SetAnchor(TOPLEFT, reminderLabel, BOTTOMLEFT, 0, 4)
+    reminderBackdrop:SetAnchor(LEFT, reminderLabel, RIGHT, 8, 0)
 
     local reminderEditBox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesReminderEditBox", reminderBackdrop, "ZO_DefaultEditForBackdrop")
     reminderEditBox:SetAnchorFill(reminderBackdrop)
@@ -1022,8 +981,8 @@ local function BuildMessagesBehaviorSettings(parent)
 
     local reminderRetryLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesReminderRetryLabel", container, CT_LABEL)
     reminderRetryLabel:SetFont("ZoFontGame")
-    reminderRetryLabel:SetText("Try Again (min)")
-    reminderRetryLabel:SetDimensions(110, 24)
+    reminderRetryLabel:SetText("Try Again (mins)")
+    reminderRetryLabel:SetDimensions(125, 24)
     reminderRetryLabel:SetAnchor(LEFT, reminderBackdrop, RIGHT, 18, 0)
 
     local reminderRetryBackdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesReminderRetryBackdrop", container, "ZO_EditBackdrop")
@@ -1055,8 +1014,8 @@ local function BuildMessagesBehaviorSettings(parent)
     end)
 
     local autoPopulateCheckbox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesAutoPopulateCheckbox", container, "ZO_CheckButton")
-    autoPopulateCheckbox:SetAnchor(TOPLEFT, reminderBackdrop, BOTTOMLEFT, 0, 14)
-    ZO_CheckButton_SetLabelText(autoPopulateCheckbox, "Auto Send Message to chat on Zone")
+    autoPopulateCheckbox:SetAnchor(TOPLEFT, reminderBackdrop, BOTTOMLEFT, -110, 14)
+    ZO_CheckButton_SetLabelText(autoPopulateCheckbox, "Auto Populate Chat on Zone")
     ZO_CheckButton_SetToggleFunction(autoPopulateCheckbox, function(_, checked)
         SmartChatMsg.settings.pendingGuildAutoPopulateOnZone = checked == true
 
@@ -1072,8 +1031,8 @@ local function BuildMessagesBehaviorSettings(parent)
     local cooldownLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesAutoPopulateCooldownLabel", container, CT_LABEL)
     cooldownLabel:SetFont("ZoFontGame")
     cooldownLabel:SetText("Cooldown (mins)")
-    cooldownLabel:SetDimensions(110, 24)
-    cooldownLabel:SetAnchor(LEFT, autoPopulateCheckbox, RIGHT, 220, 0)
+    cooldownLabel:SetDimensions(125, 24)
+    cooldownLabel:SetAnchor(LEFT, autoPopulateCheckbox, RIGHT, 230, 0)
 
     local cooldownBackdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesAutoPopulateCooldownBackdrop", container, "ZO_EditBackdrop")
     cooldownBackdrop:SetDimensions(70, 30)
@@ -1103,40 +1062,6 @@ local function BuildMessagesBehaviorSettings(parent)
         SmartChatMsg:RefreshSettingsUI()
     end)
 
-    local revertLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesRevertWaitLabel", container, CT_LABEL)
-    revertLabel:SetFont("ZoFontGame")
-    revertLabel:SetText("Change Chat Type After (secs)")
-    revertLabel:SetDimensions(260, 24)
-    revertLabel:SetAnchor(TOPLEFT, autoPopulateCheckbox, BOTTOMLEFT, 0, 14)
-
-    local revertBackdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesRevertWaitBackdrop", container, "ZO_EditBackdrop")
-    revertBackdrop:SetDimensions(70, 30)
-    revertBackdrop:SetAnchor(LEFT, revertLabel, RIGHT, 8, 0)
-
-    local revertEditBox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesRevertWaitEditBox", revertBackdrop, "ZO_DefaultEditForBackdrop")
-    revertEditBox:SetAnchorFill(revertBackdrop)
-    revertEditBox:SetMaxInputChars(4)
-    revertEditBox:SetText("")
-    revertEditBox:SetHandler("OnTextChanged", function(self)
-        local text = self:GetText() or ""
-        local digitsOnly = text:gsub("[^%d]", "")
-
-        if digitsOnly ~= text then
-            self:SetText(digitsOnly)
-            return
-        end
-
-        SmartChatMsg.settings.pendingGuildRevertChatSeconds = digitsOnly ~= "" and digitsOnly or "60"
-
-        local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
-        if not ok and err then
-            ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
-            return
-        end
-
-        SmartChatMsg:RefreshSettingsUI()
-    end)
-
     container.RefreshEditor = function()
         local shouldShow = SmartChatMsg:IsMessagesSelectionComplete()
 
@@ -1154,11 +1079,6 @@ local function BuildMessagesBehaviorSettings(parent)
             cooldownEditBox:SetText(cooldownText)
         end
 
-        local revertText = SmartChatMsg.settings.pendingGuildRevertChatSeconds or "60"
-        if revertEditBox:GetText() ~= revertText then
-            revertEditBox:SetText(revertText)
-        end
-
         ZO_CheckButton_SetCheckState(autoPopulateCheckbox, SmartChatMsg.settings.pendingGuildAutoPopulateOnZone == true)
         container:SetHidden(not shouldShow)
     end
@@ -1167,7 +1087,6 @@ local function BuildMessagesBehaviorSettings(parent)
     SmartChatMsg.settings.controls.messagesBehaviorReminderRetryEditBox = reminderRetryEditBox
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCheckbox = autoPopulateCheckbox
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCooldownEditBox = cooldownEditBox
-    SmartChatMsg.settings.controls.messagesBehaviorRevertWaitEditBox = revertEditBox
     SmartChatMsg.settings.controls.messagesBehaviorSettings = container
 
     container:RefreshEditor()
@@ -1240,7 +1159,7 @@ local function BuildMessagesEditor(parent)
 
     local resetButton = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesEditorResetButton", container, "ZO_DefaultButton")
     resetButton:SetDimensions(90, 28)
-    resetButton:SetText("Reset")
+    resetButton:SetText("Revert")
     resetButton:SetHandler("OnClicked", function()
         SmartChatMsg.settings.pendingNewMessageText = ""
 
@@ -1530,14 +1449,18 @@ local function BuildImportExportEditor(parent)
 
     local description = WINDOW_MANAGER:CreateControl("SCM_ImportExportDescription", container, CT_LABEL)
     description:SetFont("ZoFontGame")
-    description:SetDimensions(ROW_WIDTH, 36)
+    description:ClearAnchors()
     description:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 0)
+    description:SetAnchor(TOPRIGHT, container, TOPRIGHT, -130, 0)
+    description:SetHeight(24)
     description:SetText("Use Export to generate a backup string for all SmartChatMsg settings.")
 
     local backdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_ImportExportBackdrop", container, "ZO_EditBackdrop")
-    backdrop:SetDimensions(ROW_WIDTH - 12, 120)
+    backdrop:ClearAnchors()
     backdrop:SetAnchor(TOPLEFT, description, BOTTOMLEFT, 0, 8)
-
+    backdrop:SetAnchor(TOPRIGHT, description, BOTTOMRIGHT, 0, 8)
+    backdrop:SetHeight(120)
+    
     local editBox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_ImportExportEditBox", backdrop, "ZO_DefaultEditMultiLineForBackdrop")
     editBox:SetAnchorFill(backdrop)
     editBox:SetFont("ZoFontChat")
@@ -1545,8 +1468,8 @@ local function BuildImportExportEditor(parent)
     editBox:SetText("")
     editBox:SetHandler("OnTextChanged", function(self)
         local text = self:GetText() or ""
-        if zo_strlen(text) > 20000 then
-            text = zo_strsub(text, 1, 20000)
+        if zo_strlen(text) > 300000 then
+            text = zo_strsub(text, 1, 300000)
             self:SetText(text)
             return
         end
@@ -1557,7 +1480,7 @@ local function BuildImportExportEditor(parent)
     local exportButton = WINDOW_MANAGER:CreateControlFromVirtual("SCM_ExportSettingsButton", container, "ZO_DefaultButton")
     exportButton:SetDimensions(90, 28)
     exportButton:SetText("Export")
-    exportButton:SetAnchor(TOPLEFT, backdrop, BOTTOMLEFT, 0, 10)
+    exportButton:SetAnchor(TOPLEFT, backdrop, BOTTOMLEFT, 110, 10)
     exportButton:SetHandler("OnClicked", function()
         SmartChatMsg.settings:ExportSettings()
     end)
@@ -1576,14 +1499,6 @@ local function BuildImportExportEditor(parent)
     clearButton:SetAnchor(LEFT, importButton, RIGHT, 8, 0)
     clearButton:SetHandler("OnClicked", function()
         SmartChatMsg.settings:ClearImportExportText()
-    end)
-
-    local copyButton = WINDOW_MANAGER:CreateControlFromVirtual("SCM_CopyExportSettingsButton", container, "ZO_DefaultButton")
-    copyButton:SetDimensions(90, 28)
-    copyButton:SetText("Copy")
-    copyButton:SetAnchor(LEFT, clearButton, RIGHT, 8, 0)
-    copyButton:SetHandler("OnClicked", function()
-        SmartChatMsg.settings:CopyExportText()
     end)
 
     container.RefreshEditor = function()
@@ -1641,6 +1556,68 @@ function SmartChatMsg:RefreshSettingsUI()
     end
 end
 
+local function BuildGeneralRevertSettings(parent)
+    local container = WINDOW_MANAGER:CreateControl("SCM_GeneralRevertSettingsContainer", parent, CT_CONTROL)
+    container:SetDimensions(ROW_WIDTH, 40)
+
+    local label = WINDOW_MANAGER:CreateControl("SCM_GeneralRevertSettingsLabel", container, CT_LABEL)
+    label:SetFont("ZoFontWinH4")
+    label:SetText("Auto-Remove Pending Chat After (secs)")
+    label:SetDimensions(320, 30)
+    label:SetAnchor(LEFT, container, LEFT, 0, 0)
+
+    label:SetHandler("OnMouseEnter", function(self)
+        InitializeTooltip(InformationTooltip, self, TOP, 0, 8)
+        SetTooltipText(InformationTooltip, "Time to wait before clearing chat and returning to previous chat type. Minimum valid value is 30 seconds.")
+    end)
+
+    label:SetHandler("OnMouseExit", function()
+        ClearTooltip(InformationTooltip)
+    end)
+
+    local backdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_GeneralRevertSettingsBackdrop", container, "ZO_EditBackdrop")
+    backdrop:SetDimensions(70, 30)
+    backdrop:SetAnchor(LEFT, label, RIGHT, 8, 0)
+
+    local editBox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_GeneralRevertSettingsEditBox", backdrop, "ZO_DefaultEditForBackdrop")
+    editBox:SetAnchorFill(backdrop)
+    editBox:SetMaxInputChars(4)
+    editBox:SetText("")
+
+    editBox:SetHandler("OnTextChanged", function(self)
+        local text = self:GetText() or ""
+        local digitsOnly = text:gsub("[^%d]", "")
+
+        if digitsOnly ~= text then
+            self:SetText(digitsOnly)
+            return
+        end
+
+        SmartChatMsg.settings.pendingGeneralRevertChatSeconds = digitsOnly
+
+        local ok, err = SmartChatMsg.settings:SaveGeneralSettings()
+        if not ok and err then
+            ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
+            return
+        end
+
+        SmartChatMsg:RefreshSettingsUI()
+    end)
+
+    container.RefreshEditor = function()
+        local revertText = SmartChatMsg.settings.pendingGeneralRevertChatSeconds or "60"
+        if editBox:GetText() ~= revertText then
+            editBox:SetText(revertText)
+        end
+    end
+
+    SmartChatMsg.settings.controls.generalRevertSettings = container
+    SmartChatMsg.settings.controls.generalRevertSettingsEditBox = editBox
+
+    container:RefreshEditor()
+    return container
+end
+
 function SmartChatMsg:CreateSettingsPanel()
     self.settings:InitializeState()
     RegisterDeleteDialogs()
@@ -1650,7 +1627,7 @@ function SmartChatMsg:CreateSettingsPanel()
         name = "SmartChatMsg",
         displayName = "SmartChatMsg",
         author = "evainefaye",
-        version = "1.3.0",
+        version = "1.4.0",
         registerForRefresh = true,
         registerForDefaults = false,
     }
@@ -1660,6 +1637,7 @@ function SmartChatMsg:CreateSettingsPanel()
     local commandDropdownHolder
     local commandEditorHolder
     local defaultGuildDropdownHolder
+    local generalRevertSettingsHolder
     local messagesCommandDropdownHolder
     local messagesGuildDropdownHolder
     local messagesChannelDropdownHolder
@@ -1675,7 +1653,7 @@ function SmartChatMsg:CreateSettingsPanel()
         },
         {
             type = "submenu",
-            name = "General",
+            name = "Global Settings",
             controls = {
                 {
                     type = "description",
@@ -1698,11 +1676,25 @@ function SmartChatMsg:CreateSettingsPanel()
                         control:SetHeight(SmartChatMsg:HasAnyGuilds() and 40 or 0)
                     end,
                 },
+                {
+                    type = "custom",
+                    reference = "SCM_GeneralRevertSettingsHolder",
+                    createFunc = function(control)
+                        control:SetHeight(40)
+                        generalRevertSettingsHolder = BuildGeneralRevertSettings(control)
+                        generalRevertSettingsHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
+                    end,
+                    refreshFunc = function()
+                        if generalRevertSettingsHolder and generalRevertSettingsHolder.RefreshEditor then
+                            generalRevertSettingsHolder:RefreshEditor()
+                        end
+                    end,
+                },
             },
         },
         {
             type = "submenu",
-            name = "Commands",
+            name = "Credit / Edit / Delete Commands",
             controls = {
                 {
                     type = "description",
@@ -1747,7 +1739,7 @@ function SmartChatMsg:CreateSettingsPanel()
         },
         {
             type = "submenu",
-            name = "Messages",
+            name = "Create / Edit / Delete Messages",
             disabled = function()
                 return not SmartChatMsg:CanUseMessagesSection()
             end,
@@ -1825,7 +1817,7 @@ function SmartChatMsg:CreateSettingsPanel()
                     type = "custom",
                     reference = "SCM_MessagesBehaviorSettingsHolder",
                     createFunc = function(control)
-                        control:SetHeight(154)
+                        control:SetHeight(110)
                         messagesBehaviorSettingsHolder = BuildMessagesBehaviorSettings(control)
                         messagesBehaviorSettingsHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
                     end,
@@ -1862,7 +1854,7 @@ function SmartChatMsg:CreateSettingsPanel()
         },
         {
             type = "submenu",
-            name = "Import / Export",
+            name = "Import / Export Settings",
             controls = {
                 {
                     type = "custom",

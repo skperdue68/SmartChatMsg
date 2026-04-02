@@ -860,11 +860,7 @@ function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fr
 end
 
 function SmartChatMsg:GetRestoreWatcherTimeoutSeconds(metadata)
-    if type(metadata) == "table" and type(metadata.commandId) == "string" and type(metadata.guildName) == "string" then
-        return self:GetGuildRevertChatSeconds(metadata.commandId, metadata.guildName) or 60
-    end
-
-    return 60
+    return self:GetRevertChatSeconds() or 60
 end
 
 function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, metadata)

@@ -12,6 +12,7 @@ Main capabilities:
 - 60-second fallback restore timeout
 - Reminder minutes stored per Command + Guild
 - Auto Populate On Zone stored per Command + Guild
+- Auto-Remove Pending Chat stored globally under General
 - Auto populate limited to parent zones
 - Import/export with confirmation and success feedback
 - Copy button for exported settings text
