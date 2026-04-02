@@ -10,6 +10,7 @@ SmartChatMsg.settings = SmartChatMsg.settings or {
     pendingGuildReminderRetryMinutes = "5",
     pendingGuildAutoPopulateOnZone = false,
     pendingGuildAutoPopulateCooldownMinutes = "60",
+    pendingGuildPopulateSound = "DUEL_START",
     pendingGeneralRevertChatSeconds = "60",
     pendingImportExportText = "",
     editingOriginalCommandId = nil,
@@ -34,6 +35,51 @@ local ROW_WIDTH = 700
 local MESSAGE_BOX_WIDTH = 360
 local MESSAGE_BOX_HEIGHT = 90
 local CHECKBOX_WIDTH = 28
+
+local USEFUL_SOUND_KEYS = {
+    "NONE",
+    "DUEL_START",
+    "DEFAULT_CLICK",
+    "POSITIVE_CLICK",
+    "NEGATIVE_CLICK",
+    "DIALOG_ACCEPT",
+    "DIALOG_DECLINE",
+    "NEW_NOTIFICATION",
+    "QUEST_SHARE_ACCEPTED",
+    "BOOK_ACQUIRED",
+    "ACHIEVEMENT_AWARDED",
+    "BATTLEGROUND_CAPTURE_FLAG_TAKEN",
+    "BATTLEGROUND_CAPTURE_FLAG_RETURNED",
+    "BATTLEGROUND_MEDAL_AWARDED",
+    "CHAMPION_POINT_GAINED",
+    "TELVAR_GAINED",
+    "TELVAR_LOST",
+    "TRADE_INVITE",
+    "GROUP_INVITE",
+    "LFG_ACCEPTED",
+    "JUSTICE_NOW_KOS",
+    "JUSTICE_STATE_CHANGED",
+}
+
+local function GetUsefulSoundOptions()
+    local options = {}
+    local seen = {}
+
+    for _, key in ipairs(USEFUL_SOUND_KEYS) do
+        if key == "NONE" or (type(SOUNDS) == "table" and SOUNDS[key]) then
+            if not seen[key] then
+                table.insert(options, key)
+                seen[key] = true
+            end
+        end
+    end
+
+    if not seen["DUEL_START"] then
+        table.insert(options, "DUEL_START")
+    end
+
+    return options
+end
 
 local DELETE_DIALOG_NAME = "SCM_CONFIRM_DELETE_MESSAGE_TYPE"
 local DELETE_MESSAGE_DIALOG_NAME = "SCM_CONFIRM_DELETE_MESSAGE_ENTRY"
@@ -217,6 +263,7 @@ function SmartChatMsg.settings:InitializeState()
     self.pendingGuildReminderMinutes = ""
     self.pendingGuildAutoPopulateOnZone = false
     self.pendingGuildAutoPopulateCooldownMinutes = "60"
+    self.pendingGuildPopulateSound = "DUEL_START"
     self.pendingGeneralRevertChatSeconds = tostring(SmartChatMsg:GetRevertChatSeconds() or 60)
     self.editingOriginalCommandId = nil
     self.editMode = false
@@ -251,12 +298,14 @@ function SmartChatMsg.settings:InitializeState()
         self.pendingGuildReminderRetryMinutes = tostring(SmartChatMsg:GetGuildReminderRetryMinutes(commandId, guildName) or 5)
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
         self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
+        self.pendingGuildPopulateSound = SmartChatMsg:GetGuildPopulateSound(commandId, guildName) or "DUEL_START"
     else
         SmartChatMsg:SetSelectedMessagesChannel(nil)
         self.pendingGuildReminderMinutes = ""
         self.pendingGuildReminderRetryMinutes = "5"
         self.pendingGuildAutoPopulateOnZone = false
         self.pendingGuildAutoPopulateCooldownMinutes = "60"
+        self.pendingGuildPopulateSound = "DUEL_START"
     end
 end
 
@@ -292,6 +341,11 @@ function SmartChatMsg.settings:SaveBehaviorSettings()
     end
 
     ok, err = SmartChatMsg:SetGuildAutoPopulateCooldownMinutes(commandId, guildName, self.pendingGuildAutoPopulateCooldownMinutes)
+    if not ok then
+        return false, err
+    end
+
+    ok, err = SmartChatMsg:SetGuildPopulateSound(commandId, guildName, self.pendingGuildPopulateSound)
     if not ok then
         return false, err
     end
@@ -334,12 +388,14 @@ function SmartChatMsg.settings:ResetNewMessageSection()
         self.pendingGuildReminderRetryMinutes = tostring(SmartChatMsg:GetGuildReminderRetryMinutes(commandId, guildName) or 5)
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
         self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
+        self.pendingGuildPopulateSound = SmartChatMsg:GetGuildPopulateSound(commandId, guildName) or "DUEL_START"
     else
         SmartChatMsg:SetSelectedMessagesChannel(nil)
         self.pendingGuildReminderMinutes = ""
         self.pendingGuildReminderRetryMinutes = "5"
         self.pendingGuildAutoPopulateOnZone = false
         self.pendingGuildAutoPopulateCooldownMinutes = "60"
+        self.pendingGuildPopulateSound = "DUEL_START"
     end
 
     SmartChatMsg:RefreshSettingsUI()
@@ -941,9 +997,10 @@ local function BuildMessagesChannelDropdown(parent)
 end
 
 
+
 local function BuildMessagesBehaviorSettings(parent)
     local container = WINDOW_MANAGER:CreateControl("SCM_MessagesBehaviorSettingsContainer", parent, CT_CONTROL)
-    container:SetDimensions(ROW_WIDTH, 110)
+    container:SetDimensions(ROW_WIDTH, 160)
 
     local reminderLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesReminderLabel", container, CT_LABEL)
     reminderLabel:SetFont("ZoFontWinH4")
@@ -1062,6 +1119,68 @@ local function BuildMessagesBehaviorSettings(parent)
         SmartChatMsg:RefreshSettingsUI()
     end)
 
+    local soundLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesPopulateSoundLabel", container, CT_LABEL)
+    soundLabel:SetFont("ZoFontWinH4")
+    soundLabel:SetText("Notify Sound")
+    soundLabel:SetDimensions(135, 30)
+    soundLabel:SetAnchor(TOPLEFT, autoPopulateCheckbox, BOTTOMLEFT, -70, 18)
+
+    local soundComboBoxControl = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesPopulateSoundDropdown", container, "ZO_ComboBox")
+    soundComboBoxControl:SetDimensions(DROPDOWN_WIDTH, 28)
+    soundComboBoxControl:SetAnchor(LEFT, soundLabel, RIGHT, 8, 0)
+
+    local soundComboBox = ZO_ComboBox_ObjectFromContainer(soundComboBoxControl)
+    soundComboBox:SetSortsItems(false)
+
+    local previewButton = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesPopulateSoundPreviewButton", container, "ZO_DefaultButton")
+    previewButton:SetDimensions(90, 28)
+    previewButton:SetAnchor(LEFT, soundComboBoxControl, RIGHT, 8, 0)
+    previewButton:SetText("Preview")
+    previewButton:SetHandler("OnClicked", function()
+        local soundKey = SmartChatMsg.settings.pendingGuildPopulateSound or "DUEL_START"
+        if soundKey ~= "NONE" and type(SOUNDS) == "table" and SOUNDS[soundKey] then
+            PlaySound(SOUNDS[soundKey])
+        end
+    end)
+
+    local function RefreshSoundDropdown()
+        soundComboBox:ClearItems()
+
+        local currentSelection = SmartChatMsg.settings.pendingGuildPopulateSound or "DUEL_START"
+        local options = GetUsefulSoundOptions()
+        local currentIsPresent = false
+
+        for _, soundKey in ipairs(options) do
+            if soundKey == currentSelection then
+                currentIsPresent = true
+            end
+
+            local entry = soundComboBox:CreateItemEntry(soundKey, function()
+                SmartChatMsg.settings.pendingGuildPopulateSound = soundKey
+
+                local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
+                if not ok and err then
+                    ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
+                    return
+                end
+
+                SmartChatMsg:RefreshSettingsUI()
+            end)
+            soundComboBox:AddItem(entry)
+        end
+
+        if not currentIsPresent then
+            local fallbackEntry = soundComboBox:CreateItemEntry(currentSelection, function()
+                SmartChatMsg.settings.pendingGuildPopulateSound = currentSelection
+                SmartChatMsg.settings:SaveBehaviorSettings()
+                SmartChatMsg:RefreshSettingsUI()
+            end)
+            soundComboBox:AddItem(fallbackEntry)
+        end
+
+        soundComboBox:SetSelectedItem(currentSelection)
+    end
+
     container.RefreshEditor = function()
         local shouldShow = SmartChatMsg:IsMessagesSelectionComplete()
 
@@ -1080,6 +1199,13 @@ local function BuildMessagesBehaviorSettings(parent)
         end
 
         ZO_CheckButton_SetCheckState(autoPopulateCheckbox, SmartChatMsg.settings.pendingGuildAutoPopulateOnZone == true)
+        RefreshSoundDropdown()
+
+        local soundIsNone = (SmartChatMsg.settings.pendingGuildPopulateSound or "DUEL_START") == "NONE"
+        soundComboBoxControl:SetMouseEnabled(shouldShow)
+        previewButton:SetHidden(not shouldShow)
+        previewButton:SetEnabled(shouldShow and not soundIsNone)
+        previewButton:SetAlpha((shouldShow and not soundIsNone) and 1 or 0.5)
         container:SetHidden(not shouldShow)
     end
 
@@ -1087,6 +1213,8 @@ local function BuildMessagesBehaviorSettings(parent)
     SmartChatMsg.settings.controls.messagesBehaviorReminderRetryEditBox = reminderRetryEditBox
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCheckbox = autoPopulateCheckbox
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCooldownEditBox = cooldownEditBox
+    SmartChatMsg.settings.controls.messagesBehaviorPopulateSoundDropdown = soundComboBoxControl
+    SmartChatMsg.settings.controls.messagesBehaviorPopulateSoundPreviewButton = previewButton
     SmartChatMsg.settings.controls.messagesBehaviorSettings = container
 
     container:RefreshEditor()

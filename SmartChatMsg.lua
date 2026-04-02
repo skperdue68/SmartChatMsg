@@ -340,6 +340,17 @@ function SmartChatMsg:ClearCommandReminder(commandId, guildName)
     end
 end
 
+function SmartChatMsg:PlayPopulateSound(commandId, guildName)
+    local soundKey = self:GetGuildPopulateSound(commandId, guildName)
+    if soundKey == "NONE" then
+        return
+    end
+
+    if type(SOUNDS) == "table" and SOUNDS[soundKey] then
+        PlaySound(SOUNDS[soundKey])
+    end
+end
+
 function SmartChatMsg:HandleReminderPopulateSuccess(metadata)
     if type(metadata) ~= "table" then
         return
@@ -641,6 +652,59 @@ function SmartChatMsg:RestoreChatChannel(channelInfo)
     return true
 end
 
+function SmartChatMsg:ClearPendingChatBuffer()
+    self:DebugLog("ClearPendingChatBuffer start")
+
+    local cleared = false
+
+    if CHAT_SYSTEM and CHAT_SYSTEM.textEntry and CHAT_SYSTEM.textEntry.EditControl then
+        local editControl = CHAT_SYSTEM.textEntry.EditControl
+
+        if editControl.SetText then
+            editControl:SetText("")
+            cleared = true
+        end
+
+        if editControl.LoseFocus then
+            editControl:LoseFocus()
+        end
+    end
+
+    if CHAT_SYSTEM and CHAT_SYSTEM.textEntry then
+        if CHAT_SYSTEM.textEntry.SetText then
+            CHAT_SYSTEM.textEntry:SetText("")
+            cleared = true
+        end
+
+        if CHAT_SYSTEM.textEntry.LoseFocus then
+            CHAT_SYSTEM.textEntry:LoseFocus()
+        end
+    end
+
+    if ZO_ChatWindowTextEntryEditBox then
+        if ZO_ChatWindowTextEntryEditBox.SetText then
+            ZO_ChatWindowTextEntryEditBox:SetText("")
+            cleared = true
+        end
+
+        if ZO_ChatWindowTextEntryEditBox.LoseFocus then
+            ZO_ChatWindowTextEntryEditBox:LoseFocus()
+        end
+    end
+
+    if CHAT_SYSTEM and CHAT_SYSTEM.Maximize then
+        CHAT_SYSTEM:Maximize()
+    end
+
+    if CHAT_SYSTEM and CHAT_SYSTEM.Minimize then
+        CHAT_SYSTEM:Minimize()
+    end
+
+    self:DebugLog("ClearPendingChatBuffer result=" .. tostring(cleared))
+    return cleared
+end
+
+
 function SmartChatMsg:NormalizeChatText(text)
     local value = self:Trim(text or "")
     value = zo_strlower(value)
@@ -909,6 +973,9 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
             SmartChatMsg:DebugLog("Timeout restore result=" .. tostring(restored))
         end
 
+        local cleared = SmartChatMsg:ClearPendingChatBuffer()
+        SmartChatMsg:DebugLog("Timeout clear pending chat result=" .. tostring(cleared))
+
         if pendingState and type(pendingState.metadata) == "table" and pendingState.metadata.reminderRepeat == true then
             SmartChatMsg:HandleReminderPopulateTimeout(pendingState.metadata)
         end
@@ -1168,6 +1235,18 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
     if channel == "Zone" then
         self:DebugLog("PopulateChatBufferForCommand starting chat input for Zone")
         StartChatInput(resolvedMessageText, CHAT_CHANNEL_ZONE)
+
+        if type(restoreMetadata) == "table" and (restoreMetadata.autoPopulate == true or restoreMetadata.reminderRepeat == true) then
+            self:DebugLog(string.format(
+                "PopulateChatBufferForCommand playing populate sound for commandId=%s guildName=%s autoPopulate=%s reminderRepeat=%s",
+                tostring(commandId),
+                tostring(guildName),
+                tostring(restoreMetadata.autoPopulate == true),
+                tostring(restoreMetadata.reminderRepeat == true)
+            ))
+            self:PlayPopulateSound(commandId, guildName)
+        end
+
         self:MarkMessageEntryUsed(selectedEntry)
         return true
     end

@@ -8,7 +8,7 @@ SmartChatMsg.defaults = {
     messages = {}, -- { { id = "...", commandId = "...", guildIndex = n, guildName = "...", text = "..." }, ... }
 
     chatChannels = {}, -- [commandId] = { [guildKey] = "Zone"|"Guild"|"Officer" }
-    commandGuildSettings = {}, -- [commandId] = { [guildKey] = { reminderMinutes = n|nil, reminderRetryMinutes = n, autoPopulateOnZone = bool, autoPopulateCooldownMinutes = n, lastUsedAt = unixTime|nil, lastUsedParamText = "..."|nil, lastUsedGuildIndex = n|nil, lastAutoPopulateSentAtByZone = { [zoneKey] = unixTime, ... } }, ... }
+    commandGuildSettings = {}, -- [commandId] = { [guildKey] = { reminderMinutes = n|nil, reminderRetryMinutes = n, autoPopulateOnZone = bool, autoPopulateCooldownMinutes = n, populateSound = "DUEL_START"|"NONE"|soundKey, lastUsedAt = unixTime|nil, lastUsedParamText = "..."|nil, lastUsedGuildIndex = n|nil, lastAutoPopulateSentAtByZone = { [zoneKey] = unixTime, ... } }, ... }
 
     selectedMessagesCommand = nil, -- commandId
     selectedMessagesGuildIndex = nil,
@@ -104,6 +104,7 @@ function SmartChatMsg:InitializeSavedVars()
                         reminderRetryMinutes = self:NormalizeReminderRetryMinutes(settings.reminderRetryMinutes),
                         autoPopulateOnZone = self:NormalizeAutoPopulateOnZone(settings.autoPopulateOnZone),
                         autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(settings.autoPopulateCooldownMinutes),
+                        populateSound = self:NormalizePopulateSound(settings.populateSound),
                         lastUsedAt = (type(settings.lastUsedAt) == "number" and settings.lastUsedAt >= 0) and math.floor(settings.lastUsedAt) or nil,
                         lastUsedParamText = self:Trim(settings.lastUsedParamText or ""),
                         lastUsedGuildIndex = (type(settings.lastUsedGuildIndex) == "number" and settings.lastUsedGuildIndex >= 1 and settings.lastUsedGuildIndex <= 5 and settings.lastUsedGuildIndex == math.floor(settings.lastUsedGuildIndex)) and settings.lastUsedGuildIndex or nil,
@@ -157,6 +158,9 @@ function SmartChatMsg:InitializeSavedVars()
                     end
                     if settings.autoPopulateCooldownMinutes == nil then
                         settings.autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(nil)
+                    end
+                    if settings.populateSound == nil then
+                        settings.populateSound = self:NormalizePopulateSound(nil)
                     end
                 end
             end
@@ -278,6 +282,23 @@ function SmartChatMsg:NormalizeAutoPopulateCooldownMinutes(value)
     end
 
     return numericValue
+end
+
+function SmartChatMsg:NormalizePopulateSound(value)
+    local normalized = zo_strupper(self:Trim(tostring(value or "DUEL_START")))
+    if normalized == "" then
+        normalized = "DUEL_START"
+    end
+
+    if normalized == "NONE" then
+        return "NONE"
+    end
+
+    if type(SOUNDS) == "table" and SOUNDS[normalized] then
+        return normalized
+    end
+
+    return "DUEL_START"
 end
 
 function SmartChatMsg:NormalizeRevertChatSeconds(value)
@@ -403,6 +424,7 @@ function SmartChatMsg:BuildExportString()
                         self:EscapeImportExportField(settings.lastUsedParamText or ""),
                         self:EscapeImportExportField(settings.lastUsedGuildIndex or ""),
                         self:EscapeImportExportField(table.concat(zonePairs, ",")),
+                        self:EscapeImportExportField(settings.populateSound or "DUEL_START"),
                     }, "|"))
                 end
             end
@@ -561,59 +583,75 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
                 imported.chatChannels[commandId] = imported.chatChannels[commandId] or {}
                 imported.chatChannels[commandId][guildKey] = channel
             end
-        elseif recordType == "GUILDSETTING" then
-            local commandId = self:UnescapeImportExportField(parts[1] or "")
-            local guildKey = self:NormalizeKey(self:UnescapeImportExportField(parts[2] or ""))
-            local reminderMinutes = self:NormalizeReminderMinutes(self:UnescapeImportExportField(parts[3] or ""))
-            local reminderRetryMinutes = 5
-            local autoPopulateOnZone = false
-            local autoPopulateCooldownMinutes = 60
-            local lastUsedAt = nil
-            local lastUsedParamText = nil
-            local lastUsedGuildIndex = nil
-            local zoneTimestampText = ""
 
-            if parts[10] ~= nil then
-                -- Current format:
-                -- GUILDSETTING|commandId|guildKey|reminderMinutes|retry|autoPopulate|cooldown|lastUsedAt|lastUsedParamText|lastUsedGuildIndex|zoneTimestamps
-                reminderRetryMinutes = self:NormalizeReminderRetryMinutes(self:UnescapeImportExportField(parts[4] or ""))
-                autoPopulateOnZone = self:UnescapeImportExportField(parts[5] or "") == "1"
-                autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(self:UnescapeImportExportField(parts[6] or ""))
-                lastUsedAt = tonumber(self:UnescapeImportExportField(parts[7] or ""))
-                lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[8] or ""))
-                lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[9] or ""))
-                zoneTimestampText = self:UnescapeImportExportField(parts[10] or "")
-            elseif parts[11] ~= nil then
-                -- Legacy format with per-guild revert:
-                -- GUILDSETTING|commandId|guildKey|reminderMinutes|retry|autoPopulate|cooldown|revert|lastUsedAt|lastUsedParamText|lastUsedGuildIndex|zoneTimestamps
-                reminderRetryMinutes = self:NormalizeReminderRetryMinutes(self:UnescapeImportExportField(parts[4] or ""))
-                autoPopulateOnZone = self:UnescapeImportExportField(parts[5] or "") == "1"
-                autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(self:UnescapeImportExportField(parts[6] or ""))
-                lastUsedAt = tonumber(self:UnescapeImportExportField(parts[8] or ""))
-                lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[9] or ""))
-                lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[10] or ""))
-                zoneTimestampText = self:UnescapeImportExportField(parts[11] or "")
-            elseif parts[9] ~= nil then
-                reminderRetryMinutes = self:NormalizeReminderRetryMinutes(self:UnescapeImportExportField(parts[4] or ""))
-                autoPopulateOnZone = self:UnescapeImportExportField(parts[5] or "") == "1"
-                autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(self:UnescapeImportExportField(parts[6] or ""))
-                lastUsedAt = tonumber(self:UnescapeImportExportField(parts[7] or ""))
-                lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[8] or ""))
-                lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[9] or ""))
-            elseif parts[8] ~= nil then
-                autoPopulateOnZone = self:UnescapeImportExportField(parts[4] or "") == "1"
-                autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(self:UnescapeImportExportField(parts[5] or ""))
-                lastUsedAt = tonumber(self:UnescapeImportExportField(parts[6] or ""))
-                lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[7] or ""))
-                lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[8] or ""))
-            else
-                autoPopulateOnZone = self:UnescapeImportExportField(parts[4] or "") == "1"
-                lastUsedAt = tonumber(self:UnescapeImportExportField(parts[5] or ""))
-                lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[6] or ""))
-                lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[7] or ""))
-            end
+elseif recordType == "GUILDSETTING" then
+    local commandId = self:UnescapeImportExportField(parts[1] or "")
+    local guildKey = self:NormalizeKey(self:UnescapeImportExportField(parts[2] or ""))
+    local reminderMinutes = self:NormalizeReminderMinutes(self:UnescapeImportExportField(parts[3] or ""))
+    local reminderRetryMinutes = 5
+    local autoPopulateOnZone = false
+    local autoPopulateCooldownMinutes = 60
+    local lastUsedAt = nil
+    local lastUsedParamText = nil
+    local lastUsedGuildIndex = nil
+    local zoneTimestampText = ""
+    local populateSound = "DUEL_START"
 
-            local lastAutoPopulateSentAtByZone = {}
+    if parts[11] ~= nil then
+        reminderRetryMinutes = self:NormalizeReminderRetryMinutes(self:UnescapeImportExportField(parts[4] or ""))
+        autoPopulateOnZone = self:UnescapeImportExportField(parts[5] or "") == "1"
+        autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(self:UnescapeImportExportField(parts[6] or ""))
+
+        local part11 = self:UnescapeImportExportField(parts[11] or "")
+        local normalizedPart11 = self:NormalizePopulateSound(part11)
+        local looksLikeCurrentSoundField = (part11 == "") or part11 == "NONE" or normalizedPart11 ~= "DUEL_START" or part11 == "DUEL_START"
+
+        if looksLikeCurrentSoundField then
+            -- Current format:
+            -- GUILDSETTING|commandId|guildKey|reminderMinutes|retry|autoPopulate|cooldown|lastUsedAt|lastUsedParamText|lastUsedGuildIndex|zoneTimestamps|populateSound
+            lastUsedAt = tonumber(self:UnescapeImportExportField(parts[7] or ""))
+            lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[8] or ""))
+            lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[9] or ""))
+            zoneTimestampText = self:UnescapeImportExportField(parts[10] or "")
+            populateSound = normalizedPart11
+        else
+            -- Legacy format with per-guild revert:
+            -- GUILDSETTING|commandId|guildKey|reminderMinutes|retry|autoPopulate|cooldown|revert|lastUsedAt|lastUsedParamText|lastUsedGuildIndex|zoneTimestamps
+            lastUsedAt = tonumber(self:UnescapeImportExportField(parts[8] or ""))
+            lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[9] or ""))
+            lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[10] or ""))
+            zoneTimestampText = self:UnescapeImportExportField(parts[11] or "")
+        end
+    elseif parts[10] ~= nil then
+        -- Legacy format:
+        -- GUILDSETTING|commandId|guildKey|reminderMinutes|retry|autoPopulate|cooldown|lastUsedAt|lastUsedParamText|lastUsedGuildIndex|zoneTimestamps
+        reminderRetryMinutes = self:NormalizeReminderRetryMinutes(self:UnescapeImportExportField(parts[4] or ""))
+        autoPopulateOnZone = self:UnescapeImportExportField(parts[5] or "") == "1"
+        autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(self:UnescapeImportExportField(parts[6] or ""))
+        lastUsedAt = tonumber(self:UnescapeImportExportField(parts[7] or ""))
+        lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[8] or ""))
+        lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[9] or ""))
+        zoneTimestampText = self:UnescapeImportExportField(parts[10] or "")
+    elseif parts[9] ~= nil then
+        reminderRetryMinutes = self:NormalizeReminderRetryMinutes(self:UnescapeImportExportField(parts[4] or ""))
+        autoPopulateOnZone = self:UnescapeImportExportField(parts[5] or "") == "1"
+        autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(self:UnescapeImportExportField(parts[6] or ""))
+        lastUsedAt = tonumber(self:UnescapeImportExportField(parts[7] or ""))
+        lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[8] or ""))
+        lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[9] or ""))
+    elseif parts[8] ~= nil then
+        autoPopulateOnZone = self:UnescapeImportExportField(parts[4] or "") == "1"
+        autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(self:UnescapeImportExportField(parts[5] or ""))
+        lastUsedAt = tonumber(self:UnescapeImportExportField(parts[6] or ""))
+        lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[7] or ""))
+        lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[8] or ""))
+    else
+        autoPopulateOnZone = self:UnescapeImportExportField(parts[4] or "") == "1"
+        lastUsedAt = tonumber(self:UnescapeImportExportField(parts[5] or ""))
+        lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[6] or ""))
+        lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[7] or ""))
+    end
+    local lastAutoPopulateSentAtByZone = {}
             if zoneTimestampText ~= "" then
                 for pairText in string.gmatch(zoneTimestampText, "([^,]+)") do
                     local zoneKey, timestampText = pairText:match("^([^=]+)=(%d+)$")
@@ -635,6 +673,7 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
                     lastUsedParamText = lastUsedParamText ~= "" and lastUsedParamText or nil,
                     lastUsedGuildIndex = lastUsedGuildIndex and math.floor(lastUsedGuildIndex) or nil,
                     lastAutoPopulateSentAtByZone = lastAutoPopulateSentAtByZone,
+                    populateSound = self:NormalizePopulateSound(populateSound),
                 }
             end
         elseif recordType == "ACTIVE" then
@@ -759,6 +798,15 @@ function SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName)
     end
 
     return 60
+end
+
+function SmartChatMsg:GetGuildPopulateSound(commandId, guildName)
+    local settings = self:GetCommandGuildSettings(commandId, guildName, false)
+    if settings and settings.populateSound ~= nil then
+        return self:NormalizePopulateSound(settings.populateSound)
+    end
+
+    return self:NormalizePopulateSound(nil)
 end
 
 function SmartChatMsg:GetRevertChatSeconds()
@@ -893,6 +941,21 @@ function SmartChatMsg:SetGuildAutoPopulateCooldownMinutes(commandId, guildName, 
     end
 
     settings.autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(cooldownMinutes)
+    return true
+end
+
+function SmartChatMsg:SetGuildPopulateSound(commandId, guildName, populateSound)
+    local command = self:GetCommandById(commandId)
+    if not command then
+        return false, "The selected Command no longer exists."
+    end
+
+    local settings = self:GetCommandGuildSettings(commandId, guildName, true)
+    if not settings then
+        return false, "Select a Guild first."
+    end
+
+    settings.populateSound = self:NormalizePopulateSound(populateSound)
     return true
 end
 

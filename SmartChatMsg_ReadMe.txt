@@ -4,22 +4,27 @@ Create your own slash commands, save multiple message variants under each comman
 
 Main capabilities:
 - Dynamic custom slash commands
-- Supports parameters 1-5, g1-g5, and o1-o5
-- Optional Default Guild when commands are run without parameters
+- Supports parameters 1-5, g1-g5, and o1-o5, with g# and o# treated the same as the matching number
 - Multiple saved messages per command and guild
 - Saved output channel selection for Zone, Guild, or Officer chat
 - Chat channel auto-restore after message send
-- 60-second fallback restore timeout
+- Timeout restore clears the pending chat buffer
 - Reminder minutes stored per Command + Guild
+- Reminder retry minutes stored per Command + Guild
 - Auto Populate On Zone stored per Command + Guild
-- Auto-Remove Pending Chat stored globally under General
-- Auto populate limited to parent zones
+- Auto populate cooldown stored per Command + Guild
+- Populate sound stored per Command + Guild
+- Populate sound dropdown includes None plus a curated list of useful ESO sounds
+- Preview button for the selected populate sound
+- Global Auto-Remove Pending Chat stored under General
 - Import/export with confirmation and success feedback
-- Copy button for exported settings text
-- Any guild message groups for reusable Guild/Officer messaging
 - Case-insensitive substitutions for %time%, %guild%, and %zone%
 
-The Any guild option is designed for reusable guild-facing content. Messages saved under Any can be used for any guild, but only when the output is Guild or Officer chat. Zone is intentionally blocked for Any.
+Populate Sound:
+- Default value is DUEL_START
+- Set to None to disable sound entirely
+- Plays when a message is automatically populated into chat by Auto Populate On Zone or Repeat
+- Preview lets you test the selected sound immediately from settings
 
 Built-in substitutions:
 - %time% -> morning, afternoon, or evening
