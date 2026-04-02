@@ -46,6 +46,18 @@ function SmartChatMsg:BuildSlashCommandName(commandName)
         return nil
     end
 
+    local trimmed = self:Trim(commandName)
+    if trimmed == "" then
+        return nil
+    end
+
+    local cleaned = zo_strlower(trimmed):gsub("[^%w]", "")
+    if cleaned == "" then
+        return nil
+    end
+
+    return "/" .. cleaned
+end
 
 function SmartChatMsg:GetCurrentTimeTokenValue()
     local hour = tonumber(os.date("%H")) or 12
@@ -98,18 +110,6 @@ function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName)
     return result
 end
 
-    local trimmed = self:Trim(commandName)
-    if trimmed == "" then
-        return nil
-    end
-
-    local cleaned = zo_strlower(trimmed):gsub("[^%w]", "")
-    if cleaned == "" then
-        return nil
-    end
-
-    return "/" .. cleaned
-end
 
 function SmartChatMsg:ShowCommandTestNotification(commandName, parameterValue)
     local message = string.format("SmartChatMsg test: command %s called with parameter %s", tostring(commandName), tostring(parameterValue))

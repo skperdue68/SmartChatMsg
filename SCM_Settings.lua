@@ -1002,6 +1002,11 @@ local function BuildMessagesBehaviorSettings(parent)
     local container = WINDOW_MANAGER:CreateControl("SCM_MessagesBehaviorSettingsContainer", parent, CT_CONTROL)
     container:SetDimensions(ROW_WIDTH, 160)
 
+    local function HasActiveRepeatAfter()
+        local value = tonumber(SmartChatMsg.settings.pendingGuildReminderMinutes or "")
+        return value ~= nil and value > 0
+    end
+
     local reminderLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesReminderLabel", container, CT_LABEL)
     reminderLabel:SetFont("ZoFontWinH4")
     reminderLabel:SetText("Repeat After (mins)")
@@ -1027,6 +1032,10 @@ local function BuildMessagesBehaviorSettings(parent)
 
         SmartChatMsg.settings.pendingGuildReminderMinutes = digitsOnly
 
+        if HasActiveRepeatAfter() then
+            SmartChatMsg.settings.pendingGuildAutoPopulateOnZone = false
+        end
+
         local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
         if not ok and err then
             ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
@@ -1051,6 +1060,10 @@ local function BuildMessagesBehaviorSettings(parent)
     reminderRetryEditBox:SetMaxInputChars(4)
     reminderRetryEditBox:SetText("")
     reminderRetryEditBox:SetHandler("OnTextChanged", function(self)
+        if not HasActiveRepeatAfter() then
+            return
+        end
+
         local text = self:GetText() or ""
         local digitsOnly = text:gsub("[^%d]", "")
 
@@ -1075,6 +1088,10 @@ local function BuildMessagesBehaviorSettings(parent)
     ZO_CheckButton_SetLabelText(autoPopulateCheckbox, "Auto Populate Chat on Zone")
     ZO_CheckButton_SetToggleFunction(autoPopulateCheckbox, function(_, checked)
         SmartChatMsg.settings.pendingGuildAutoPopulateOnZone = checked == true
+
+        if checked == true then
+            SmartChatMsg.settings.pendingGuildReminderMinutes = ""
+        end
 
         local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
         if not ok and err then
@@ -1199,6 +1216,22 @@ local function BuildMessagesBehaviorSettings(parent)
         end
 
         ZO_CheckButton_SetCheckState(autoPopulateCheckbox, SmartChatMsg.settings.pendingGuildAutoPopulateOnZone == true)
+
+        local repeatEnabled = HasActiveRepeatAfter()
+        if not repeatEnabled then
+            SmartChatMsg.settings.pendingGuildReminderRetryMinutes = "5"
+            if reminderRetryEditBox:GetText() ~= "5" then
+                reminderRetryEditBox:SetText("5")
+            end
+        end
+
+        reminderRetryEditBox:SetMouseEnabled(repeatEnabled)
+        if reminderRetryEditBox.SetEditEnabled then
+            reminderRetryEditBox:SetEditEnabled(repeatEnabled)
+        end
+        reminderRetryBackdrop:SetAlpha(repeatEnabled and 1 or 0.5)
+        reminderRetryLabel:SetAlpha(repeatEnabled and 1 or 0.5)
+
         RefreshSoundDropdown()
 
         local soundIsNone = (SmartChatMsg.settings.pendingGuildPopulateSound or "DUEL_START") == "NONE"
