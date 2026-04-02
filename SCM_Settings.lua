@@ -1648,18 +1648,13 @@ function SmartChatMsg:CreateSettingsPanel()
     local optionsTable = {
         {
             type = "description",
-            text = "Allows you to create custom command(s) that can be filtered by guild number and used to output one of several random messages to the appropriate chat type.",
+            text = "Allows you to create custom command(s) that can be filtered by guild and used to output one of several random messages to the appropriate chat type.",
             width = "full",
         },
         {
             type = "submenu",
             name = "Global Settings",
             controls = {
-                {
-                    type = "description",
-                    text = "Select the Default Guild to use when a slash command is run without a numeric guild parameter.",
-                    width = "full",
-                },
                 {
                     type = "custom",
                     reference = "SCM_DefaultGuildDropdownHolder",
