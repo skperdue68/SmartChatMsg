@@ -1,13 +1,13 @@
-# SmartChatMsg (v1.4.8)
+# SmartChatMsg (v1.5.1)
 
 ESO Add On for handling longer reusable chat messages through custom slash commands.
 
-## What's New in 1.4.8
-- Added **Populate Sound** at the **Command + Guild** level
-- Added a **Preview** button next to the sound dropdown
-- Limited the sound dropdown to a curated list of useful ESO sounds
-- Includes **DUEL_START** by default and **None** for silent operation
-- Sound plays when text is populated into chat by **Auto Populate on Zone** or **Repeat**
+## What's New in 1.5.1
+- Renamed **Repeat After** to **Repeat Every**
+- Renamed **Try Again** to **Retry Delay**
+- `0`, blank, and invalid retry values now disable retry and resume the normal repeat cycle after the populate timeout
+- Retry delay now automatically clamps down to the repeat interval when it is set higher than repeat
+- Updated documentation to explain the new repeat and retry behavior
 
 ## Current Features
 - Dynamic custom slash commands
@@ -16,8 +16,8 @@ ESO Add On for handling longer reusable chat messages through custom slash comma
 - Saved output channel selection for Zone, Guild, or Officer chat
 - Chat channel auto-restore after send
 - Timeout restore also clears the pending chat buffer
-- Reminder minutes stored per Command + Guild
-- Reminder retry minutes stored per Command + Guild
+- Repeat interval stored per Command + Guild
+- Retry delay stored per Command + Guild
 - Auto Populate Chat on Zone stored per Command + Guild
 - Auto Populate cooldown stored per Command + Guild
 - Populate sound stored per Command + Guild

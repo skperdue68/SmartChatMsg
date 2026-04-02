@@ -1,16 +1,18 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>SmartChatMsg User Guide v1.4.8</title>
+<title>SmartChatMsg User Guide v1.5.1</title>
 <meta charset="utf-8">
 </head>
 <body>
-<h1>SmartChatMsg User Guide (v1.4.8)</h1>
+<h1>SmartChatMsg User Guide (v1.5.1)</h1>
 
 <h2>Behavior Settings</h2>
 <ul>
-<li><strong>Repeat After (mins)</strong> is stored per Command + Guild.</li>
-<li><strong>Try Again (mins)</strong> is stored per Command + Guild.</li>
+<li><strong>Repeat Every (mins)</strong> is stored per Command + Guild.</li>
+<li><strong>Retry Delay (mins)</strong> is stored per Command + Guild.</li>
+<li><strong>Retry Delay</strong> values of 0, blank, or invalid skip retry and resume the normal repeat cycle after the populate timeout.</li>
+<li>If <strong>Retry Delay</strong> is higher than <strong>Repeat Every</strong>, it is automatically reduced to match <strong>Repeat Every</strong>.</li>
 <li><strong>Auto Populate Chat on Zone</strong> is stored per Command + Guild.</li>
 <li><strong>Cooldown (mins)</strong> is stored per Command + Guild.</li>
 <li><strong>Populate Sound</strong> is stored per Command + Guild and defaults to <strong>DUEL_START</strong>.</li>

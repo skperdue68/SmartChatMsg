@@ -402,7 +402,19 @@ function SmartChatMsg:HandleReminderPopulateTimeout(metadata)
         return
     end
 
-    local retryMinutes = self:GetGuildReminderRetryMinutes(commandId, guildName) or 5
+    local retryMinutes = self:GetGuildReminderRetryMinutes(commandId, guildName)
+    if retryMinutes == nil then
+        self:DebugLog(string.format(
+            "Reminder debug: retry disabled or invalid for commandId=%s guildName=%s, treating populate as successful and resuming repeat schedule",
+            tostring(commandId),
+            tostring(guildName)
+        ))
+
+        self:MarkCommandUsed(commandId, guildName, metadata.paramText, metadata.guildIndex)
+        self:ScheduleCommandReminder(commandId, guildName)
+        return
+    end
+
     local timerName = self:GetReminderTimerName(commandId, guildName)
     if not timerName then
         return

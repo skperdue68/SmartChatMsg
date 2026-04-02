@@ -9,8 +9,8 @@ Main capabilities:
 - Saved output channel selection for Zone, Guild, or Officer chat
 - Chat channel auto-restore after message send
 - Timeout restore clears the pending chat buffer
-- Reminder minutes stored per Command + Guild
-- Reminder retry minutes stored per Command + Guild
+- Repeat interval stored per Command + Guild
+- Retry delay stored per Command + Guild
 - Auto Populate On Zone stored per Command + Guild
 - Auto populate cooldown stored per Command + Guild
 - Populate sound stored per Command + Guild
@@ -32,3 +32,10 @@ Built-in substitutions:
 - %zone% -> the player's current zone name
 
 Tokens are case-insensitive, so %TIME%, %Guild%, and %Zone% also work.
+
+
+Version 1.5.1 changes:
+- Repeat After was renamed to Repeat Every.
+- Try Again was renamed to Retry Delay.
+- Retry Delay values of 0, blank, or invalid now skip retry and resume the normal repeat cycle after the populate timeout.
+- Retry Delay is automatically capped to the Repeat Every value for the same Command + Guild.
