@@ -1,6 +1,6 @@
 ## Title: SmartChatMsg
 ## Author: evainefaye
-## Version: 1.5.1
+## Version: 1.5.3
 ## APIVersion: 101049
 ## SavedVariables: SmartChatMsgSavedVars
 ## DependsOn: LibAddonMenu-2.0

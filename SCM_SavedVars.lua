@@ -101,7 +101,7 @@ function SmartChatMsg:InitializeSavedVars()
 
                     cleanedByGuild[normalizedGuildKey] = {
                         reminderMinutes = self:NormalizeReminderMinutes(settings.reminderMinutes),
-                        reminderRetryMinutes = self:GetClampedReminderRetryMinutes(settings.reminderRetryMinutes, settings.reminderMinutes),
+                        reminderRetryMinutes = self:NormalizeReminderRetryMinutes(settings.reminderRetryMinutes),
                         autoPopulateOnZone = self:NormalizeAutoPopulateOnZone(settings.autoPopulateOnZone),
                         autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(settings.autoPopulateCooldownMinutes),
                         populateSound = self:NormalizePopulateSound(settings.populateSound),
@@ -151,7 +151,7 @@ function SmartChatMsg:InitializeSavedVars()
                         settings.reminderMinutes = self:NormalizeReminderMinutes(command.reminderMinutes)
                     end
                     if settings.reminderRetryMinutes == nil then
-                        settings.reminderRetryMinutes = self:GetClampedReminderRetryMinutes(nil, settings.reminderMinutes)
+                        settings.reminderRetryMinutes = self:NormalizeReminderRetryMinutes(nil)
                     end
                     if settings.autoPopulateOnZone == nil and legacyAutoPopulateOnZone ~= nil then
                         settings.autoPopulateOnZone = legacyAutoPopulateOnZone
@@ -242,36 +242,22 @@ end
 
 function SmartChatMsg:NormalizeReminderRetryMinutes(value)
     if value == nil then
-        return nil
+        return 0
     end
 
     if type(value) == "string" then
         value = self:Trim(value)
         if value == "" then
-            return nil
+            return 0
         end
     end
 
     local numericValue = tonumber(value)
-    if not numericValue or numericValue <= 0 or numericValue ~= math.floor(numericValue) then
-        return nil
+    if not numericValue or numericValue ~= math.floor(numericValue) or numericValue <= 0 then
+        return 0
     end
 
     return numericValue
-end
-
-function SmartChatMsg:GetClampedReminderRetryMinutes(retryMinutes, reminderMinutes)
-    local normalizedRetryMinutes = self:NormalizeReminderRetryMinutes(retryMinutes)
-    if normalizedRetryMinutes == nil then
-        return nil
-    end
-
-    local normalizedReminderMinutes = self:NormalizeReminderMinutes(reminderMinutes)
-    if normalizedReminderMinutes ~= nil and normalizedRetryMinutes > normalizedReminderMinutes then
-        return normalizedReminderMinutes
-    end
-
-    return normalizedRetryMinutes
 end
 
 function SmartChatMsg:NormalizeAutoPopulateOnZone(value)
@@ -431,7 +417,7 @@ function SmartChatMsg:BuildExportString()
                         self:EscapeImportExportField(commandId),
                         self:EscapeImportExportField(guildKey),
                         self:EscapeImportExportField(settings.reminderMinutes or ""),
-                        self:EscapeImportExportField(settings.reminderRetryMinutes or ""),
+                        self:EscapeImportExportField(settings.reminderRetryMinutes or 0),
                         self:EscapeImportExportField(settings.autoPopulateOnZone == true and "1" or "0"),
                         self:EscapeImportExportField(settings.autoPopulateCooldownMinutes or 60),
                         self:EscapeImportExportField(settings.lastUsedAt or ""),
@@ -602,7 +588,7 @@ elseif recordType == "GUILDSETTING" then
     local commandId = self:UnescapeImportExportField(parts[1] or "")
     local guildKey = self:NormalizeKey(self:UnescapeImportExportField(parts[2] or ""))
     local reminderMinutes = self:NormalizeReminderMinutes(self:UnescapeImportExportField(parts[3] or ""))
-    local reminderRetryMinutes = nil
+    local reminderRetryMinutes = 5
     local autoPopulateOnZone = false
     local autoPopulateCooldownMinutes = 60
     local lastUsedAt = nil
@@ -680,7 +666,7 @@ elseif recordType == "GUILDSETTING" then
                 imported.commandGuildSettings[commandId] = imported.commandGuildSettings[commandId] or {}
                 imported.commandGuildSettings[commandId][guildKey] = {
                     reminderMinutes = reminderMinutes,
-                    reminderRetryMinutes = self:GetClampedReminderRetryMinutes(reminderRetryMinutes, reminderMinutes),
+                    reminderRetryMinutes = reminderRetryMinutes,
                     autoPopulateOnZone = autoPopulateOnZone,
                     autoPopulateCooldownMinutes = autoPopulateCooldownMinutes,
                     lastUsedAt = lastUsedAt and math.floor(lastUsedAt) or nil,
@@ -798,9 +784,29 @@ end
 
 function SmartChatMsg:GetGuildReminderRetryMinutes(commandId, guildName)
     local settings = self:GetCommandGuildSettings(commandId, guildName, false)
-    local retryMinutes = settings and settings.reminderRetryMinutes or nil
+    if settings and settings.reminderRetryMinutes ~= nil then
+        return self:NormalizeReminderRetryMinutes(settings.reminderRetryMinutes)
+    end
+
+    return 0
+end
+
+function SmartChatMsg:GetGuildEffectiveReminderRetryMinutes(commandId, guildName)
+    local retryMinutes = self:GetGuildReminderRetryMinutes(commandId, guildName)
+    if retryMinutes == nil or retryMinutes <= 0 then
+        return 0
+    end
+
     local reminderMinutes = self:GetGuildReminderMinutes(commandId, guildName)
-    return self:GetClampedReminderRetryMinutes(retryMinutes, reminderMinutes)
+    if reminderMinutes == nil or reminderMinutes <= 0 then
+        return 0
+    end
+
+    if retryMinutes > reminderMinutes then
+        return reminderMinutes
+    end
+
+    return retryMinutes
 end
 
 function SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName)
@@ -908,7 +914,6 @@ function SmartChatMsg:SetGuildReminderMinutes(commandId, guildName, reminderMinu
     end
 
     settings.reminderMinutes = self:NormalizeReminderMinutes(reminderMinutes)
-    settings.reminderRetryMinutes = self:GetClampedReminderRetryMinutes(settings.reminderRetryMinutes, settings.reminderMinutes)
     return true
 end
 
@@ -923,7 +928,13 @@ function SmartChatMsg:SetGuildReminderRetryMinutes(commandId, guildName, retryMi
         return false, "Select a Guild first."
     end
 
-    settings.reminderRetryMinutes = self:GetClampedReminderRetryMinutes(retryMinutes, settings.reminderMinutes)
+    local normalizedRetryMinutes = self:NormalizeReminderRetryMinutes(retryMinutes)
+    local reminderMinutes = self:GetGuildReminderMinutes(commandId, guildName)
+    if reminderMinutes ~= nil and reminderMinutes > 0 and normalizedRetryMinutes > reminderMinutes then
+        normalizedRetryMinutes = reminderMinutes
+    end
+
+    settings.reminderRetryMinutes = normalizedRetryMinutes
     return true
 end
 

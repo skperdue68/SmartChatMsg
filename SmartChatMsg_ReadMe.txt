@@ -9,8 +9,8 @@ Main capabilities:
 - Saved output channel selection for Zone, Guild, or Officer chat
 - Chat channel auto-restore after message send
 - Timeout restore clears the pending chat buffer
-- Repeat interval stored per Command + Guild
-- Retry delay stored per Command + Guild
+- Reminder minutes stored per Command + Guild
+- Reminder retry minutes stored per Command + Guild
 - Auto Populate On Zone stored per Command + Guild
 - Auto populate cooldown stored per Command + Guild
 - Populate sound stored per Command + Guild
@@ -34,8 +34,8 @@ Built-in substitutions:
 Tokens are case-insensitive, so %TIME%, %Guild%, and %Zone% also work.
 
 
-Version 1.5.1 changes:
-- Repeat After was renamed to Repeat Every.
-- Try Again was renamed to Retry Delay.
-- Retry Delay values of 0, blank, or invalid now skip retry and resume the normal repeat cycle after the populate timeout.
-- Retry Delay is automatically capped to the Repeat Every value for the same Command + Guild.
+Slash command control:
+- Use the command normally to start or restart it: `/command`, `/command 1`, `/command g1`, `/command o1`
+- Add `off` to stop repeat and/or auto populate for that command and guild: `/command off`, `/command 1 off`, `/command g1 off`, `/command o1 off`
+- If `Retry Delay (mins)` is 0, blank, or invalid, SmartChatMsg skips retry and immediately resumes the normal repeat cycle after the populate attempt times out
+- `Retry Delay (mins)` is automatically capped to `Repeat Every (mins)` when Repeat Every is set

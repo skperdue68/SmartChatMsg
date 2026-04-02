@@ -7,7 +7,7 @@ SmartChatMsg.settings = SmartChatMsg.settings or {
     pendingReminderMinutes = "",
     pendingAutoPopulateOnZone = false,
     pendingGuildReminderMinutes = "",
-    pendingGuildReminderRetryMinutes = "",
+    pendingGuildReminderRetryMinutes = "0",
     pendingGuildAutoPopulateOnZone = false,
     pendingGuildAutoPopulateCooldownMinutes = "60",
     pendingGuildPopulateSound = "DUEL_START",
@@ -295,14 +295,14 @@ function SmartChatMsg.settings:InitializeState()
 
         local reminderMinutes = SmartChatMsg:GetGuildReminderMinutes(commandId, guildName)
         self.pendingGuildReminderMinutes = reminderMinutes and tostring(reminderMinutes) or ""
-        self.pendingGuildReminderRetryMinutes = SmartChatMsg:GetGuildReminderRetryMinutes(commandId, guildName) and tostring(SmartChatMsg:GetGuildReminderRetryMinutes(commandId, guildName)) or ""
+        self.pendingGuildReminderRetryMinutes = tostring(SmartChatMsg:GetGuildEffectiveReminderRetryMinutes(commandId, guildName) or 0)
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
         self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
         self.pendingGuildPopulateSound = SmartChatMsg:GetGuildPopulateSound(commandId, guildName) or "DUEL_START"
     else
         SmartChatMsg:SetSelectedMessagesChannel(nil)
         self.pendingGuildReminderMinutes = ""
-        self.pendingGuildReminderRetryMinutes = ""
+        self.pendingGuildReminderRetryMinutes = "0"
         self.pendingGuildAutoPopulateOnZone = false
         self.pendingGuildAutoPopulateCooldownMinutes = "60"
         self.pendingGuildPopulateSound = "DUEL_START"
@@ -385,14 +385,14 @@ function SmartChatMsg.settings:ResetNewMessageSection()
 
         local reminderMinutes = SmartChatMsg:GetGuildReminderMinutes(commandId, guildName)
         self.pendingGuildReminderMinutes = reminderMinutes and tostring(reminderMinutes) or ""
-        self.pendingGuildReminderRetryMinutes = SmartChatMsg:GetGuildReminderRetryMinutes(commandId, guildName) and tostring(SmartChatMsg:GetGuildReminderRetryMinutes(commandId, guildName)) or ""
+        self.pendingGuildReminderRetryMinutes = tostring(SmartChatMsg:GetGuildEffectiveReminderRetryMinutes(commandId, guildName) or 0)
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
         self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
         self.pendingGuildPopulateSound = SmartChatMsg:GetGuildPopulateSound(commandId, guildName) or "DUEL_START"
     else
         SmartChatMsg:SetSelectedMessagesChannel(nil)
         self.pendingGuildReminderMinutes = ""
-        self.pendingGuildReminderRetryMinutes = ""
+        self.pendingGuildReminderRetryMinutes = "0"
         self.pendingGuildAutoPopulateOnZone = false
         self.pendingGuildAutoPopulateCooldownMinutes = "60"
         self.pendingGuildPopulateSound = "DUEL_START"
@@ -1072,7 +1072,7 @@ local function BuildMessagesBehaviorSettings(parent)
             return
         end
 
-        SmartChatMsg.settings.pendingGuildReminderRetryMinutes = digitsOnly
+        SmartChatMsg.settings.pendingGuildReminderRetryMinutes = digitsOnly ~= "" and digitsOnly or "0"
 
         local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
         if not ok and err then
@@ -1205,7 +1205,7 @@ local function BuildMessagesBehaviorSettings(parent)
             reminderEditBox:SetText(SmartChatMsg.settings.pendingGuildReminderMinutes or "")
         end
 
-        local reminderRetryText = SmartChatMsg.settings.pendingGuildReminderRetryMinutes or ""
+        local reminderRetryText = SmartChatMsg.settings.pendingGuildReminderRetryMinutes or "0"
         if reminderRetryEditBox:GetText() ~= reminderRetryText then
             reminderRetryEditBox:SetText(reminderRetryText)
         end
@@ -1219,9 +1219,9 @@ local function BuildMessagesBehaviorSettings(parent)
 
         local repeatEnabled = HasActiveRepeatAfter()
         if not repeatEnabled then
-            SmartChatMsg.settings.pendingGuildReminderRetryMinutes = ""
-            if reminderRetryEditBox:GetText() ~= "" then
-                reminderRetryEditBox:SetText("")
+            SmartChatMsg.settings.pendingGuildReminderRetryMinutes = "0"
+            if reminderRetryEditBox:GetText() ~= "0" then
+                reminderRetryEditBox:SetText("0")
             end
         end
 

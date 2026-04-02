@@ -121,6 +121,20 @@ function SmartChatMsg:ShowCommandTestNotification(commandName, parameterValue)
     end
 end
 
+function SmartChatMsg:ShowStatusMessage(message)
+    if CENTER_SCREEN_ANNOUNCE then
+        CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, tostring(message or ""))
+    else
+        d(tostring(message or ""))
+    end
+end
+
+function SmartChatMsg:GetSlashCommandDisplayName(commandId, fallbackSlashCommandName)
+    local commandName = self:GetCommandNameById(commandId)
+    local slashCommandName = self:BuildSlashCommandName(commandName or "") or fallbackSlashCommandName or "/command"
+    return slashCommandName
+end
+
 function SmartChatMsg:GetGuildSlotByName(guildName)
     if type(guildName) ~= "string" or guildName == "" then
         return nil
@@ -402,21 +416,19 @@ function SmartChatMsg:HandleReminderPopulateTimeout(metadata)
         return
     end
 
-    local retryMinutes = self:GetGuildReminderRetryMinutes(commandId, guildName)
-    if retryMinutes == nil then
-        self:DebugLog(string.format(
-            "Reminder debug: retry disabled or invalid for commandId=%s guildName=%s, treating populate as successful and resuming repeat schedule",
-            tostring(commandId),
-            tostring(guildName)
-        ))
-
-        self:MarkCommandUsed(commandId, guildName, metadata.paramText, metadata.guildIndex)
-        self:ScheduleCommandReminder(commandId, guildName)
+    local retryMinutes = self:GetGuildEffectiveReminderRetryMinutes(commandId, guildName) or 0
+    local timerName = self:GetReminderTimerName(commandId, guildName)
+    if not timerName then
         return
     end
 
-    local timerName = self:GetReminderTimerName(commandId, guildName)
-    if not timerName then
+    if retryMinutes <= 0 then
+        self:DebugLog(string.format(
+            "Reminder debug: retry disabled, resuming repeat-after schedule commandId=%s guildName=%s",
+            tostring(commandId),
+            tostring(guildName)
+        ))
+        self:ScheduleCommandReminder(commandId, guildName)
         return
     end
 
@@ -1296,26 +1308,53 @@ function SmartChatMsg:ParseCommandParameter(rawParam)
         return nil
     end
 
-    local numericParam = tonumber(trimmed)
-    if numericParam and numericParam >= 1 and numericParam <= 5 and numericParam == math.floor(numericParam) then
-        return {
-            guildSlot = numericParam,
-            channelOverride = nil, -- use saved channel
-            reminderParamText = tostring(numericParam),
-        }
+    local result = {
+        guildSlot = nil,
+        channelOverride = nil,
+        reminderParamText = nil,
+        stopAutomation = false,
+    }
+
+    local tokenCount = 0
+    for token in string.gmatch(trimmed, "%S+") do
+        tokenCount = tokenCount + 1
+        if tokenCount > 2 then
+            return false
+        end
+
+        if token == "off" then
+            if result.stopAutomation then
+                return false
+            end
+            result.stopAutomation = true
+        else
+            local numericParam = tonumber(token)
+            if numericParam and numericParam >= 1 and numericParam <= 5 and numericParam == math.floor(numericParam) then
+                if result.guildSlot ~= nil then
+                    return false
+                end
+                result.guildSlot = numericParam
+                result.channelOverride = nil
+                result.reminderParamText = tostring(numericParam)
+            else
+                local prefix, slotText = token:match("^([go])([1-5])$")
+                if not prefix or not slotText or result.guildSlot ~= nil then
+                    return false
+                end
+
+                local guildSlot = tonumber(slotText)
+                result.guildSlot = guildSlot
+                result.channelOverride = (prefix == "g") and "Guild" or "Officer"
+                result.reminderParamText = token
+            end
+        end
     end
 
-    local prefix, slotText = trimmed:match("^([go])([1-5])$")
-    if prefix and slotText then
-        local guildSlot = tonumber(slotText)
-        return {
-            guildSlot = guildSlot,
-            channelOverride = (prefix == "g") and "Guild" or "Officer",
-            reminderParamText = trimmed,
-        }
+    if result.guildSlot == nil and result.stopAutomation == false then
+        return false
     end
 
-    return false
+    return result
 end
 
 function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, rawParam)
@@ -1323,6 +1362,7 @@ function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, raw
     local guildSlot = nil
     local channelOverride = nil
     local reminderParamText = nil
+    local stopAutomation = false
 
     if trimmedParam ~= "" then
         local parsed = self:ParseCommandParameter(trimmedParam)
@@ -1331,15 +1371,18 @@ function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, raw
             ZO_Alert(
                 UI_ALERT_CATEGORY_ERROR,
                 SOUNDS.NEGATIVE_CLICK,
-                string.format("%s requires 1-5, g1-g5, or o1-o5.", slashCommandName)
+                string.format("%s accepts off, 1-5, g1-g5, o1-o5, or a combination like '1 off'.", slashCommandName)
             )
             return
         end
 
-        guildSlot = parsed.guildSlot
-        channelOverride = parsed.channelOverride
-        reminderParamText = parsed.reminderParamText
-    else
+        stopAutomation = parsed and parsed.stopAutomation == true
+        guildSlot = parsed and parsed.guildSlot or nil
+        channelOverride = parsed and parsed.channelOverride or nil
+        reminderParamText = parsed and parsed.reminderParamText or nil
+    end
+
+    if guildSlot == nil then
         guildSlot = self:GetDefaultGuildIndex()
 
         if not guildSlot then
@@ -1361,45 +1404,54 @@ function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, raw
     end
 
     self:DebugLog(string.format(
-        "HandleDynamicSlashCommand commandId=%s slashCommand=%s guildSlot=%s guildName=%s channelOverride=%s rawParam=%s",
+        "HandleDynamicSlashCommand commandId=%s slashCommand=%s guildSlot=%s guildName=%s channelOverride=%s stopAutomation=%s rawParam=%s",
         tostring(commandId),
         tostring(slashCommandName),
         tostring(guildSlot),
         tostring(guildName),
         tostring(channelOverride),
+        tostring(stopAutomation),
         tostring(trimmedParam)
     ))
 
-    local toggledMessages = {}
+    local commandDisplayName = self:GetSlashCommandDisplayName(commandId, slashCommandName)
 
-    if self:ToggleOffActiveAutoPopulateIfMatching(commandId, guildName) then
-        table.insert(toggledMessages, string.format("%s auto populate has been turned off.", slashCommandName))
-    end
+    if stopAutomation then
+        local stoppedParts = {}
 
-    if self:IsReminderAutomationActive(commandId, guildName) then
-        self:DeactivateReminderAutomation(commandId, guildName, "matching reminder toggled off")
-        table.insert(toggledMessages, string.format("%s repeat-after has been turned off.", slashCommandName))
-    end
-
-    if #toggledMessages > 0 then
-        local message = table.concat(toggledMessages, " ")
-        if CENTER_SCREEN_ANNOUNCE then
-            CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
-        else
-            d(message)
+        if self:ToggleOffActiveAutoPopulateIfMatching(commandId, guildName) then
+            table.insert(stoppedParts, "auto populate")
         end
-        PlaySound(SOUNDS.DEFAULT_CLICK)
+
+        if self:IsReminderAutomationActive(commandId, guildName) then
+            self:DeactivateReminderAutomation(commandId, guildName, "explicit off parameter")
+            table.insert(stoppedParts, "repeat")
+        end
+
+        local message
+        if #stoppedParts > 0 then
+            message = string.format("%s stopped %s for %s.", commandDisplayName, table.concat(stoppedParts, " and "), guildName)
+            PlaySound(SOUNDS.DEFAULT_CLICK)
+        else
+            message = string.format("%s had nothing active to stop for %s.", commandDisplayName, guildName)
+            PlaySound(SOUNDS.NEGATIVE_CLICK)
+        end
+
+        self:ShowStatusMessage(message)
         return
     end
 
     local activeAutoPopulate = self:GetActiveAutoPopulate()
     if activeAutoPopulate and self:GetGuildAutoPopulateOnZone(commandId, guildName) then
-        ZO_Alert(
-            UI_ALERT_CATEGORY_ERROR,
-            SOUNDS.NEGATIVE_CLICK,
-            string.format("%s cannot start auto populate because %s is already running for %s.", slashCommandName, self:BuildSlashCommandName(self:GetCommandNameById(activeAutoPopulate.commandId) or "command") or "another command", tostring(activeAutoPopulate.guildName))
-        )
-        return
+        local sameAutoPopulate = activeAutoPopulate.commandId == commandId and self:StringsEqualIgnoreCase(activeAutoPopulate.guildName or "", guildName or "")
+        if not sameAutoPopulate then
+            ZO_Alert(
+                UI_ALERT_CATEGORY_ERROR,
+                SOUNDS.NEGATIVE_CLICK,
+                string.format("%s cannot start auto populate because %s is already running for %s.", commandDisplayName, self:BuildSlashCommandName(self:GetCommandNameById(activeAutoPopulate.commandId) or "command") or "another command", tostring(activeAutoPopulate.guildName))
+            )
+            return
+        end
     end
 
     local ok, err = self:PopulateChatBufferForCommand(commandId, guildName, channelOverride)
@@ -1415,6 +1467,15 @@ function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, raw
         self:SetActiveAutoPopulate(commandId, guildName)
     end
 
+    local startedParts = { "started" }
+    if self:IsReminderAutomationActive(commandId, guildName) then
+        table.insert(startedParts, "repeat")
+    end
+    if self:GetGuildAutoPopulateOnZone(commandId, guildName) then
+        table.insert(startedParts, "auto populate")
+    end
+
+    self:ShowStatusMessage(string.format("%s %s for %s.", commandDisplayName, table.concat(startedParts, " with "), guildName))
     PlaySound(SOUNDS.DEFAULT_CLICK)
 end
 
