@@ -1,12 +1,15 @@
-SmartChatMsg (v1.5.3)
+SmartChatMsg (v1.5.3.1)
 =====================
 
 SmartChatMsg is an ESO addon for players who regularly post reusable chat messages such as guild recruitment ads, trial announcements, officer notices, and other repeated chat content.
 
 It lets you create your own slash commands, store multiple message variants for each command, organize those messages by guild, and populate the correct message into chat with the proper channel selected.
 
-WHAT'S NEW IN 1.5.3
+WHAT'S NEW IN 1.5.3.1
 -------------------
+- Message usage and command last-used are now recorded only after the watcher confirms the populated message was actually sent
+- Regular slash-command populates now use the same sent-confirmation flow as repeat and zone auto populate
+- Zone auto populate keeps the original triggering zone id when recording the per-zone cooldown after send
 - Added Populate Sound at the Command + Guild level
 - Added a Preview button for the selected populate sound
 - Limited the sound dropdown to a curated set of useful ESO sounds
@@ -117,6 +120,8 @@ Auto Populate Chat on Zone is the alternative automation mode.
 How it works:
 - Run the slash command once to activate it for the selected command and guild.
 - When you change into a parent zone, SmartChatMsg can populate a message for that zone.
+- SmartChatMsg waits for the outgoing chat watcher to confirm the message was actually sent before recording last-used state for that auto-populate event.
+- The zone cooldown is recorded against the original zone id that triggered the auto-populate, even if you change zones before sending.
 - Running the command again, or using off, turns it off.
 
 Important behavior:
@@ -131,7 +136,7 @@ COOLDOWN (MINS)
 ---------------
 Cooldown applies to Auto Populate Chat on Zone and is stored per Command + Guild.
 
-The cooldown is tracked by zone so the addon avoids repopulating too quickly for the same zone.
+The cooldown is tracked by zone, and the timestamp is only recorded after the watcher confirms the populated message was actually sent. The recorded zone is the zone that triggered the auto-populate event, not a later zone you may have entered before sending.
 
 Defaults and validation:
 - Default is 60 minutes

@@ -1,4 +1,4 @@
-# SmartChatMsg (v1.5.3)
+# SmartChatMsg (v1.5.3.1)
 
 SmartChatMsg is an Elder Scrolls Online addon for players who regularly post reusable chat messages such as guild recruitment ads, trial announcements, officer notices, and other repeated chat content.
 
@@ -9,7 +9,9 @@ It lets you create your own slash commands, store multiple message variants for 
 - Added a **Preview** button for the selected populate sound
 - Limited the sound dropdown to a curated set of useful ESO sounds
 - Included **DUEL_START** by default and **None** for silent operation
-- Populate sound now plays when a message is automatically populated by **Auto Populate Chat on Zone** or by **Repeat Every** automation
+- Populate sound now plays whenever SmartChatMsg successfully populates a message into chat, including manual slash command starts, Auto Populate Chat on Zone, and Repeat Every
+- Auto Populate Chat on Zone now evaluates the current zone on startup and shows a top-right cooldown alert if that zone is still cooling down
+- Zone auto populate no longer requires the current zone id to differ from the last seen zone id before it evaluates whether it should fire automation
 
 ## Core Features
 - Dynamic custom slash commands
@@ -114,7 +116,7 @@ Auto Populate Chat on Zone is the alternative automation mode.
 
 How it works:
 - Run the slash command once to activate it for the selected command and guild.
-- When you change into a parent zone, SmartChatMsg can populate a message for that zone.
+- When the watcher evaluates a parent zone, including on startup and after travel, SmartChatMsg can populate a message for that zone.
 - The message is placed into chat input and can then be sent by you.
 - Running the command again, or using `off`, turns it off.
 
@@ -123,7 +125,8 @@ Important behavior:
 - Turning it on clears **Repeat Every** for that same command/guild.
 - Only one active auto-populate command can run at a time.
 - The first player activation after login is ignored.
-- Zone auto populate only fires on actual zone changes, not when the zone did not change.
+- Zone auto populate evaluates the current parent zone whenever the watcher runs, including on startup.
+- On startup, if the current zone is still in cooldown, SmartChatMsg shows a top-right alert telling you when that cooldown ends instead of populating immediately.
 - It only fires for parent zones.
 
 ## Cooldown (mins)
@@ -141,7 +144,7 @@ Populate Sound is stored per **Command + Guild**.
 Behavior:
 - Default sound is **DUEL_START**
 - **None** disables populate sound completely
-- The selected sound plays when a message is automatically populated by **Repeat** or **Auto Populate Chat on Zone**
+- The selected sound plays whenever SmartChatMsg populates a message into chat, including manual slash command starts, **Repeat**, and **Auto Populate Chat on Zone**
 - The **Preview** button lets you test the currently selected sound from the settings panel
 
 ## Global Settings

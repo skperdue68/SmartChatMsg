@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SmartChatMsg User Guide v1.5.3</title>
+<title>SmartChatMsg User Guide v1.5.3.1</title>
 <style>
     body {
         font-family: Arial, Helvetica, sans-serif;
@@ -89,7 +89,7 @@
 </head>
 <body>
 <div class="page">
-    <h1>SmartChatMsg User Guide (v1.5.3)</h1>
+    <h1>SmartChatMsg User Guide (v1.5.3.1)</h1>
 
     <p>SmartChatMsg is an Elder Scrolls Online addon for players who regularly post reusable chat messages such as guild recruitment ads, trial announcements, officer notices, and other repeated chat content.</p>
 
@@ -99,8 +99,11 @@
         <strong>Important:</strong> SmartChatMsg fills the message into the chat input. It does not silently send the message for you. This gives you a chance to review the text before posting it.
     </div>
 
-    <h2>What Is New in Version 1.5.3</h2>
+    <h2>What Is New in Version 1.5.3.1</h2>
     <ul>
+        <li>Message usage and command last-used are now recorded only after the watcher confirms the populated message was actually sent.</li>
+        <li>Regular slash-command populates now use the same sent-confirmation flow as repeat and zone auto populate.</li>
+        <li>Zone auto populate keeps the original triggering zone id when recording the per-zone cooldown after send.</li>
         <li>Added <strong>Populate Sound</strong> at the <strong>Command + Guild</strong> level.</li>
         <li>Added a <strong>Preview</strong> button for testing the selected sound.</li>
         <li>Limited the sound dropdown to a curated set of useful ESO sounds.</li>
@@ -250,7 +253,8 @@
     <h3>How it behaves</h3>
     <ol>
         <li>Run the slash command once.</li>
-        <li>SmartChatMsg records the command state for that guild.</li>
+        <li>SmartChatMsg populates the message into chat input and waits for watcher confirmation.</li>
+        <li>Only after the message is confirmed as sent does it record the command state for that guild.</li>
         <li>After the configured number of minutes, it repopulates a message into chat.</li>
         <li>Once that message is confirmed as sent, the next repeat cycle is scheduled.</li>
     </ol>
@@ -277,6 +281,8 @@
         <li>Travel into a different parent zone.</li>
         <li>SmartChatMsg can populate a message for that zone.</li>
         <li>You can then send the message from chat input.</li>
+        <li>Last-used state for zone auto populate is only recorded after the watcher confirms the message was actually sent.</li>
+        <li>The saved zone cooldown uses the original triggering zone id, even if you travel again before sending.</li>
     </ol>
 
     <ul>
