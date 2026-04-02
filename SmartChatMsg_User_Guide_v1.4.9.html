@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>SmartChatMsg User Guide v1.4.9</title>
+<meta charset="utf-8">
+</head>
+<body>
+<h1>SmartChatMsg User Guide (v1.4.9)</h1>
+
+<h2>Behavior Settings</h2>
+<ul>
+<li><strong>Repeat After (mins)</strong> is stored per Command + Guild.</li>
+<li><strong>Try Again (mins)</strong> is stored per Command + Guild and is only enabled when <strong>Repeat After (mins)</strong> is greater than <strong>0</strong>.</li>
+<li><strong>Auto Populate Chat on Zone</strong> is stored per Command + Guild and is mutually exclusive with <strong>Repeat After (mins)</strong>.</li>
+<li><strong>Cooldown (mins)</strong> is stored per Command + Guild.</li>
+<li><strong>Populate Sound</strong> is stored per Command + Guild and defaults to <strong>DUEL_START</strong>.</li>
+<li>Entering a <strong>Repeat After (mins)</strong> value greater than <strong>0</strong> automatically turns off <strong>Auto Populate Chat on Zone</strong>.</li>
+<li>Enabling <strong>Auto Populate Chat on Zone</strong> clears <strong>Repeat After (mins)</strong>.</li>
+<li>The <strong>Preview</strong> button plays the currently selected populate sound.</li>
+</ul>
+
+<h2>Populate Sound</h2>
+<ul>
+<li>The dropdown includes <strong>None</strong> plus a curated list of useful ESO sounds.</li>
+<li><strong>DUEL_START</strong> is always included.</li>
+<li>When set to <strong>None</strong>, no sound is played.</li>
+<li>The selected sound plays when text is automatically populated into the chat input by <strong>Auto Populate on Zone</strong> or <strong>Repeat</strong>.</li>
+</ul>
+
+<h2>General Behavior</h2>
+<ul>
+<li>The revert timer is global and applies to all commands.</li>
+<li>If the timeout is reached, SmartChatMsg restores the prior chat channel and clears the pending chat buffer.</li>
+<li>Parameters <strong>g1-g5</strong> and <strong>o1-o5</strong> are treated the same as <strong>1-5</strong>.</li>
+<li>Settings automatically save when changed.</li>
+</ul>
+</body>
+</html>
