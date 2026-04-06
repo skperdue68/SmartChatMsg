@@ -8,7 +8,7 @@ SmartChatMsg.defaults = {
     messages = {}, -- { { id = "...", commandId = "...", guildIndex = n, guildName = "...", text = "..." }, ... }
 
     chatChannels = {}, -- [commandId] = { [guildKey] = "Zone"|"Guild"|"Officer" }
-    commandGuildSettings = {}, -- [commandId] = { [guildKey] = { reminderMinutes = n|nil, reminderRetryMinutes = n, autoPopulateOnZone = bool, autoPopulateCooldownMinutes = n, populateSound = "DUEL_START"|"NONE"|soundKey, lastUsedAt = unixTime|nil, lastUsedParamText = "..."|nil, lastUsedGuildIndex = n|nil, lastAutoPopulateSentAtByZone = { [zoneKey] = unixTime, ... } }, ... }
+    commandGuildSettings = {}, -- [commandId] = { [guildKey] = { reminderMinutes = n|nil, reminderRetryMinutes = n, autoPopulateOnZone = bool, autoPopulateCooldownMinutes = n, openStatusPanelOnRun = bool, populateSound = "DUEL_START"|"NONE"|soundKey, lastUsedAt = unixTime|nil, lastUsedParamText = "..."|nil, lastUsedGuildIndex = n|nil, lastAutoPopulateSentAtByZone = { [zoneKey] = unixTime, ... } }, ... }
 
     selectedMessagesCommand = nil, -- commandId
     selectedMessagesGuildIndex = nil,
@@ -17,6 +17,11 @@ SmartChatMsg.defaults = {
     defaultGuildIndex = nil,
     revertChatSeconds = 60,
     activeAutoPopulate = nil, -- { commandId = "...", guildName = "..." }
+    statusPanelState = {
+        visible = false,
+        offsetX = -40,
+        offsetY = 180,
+    },
 }
 
 function SmartChatMsg:InitializeSavedVars()
@@ -53,6 +58,29 @@ function SmartChatMsg:InitializeSavedVars()
     end
 
     self.savedVars.revertChatSeconds = self:NormalizeRevertChatSeconds(self.savedVars.revertChatSeconds)
+
+    if type(self.savedVars.statusPanelState) ~= "table" then
+        self.savedVars.statusPanelState = {
+            visible = false,
+            offsetX = -40,
+            offsetY = 180,
+        }
+    else
+        local state = self.savedVars.statusPanelState
+        state.visible = state.visible == true
+
+        if type(state.offsetX) ~= "number" then
+            state.offsetX = -40
+        else
+            state.offsetX = math.floor(state.offsetX)
+        end
+
+        if type(state.offsetY) ~= "number" then
+            state.offsetY = 180
+        else
+            state.offsetY = math.floor(state.offsetY)
+        end
+    end
 
     if type(self.savedVars.activeAutoPopulate) ~= "table" then
         self.savedVars.activeAutoPopulate = nil
@@ -104,6 +132,7 @@ function SmartChatMsg:InitializeSavedVars()
                         reminderRetryMinutes = self:NormalizeReminderRetryMinutes(settings.reminderRetryMinutes),
                         autoPopulateOnZone = self:NormalizeAutoPopulateOnZone(settings.autoPopulateOnZone),
                         autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(settings.autoPopulateCooldownMinutes),
+                        openStatusPanelOnRun = self:NormalizeOpenStatusPanelOnRun(settings.openStatusPanelOnRun),
                         populateSound = self:NormalizePopulateSound(settings.populateSound),
                         lastUsedAt = (type(settings.lastUsedAt) == "number" and settings.lastUsedAt >= 0) and math.floor(settings.lastUsedAt) or nil,
                         lastUsedParamText = self:Trim(settings.lastUsedParamText or ""),
@@ -158,6 +187,9 @@ function SmartChatMsg:InitializeSavedVars()
                     end
                     if settings.autoPopulateCooldownMinutes == nil then
                         settings.autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(nil)
+                    end
+                    if settings.openStatusPanelOnRun == nil then
+                        settings.openStatusPanelOnRun = self:NormalizeOpenStatusPanelOnRun(nil)
                     end
                     if settings.populateSound == nil then
                         settings.populateSound = self:NormalizePopulateSound(nil)
@@ -301,6 +333,10 @@ function SmartChatMsg:NormalizePopulateSound(value)
     return "DUEL_START"
 end
 
+function SmartChatMsg:NormalizeOpenStatusPanelOnRun(value)
+    return value == true
+end
+
 function SmartChatMsg:NormalizeRevertChatSeconds(value)
     if value == nil then
         return 60
@@ -425,6 +461,7 @@ function SmartChatMsg:BuildExportString()
                         self:EscapeImportExportField(settings.lastUsedGuildIndex or ""),
                         self:EscapeImportExportField(table.concat(zonePairs, ",")),
                         self:EscapeImportExportField(settings.populateSound or "DUEL_START"),
+                        self:EscapeImportExportField(settings.openStatusPanelOnRun == true and "1" or "0"),
                     }, "|"))
                 end
             end
@@ -596,6 +633,7 @@ elseif recordType == "GUILDSETTING" then
     local lastUsedGuildIndex = nil
     local zoneTimestampText = ""
     local populateSound = "DUEL_START"
+    local openStatusPanelOnRun = false
 
     if parts[11] ~= nil then
         reminderRetryMinutes = self:NormalizeReminderRetryMinutes(self:UnescapeImportExportField(parts[4] or ""))
@@ -608,12 +646,13 @@ elseif recordType == "GUILDSETTING" then
 
         if looksLikeCurrentSoundField then
             -- Current format:
-            -- GUILDSETTING|commandId|guildKey|reminderMinutes|retry|autoPopulate|cooldown|lastUsedAt|lastUsedParamText|lastUsedGuildIndex|zoneTimestamps|populateSound
+            -- GUILDSETTING|commandId|guildKey|reminderMinutes|retry|autoPopulate|cooldown|lastUsedAt|lastUsedParamText|lastUsedGuildIndex|zoneTimestamps|populateSound|openStatusPanelOnRun
             lastUsedAt = tonumber(self:UnescapeImportExportField(parts[7] or ""))
             lastUsedParamText = self:Trim(self:UnescapeImportExportField(parts[8] or ""))
             lastUsedGuildIndex = tonumber(self:UnescapeImportExportField(parts[9] or ""))
             zoneTimestampText = self:UnescapeImportExportField(parts[10] or "")
             populateSound = normalizedPart11
+            openStatusPanelOnRun = self:UnescapeImportExportField(parts[12] or "") == "1"
         else
             -- Legacy format with per-guild revert:
             -- GUILDSETTING|commandId|guildKey|reminderMinutes|retry|autoPopulate|cooldown|revert|lastUsedAt|lastUsedParamText|lastUsedGuildIndex|zoneTimestamps
@@ -674,6 +713,7 @@ elseif recordType == "GUILDSETTING" then
                     lastUsedGuildIndex = lastUsedGuildIndex and math.floor(lastUsedGuildIndex) or nil,
                     lastAutoPopulateSentAtByZone = lastAutoPopulateSentAtByZone,
                     populateSound = self:NormalizePopulateSound(populateSound),
+                    openStatusPanelOnRun = self:NormalizeOpenStatusPanelOnRun(openStatusPanelOnRun),
                 }
             end
         elseif recordType == "ACTIVE" then
@@ -825,6 +865,15 @@ function SmartChatMsg:GetGuildPopulateSound(commandId, guildName)
     end
 
     return self:NormalizePopulateSound(nil)
+end
+
+function SmartChatMsg:GetGuildOpenStatusPanelOnRun(commandId, guildName)
+    local settings = self:GetCommandGuildSettings(commandId, guildName, false)
+    if settings and settings.openStatusPanelOnRun ~= nil then
+        return self:NormalizeOpenStatusPanelOnRun(settings.openStatusPanelOnRun)
+    end
+
+    return false
 end
 
 function SmartChatMsg:GetRevertChatSeconds()
@@ -983,9 +1032,60 @@ function SmartChatMsg:SetGuildPopulateSound(commandId, guildName, populateSound)
     return true
 end
 
+function SmartChatMsg:SetGuildOpenStatusPanelOnRun(commandId, guildName, openStatusPanelOnRun)
+    local command = self:GetCommandById(commandId)
+    if not command then
+        return false, "The selected Command no longer exists."
+    end
+
+    local settings = self:GetCommandGuildSettings(commandId, guildName, true)
+    if not settings then
+        return false, "Select a Guild first."
+    end
+
+    settings.openStatusPanelOnRun = self:NormalizeOpenStatusPanelOnRun(openStatusPanelOnRun)
+    return true
+end
+
 function SmartChatMsg:SetRevertChatSeconds(revertSeconds)
     self.savedVars.revertChatSeconds = self:NormalizeRevertChatSeconds(revertSeconds)
     return true
+end
+
+function SmartChatMsg:GetStatusPanelState()
+    local state = self.savedVars.statusPanelState
+    if type(state) ~= "table" then
+        self.savedVars.statusPanelState = {
+            visible = false,
+            offsetX = -40,
+            offsetY = 180,
+        }
+        state = self.savedVars.statusPanelState
+    end
+
+    state.visible = state.visible == true
+    state.offsetX = type(state.offsetX) == "number" and math.floor(state.offsetX) or -40
+    state.offsetY = type(state.offsetY) == "number" and math.floor(state.offsetY) or 180
+    return state
+end
+
+function SmartChatMsg:GetStatusPanelVisiblePreference()
+    return self:GetStatusPanelState().visible == true
+end
+
+function SmartChatMsg:SetStatusPanelVisiblePreference(visible)
+    self:GetStatusPanelState().visible = visible == true
+end
+
+function SmartChatMsg:GetStatusPanelAnchorOffsets()
+    local state = self:GetStatusPanelState()
+    return state.offsetX, state.offsetY
+end
+
+function SmartChatMsg:SetStatusPanelAnchorOffsets(offsetX, offsetY)
+    local state = self:GetStatusPanelState()
+    state.offsetX = type(offsetX) == "number" and math.floor(offsetX) or -40
+    state.offsetY = type(offsetY) == "number" and math.floor(offsetY) or 180
 end
 
 function SmartChatMsg:SetGuildLastUsedState(commandId, guildName, lastUsedAt, paramText, guildIndex)

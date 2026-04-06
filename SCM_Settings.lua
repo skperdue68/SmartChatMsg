@@ -9,6 +9,7 @@ SmartChatMsg.settings = SmartChatMsg.settings or {
     pendingGuildReminderMinutes = "",
     pendingGuildReminderRetryMinutes = "0",
     pendingGuildAutoPopulateOnZone = false,
+    pendingGuildOpenStatusPanelOnRun = false,
     pendingGuildAutoPopulateCooldownMinutes = "60",
     pendingGuildPopulateSound = "DUEL_START",
     pendingGeneralRevertChatSeconds = "60",
@@ -297,6 +298,7 @@ function SmartChatMsg.settings:InitializeState()
         self.pendingGuildReminderMinutes = reminderMinutes and tostring(reminderMinutes) or ""
         self.pendingGuildReminderRetryMinutes = tostring(SmartChatMsg:GetGuildEffectiveReminderRetryMinutes(commandId, guildName) or 0)
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
+        self.pendingGuildOpenStatusPanelOnRun = SmartChatMsg:GetGuildOpenStatusPanelOnRun(commandId, guildName) == true
         self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
         self.pendingGuildPopulateSound = SmartChatMsg:GetGuildPopulateSound(commandId, guildName) or "DUEL_START"
     else
@@ -304,6 +306,7 @@ function SmartChatMsg.settings:InitializeState()
         self.pendingGuildReminderMinutes = ""
         self.pendingGuildReminderRetryMinutes = "0"
         self.pendingGuildAutoPopulateOnZone = false
+        self.pendingGuildOpenStatusPanelOnRun = false
         self.pendingGuildAutoPopulateCooldownMinutes = "60"
         self.pendingGuildPopulateSound = "DUEL_START"
     end
@@ -341,6 +344,11 @@ function SmartChatMsg.settings:SaveBehaviorSettings()
     end
 
     ok, err = SmartChatMsg:SetGuildAutoPopulateCooldownMinutes(commandId, guildName, self.pendingGuildAutoPopulateCooldownMinutes)
+    if not ok then
+        return false, err
+    end
+
+    ok, err = SmartChatMsg:SetGuildOpenStatusPanelOnRun(commandId, guildName, self.pendingGuildOpenStatusPanelOnRun == true)
     if not ok then
         return false, err
     end
@@ -387,6 +395,7 @@ function SmartChatMsg.settings:ResetNewMessageSection()
         self.pendingGuildReminderMinutes = reminderMinutes and tostring(reminderMinutes) or ""
         self.pendingGuildReminderRetryMinutes = tostring(SmartChatMsg:GetGuildEffectiveReminderRetryMinutes(commandId, guildName) or 0)
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
+        self.pendingGuildOpenStatusPanelOnRun = SmartChatMsg:GetGuildOpenStatusPanelOnRun(commandId, guildName) == true
         self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
         self.pendingGuildPopulateSound = SmartChatMsg:GetGuildPopulateSound(commandId, guildName) or "DUEL_START"
     else
@@ -394,6 +403,7 @@ function SmartChatMsg.settings:ResetNewMessageSection()
         self.pendingGuildReminderMinutes = ""
         self.pendingGuildReminderRetryMinutes = "0"
         self.pendingGuildAutoPopulateOnZone = false
+        self.pendingGuildOpenStatusPanelOnRun = false
         self.pendingGuildAutoPopulateCooldownMinutes = "60"
         self.pendingGuildPopulateSound = "DUEL_START"
     end
@@ -1083,6 +1093,15 @@ local function BuildMessagesBehaviorSettings(parent)
         SmartChatMsg:RefreshSettingsUI()
     end)
 
+    local function HasAutomationBehaviorEnabled()
+        if SmartChatMsg.settings.pendingGuildAutoPopulateOnZone == true then
+            return true
+        end
+
+        local repeatMinutes = tonumber(SmartChatMsg.settings.pendingGuildReminderMinutes or "")
+        return repeatMinutes ~= nil and repeatMinutes > 0
+    end
+
     local autoPopulateCheckbox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesAutoPopulateCheckbox", container, "ZO_CheckButton")
     autoPopulateCheckbox:SetAnchor(TOPLEFT, reminderBackdrop, BOTTOMLEFT, -110, 14)
     ZO_CheckButton_SetLabelText(autoPopulateCheckbox, "Auto Populate Chat on Zone")
@@ -1091,6 +1110,25 @@ local function BuildMessagesBehaviorSettings(parent)
 
         if checked == true then
             SmartChatMsg.settings.pendingGuildReminderMinutes = ""
+        end
+
+        local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
+        if not ok and err then
+            ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
+            return
+        end
+
+        SmartChatMsg:RefreshSettingsUI()
+    end)
+
+    local openStatusPanelCheckbox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesOpenStatusPanelOnRunCheckbox", container, "ZO_CheckButton")
+    openStatusPanelCheckbox:SetAnchor(TOPLEFT, autoPopulateCheckbox, BOTTOMLEFT, 0, 8)
+    ZO_CheckButton_SetLabelText(openStatusPanelCheckbox, "Open Status Panel on Run")
+    ZO_CheckButton_SetToggleFunction(openStatusPanelCheckbox, function(_, checked)
+        if not HasAutomationBehaviorEnabled() then
+            SmartChatMsg.settings.pendingGuildOpenStatusPanelOnRun = false
+        else
+            SmartChatMsg.settings.pendingGuildOpenStatusPanelOnRun = checked == true
         end
 
         local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
@@ -1140,7 +1178,7 @@ local function BuildMessagesBehaviorSettings(parent)
     soundLabel:SetFont("ZoFontWinH4")
     soundLabel:SetText("Notify Sound")
     soundLabel:SetDimensions(135, 30)
-    soundLabel:SetAnchor(TOPLEFT, autoPopulateCheckbox, BOTTOMLEFT, -70, 18)
+    soundLabel:SetAnchor(TOPLEFT, openStatusPanelCheckbox, BOTTOMLEFT, -70, 18)
 
     local soundComboBoxControl = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesPopulateSoundDropdown", container, "ZO_ComboBox")
     soundComboBoxControl:SetDimensions(DROPDOWN_WIDTH, 28)
@@ -1217,6 +1255,14 @@ local function BuildMessagesBehaviorSettings(parent)
 
         ZO_CheckButton_SetCheckState(autoPopulateCheckbox, SmartChatMsg.settings.pendingGuildAutoPopulateOnZone == true)
 
+        local automationEnabled = HasAutomationBehaviorEnabled()
+        if not automationEnabled then
+            SmartChatMsg.settings.pendingGuildOpenStatusPanelOnRun = false
+        end
+        ZO_CheckButton_SetCheckState(openStatusPanelCheckbox, automationEnabled and SmartChatMsg.settings.pendingGuildOpenStatusPanelOnRun == true)
+        openStatusPanelCheckbox:SetMouseEnabled(automationEnabled)
+        openStatusPanelCheckbox:SetAlpha(automationEnabled and 1 or 0.5)
+
         local repeatEnabled = HasActiveRepeatAfter()
         if not repeatEnabled then
             SmartChatMsg.settings.pendingGuildReminderRetryMinutes = "0"
@@ -1245,6 +1291,7 @@ local function BuildMessagesBehaviorSettings(parent)
     SmartChatMsg.settings.controls.messagesBehaviorReminderEditBox = reminderEditBox
     SmartChatMsg.settings.controls.messagesBehaviorReminderRetryEditBox = reminderRetryEditBox
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCheckbox = autoPopulateCheckbox
+    SmartChatMsg.settings.controls.messagesBehaviorOpenStatusPanelOnRunCheckbox = openStatusPanelCheckbox
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCooldownEditBox = cooldownEditBox
     SmartChatMsg.settings.controls.messagesBehaviorPopulateSoundDropdown = soundComboBoxControl
     SmartChatMsg.settings.controls.messagesBehaviorPopulateSoundPreviewButton = previewButton

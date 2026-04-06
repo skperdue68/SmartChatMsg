@@ -11,6 +11,13 @@ SmartChatMsg.restoreWatcherTimeoutName = SmartChatMsg.name .. "_RestoreWatcherTi
 SmartChatMsg.debugEnabled = SmartChatMsg.debugEnabled == true
 SmartChatMsg.logger = SmartChatMsg.logger or nil
 
+SmartChatMsg.statusPanel = SmartChatMsg.statusPanel or nil
+SmartChatMsg.statusPanelVisible = SmartChatMsg.statusPanelVisible == true
+SmartChatMsg.statusPanelRefreshName = SmartChatMsg.name .. "_StatusPanelRefresh"
+
+SmartChatMsg.autoPopulateTestHouseZoneId = SmartChatMsg.autoPopulateTestHouseZoneId or 1109
+SmartChatMsg.infiniteArchiveZoneId = SmartChatMsg.infiniteArchiveZoneId or 1463
+
 
 function SmartChatMsg:DebugLog(message)
     if not self.debugEnabled then
@@ -607,6 +614,9 @@ function SmartChatMsg:ToggleOffActiveAutoPopulateIfMatching(commandId, guildName
         end
 
         self:ClearActiveAutoPopulate()
+        if self.statusPanelVisible then
+            self:RefreshStatusPanel()
+        end
         return true
     end
 
@@ -1077,17 +1087,97 @@ function SmartChatMsg:GetActiveAutoPopulate()
 end
 
 
-function SmartChatMsg:IsInParentZone(zoneId)
+
+function SmartChatMsg:GetPlayerZoneId()
+    local zoneIndex = GetUnitZoneIndex("player")
+    if not zoneIndex then
+        return nil
+    end
+
+    local zoneId = GetZoneId(zoneIndex)
     if type(zoneId) ~= "number" or zoneId == 0 then
-        return false
+        return nil
     end
 
-    local parentZoneId = GetParentZoneId(zoneId)
-    if not parentZoneId or parentZoneId == 0 or parentZoneId == zoneId then
-        return true
+    return zoneId
+end
+
+function SmartChatMsg:IsAutoPopulateTestHouseZone(zoneId)
+    return type(zoneId) == "number" and zoneId == self.autoPopulateTestHouseZoneId
+end
+
+function SmartChatMsg:GetZoneCategory(zoneId)
+    if type(zoneId) ~= "number" or zoneId == 0 then
+        return "UNKNOWN"
     end
 
-    return false
+    if self:IsAutoPopulateTestHouseZone(zoneId) then
+        return "OVERLAND_TEST_HOUSE"
+    end
+
+    if zoneId == self.infiniteArchiveZoneId then
+        return "INFINITE_ARCHIVE"
+    end
+
+    if IsActiveWorldBattleground() then
+        return "BATTLEGROUND"
+    end
+
+    if GetCurrentZoneHouseId() ~= 0 then
+        return "HOUSE"
+    end
+
+    if IsPlayerInAvAWorld() then
+        return "AVA_WORLD"
+    end
+
+    if IsUnitInDungeon("player") then
+        return "INSTANCE"
+    end
+
+    return "OVERLAND"
+end
+
+function SmartChatMsg:IsAutoPopulateEligibleZone(zoneId)
+    local category = self:GetZoneCategory(zoneId)
+    return category == "OVERLAND" or category == "OVERLAND_TEST_HOUSE", category
+end
+
+function SmartChatMsg:GetAutoPopulateZoneRejectionReason(zoneId)
+    local category = self:GetZoneCategory(zoneId)
+
+    if category == "UNKNOWN" then
+        return category, "zone id is missing or invalid"
+    elseif category == "INFINITE_ARCHIVE" then
+        return category, "Infinite Archive is excluded from auto populate"
+    elseif category == "BATTLEGROUND" then
+        return category, "Battlegrounds are excluded from auto populate"
+    elseif category == "HOUSE" then
+        return category, "housing is excluded except for the configured test house zone"
+    elseif category == "AVA_WORLD" then
+        return category, "AvA zones are excluded from auto populate"
+    elseif category == "INSTANCE" then
+        return category, "instanced PvE zones are excluded from auto populate"
+    elseif category == "OVERLAND_TEST_HOUSE" then
+        return category, "test house override is allowed"
+    elseif category == "OVERLAND" then
+        return category, "overland zone is allowed"
+    end
+
+    return tostring(category), "zone category is not eligible for auto populate"
+end
+
+function SmartChatMsg:GetEffectiveAutoPopulateZoneId(zoneId)
+    if type(zoneId) ~= "number" or zoneId == 0 then
+        return nil
+    end
+
+    local isEligible = self:IsAutoPopulateEligibleZone(zoneId)
+    if isEligible then
+        return zoneId
+    end
+
+    return nil
 end
 
 function SmartChatMsg:GetAutoPopulateZoneDisplayName(zoneId)
@@ -1163,11 +1253,16 @@ function SmartChatMsg:MarkAutoPopulateSent(commandId, guildName, zoneId)
         tostring(zoneId),
         tostring(timestamp)
     ))
+
+    if self.statusPanelVisible then
+        self:RefreshStatusPanel()
+    end
 end
 
 
 function SmartChatMsg:HandleZoneAutoPopulate()
-    local currentZoneId = GetZoneId(GetUnitZoneIndex("player"))
+    local currentZoneId = self:GetPlayerZoneId()
+    local trackedZoneId = self:GetEffectiveAutoPopulateZoneId(currentZoneId)
     local previousZoneId = self.lastKnownZoneId
     local isInitialActivation = not self.hasSeenInitialPlayerActivated
 
@@ -1176,20 +1271,19 @@ function SmartChatMsg:HandleZoneAutoPopulate()
 
     if isInitialActivation then
         self:DebugLog(string.format(
-            "Auto populate debug: initial player activation evaluating currentZoneId=%s",
-            tostring(currentZoneId)
+            "Auto populate debug: initial player activation evaluating currentZoneId=%s trackedZoneId=%s",
+            tostring(currentZoneId),
+            tostring(trackedZoneId)
         ))
     end
 
-    if not currentZoneId or currentZoneId == 0 then
-        self:DebugLog("Auto populate debug: current zone id was invalid")
-        return
-    end
-
-    if not self:IsInParentZone(currentZoneId) then
+    if not trackedZoneId then
+        local category, reason = self:GetAutoPopulateZoneRejectionReason(currentZoneId)
         self:DebugLog(string.format(
-            "Auto populate debug: skipped because currentZoneId=%s is not a parent zone",
-            tostring(currentZoneId)
+            "Auto populate debug: skipped because currentZoneId=%s category=%s reason=%s",
+            tostring(currentZoneId),
+            tostring(category),
+            tostring(reason)
         ))
         return
     end
@@ -1200,28 +1294,33 @@ function SmartChatMsg:HandleZoneAutoPopulate()
         return
     end
 
-    local shouldSkip, elapsed, cooldown = self:ShouldSkipAutoPopulateForZone(active.commandId, active.guildName, currentZoneId)
+    local shouldSkip, elapsed, cooldown = self:ShouldSkipAutoPopulateForZone(active.commandId, active.guildName, trackedZoneId)
     if shouldSkip then
         self:DebugLog(string.format(
             "Auto populate debug: skipped for commandId=%s guildName=%s zoneId=%s because elapsed=%s cooldown=%s",
             tostring(active.commandId),
             tostring(active.guildName),
-            tostring(currentZoneId),
+            tostring(trackedZoneId),
             tostring(elapsed),
             tostring(cooldown)
         ))
 
         if isInitialActivation then
-            self:ShowAutoPopulateCooldownAlert(active.commandId, active.guildName, currentZoneId)
+            self:ShowAutoPopulateCooldownAlert(active.commandId, active.guildName, trackedZoneId)
+        end
+
+        if self.statusPanelVisible then
+            self:RefreshStatusPanel()
         end
         return
     end
 
     self:DebugLog(string.format(
-        "Auto populate debug: firing for commandId=%s guildName=%s currentZoneId=%s previousZoneId=%s initialActivation=%s",
+        "Auto populate debug: firing for commandId=%s guildName=%s currentZoneId=%s trackedZoneId=%s previousZoneId=%s initialActivation=%s",
         tostring(active.commandId),
         tostring(active.guildName),
         tostring(currentZoneId),
+        tostring(trackedZoneId),
         tostring(previousZoneId),
         tostring(isInitialActivation)
     ))
@@ -1239,20 +1338,27 @@ function SmartChatMsg:HandleZoneAutoPopulate()
             guildName = active.guildName,
             guildIndex = guildIndex,
             paramText = paramText,
-            zoneId = currentZoneId,
+            zoneId = trackedZoneId,
         }
     )
 
     if not ok then
         self:ClearActiveAutoPopulate()
+        if self.statusPanelVisible then
+            self:RefreshStatusPanel()
+        end
         ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
         return
+    end
+
+    if self.statusPanelVisible then
+        self:RefreshStatusPanel()
     end
 
     local command = self:GetCommandById(active.commandId)
     if command then
         local commandName = self:BuildSlashCommandName(command.name or "") or "command"
-        local zoneName = self:GetAutoPopulateZoneDisplayName(currentZoneId)
+        local zoneName = self:GetAutoPopulateZoneDisplayName(trackedZoneId)
         local message = string.format("Auto populated %s for %s. Run the command again to turn it off.", commandName, zoneName)
         if CENTER_SCREEN_ANNOUNCE then
             CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
@@ -1409,6 +1515,25 @@ function SmartChatMsg:ParseCommandParameter(rawParam)
     return result
 end
 
+function SmartChatMsg:ShouldOpenStatusPanelOnRun(commandId, guildName)
+    if self:GetGuildOpenStatusPanelOnRun(commandId, guildName) ~= true then
+        return false
+    end
+
+    if self:GetGuildAutoPopulateOnZone(commandId, guildName) == true then
+        return true
+    end
+
+    local repeatMinutes = self:GetGuildReminderMinutes(commandId, guildName)
+    return type(repeatMinutes) == "number" and repeatMinutes > 0
+end
+
+function SmartChatMsg:OpenStatusPanelOnRunIfConfigured(commandId, guildName)
+    if self:ShouldOpenStatusPanelOnRun(commandId, guildName) then
+        self:SetStatusPanelVisible(true)
+    end
+end
+
 function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, rawParam)
     local trimmedParam = self:Trim(rawParam or "")
     local guildSlot = nil
@@ -1495,6 +1620,8 @@ function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, raw
 
     local autoPopulateEnabled = self:GetGuildAutoPopulateOnZone(commandId, guildName) == true
 
+    self:OpenStatusPanelOnRunIfConfigured(commandId, guildName)
+
     local activeAutoPopulate = self:GetActiveAutoPopulate()
     if activeAutoPopulate and autoPopulateEnabled then
         local sameAutoPopulate = activeAutoPopulate.commandId == commandId and self:StringsEqualIgnoreCase(activeAutoPopulate.guildName or "", guildName or "")
@@ -1510,30 +1637,53 @@ function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, raw
 
     if autoPopulateEnabled then
         self:SetActiveAutoPopulate(commandId, guildName)
+        if self.statusPanelVisible then
+            self:RefreshStatusPanel()
+        end
+
         self:DebugLog(string.format(
             "Auto populate debug: armed immediately from slash command commandId=%s guildName=%s",
             tostring(commandId),
             tostring(guildName)
         ))
 
-        local currentZoneId = GetZoneId(GetUnitZoneIndex("player"))
-        if currentZoneId and currentZoneId ~= 0 and self:IsInParentZone(currentZoneId) then
-            local shouldSkip, elapsed, cooldown = self:ShouldSkipAutoPopulateForZone(commandId, guildName, currentZoneId)
-            if shouldSkip then
-                self:DebugLog(string.format(
-                    "Auto populate debug: manual start skipped populate due to cooldown commandId=%s guildName=%s zoneId=%s elapsed=%s cooldown=%s",
-                    tostring(commandId),
-                    tostring(guildName),
-                    tostring(currentZoneId),
-                    tostring(elapsed),
-                    tostring(cooldown)
-                ))
-                self:ShowAutoPopulateCooldownAlert(commandId, guildName, currentZoneId)
-                self:ShowStatusMessage(string.format("%s started auto populate for %s.", commandDisplayName, guildName))
-                PlaySound(SOUNDS.DEFAULT_CLICK)
-                return
-            end
+        local currentZoneId = self:GetPlayerZoneId()
+        local trackedZoneId = self:GetEffectiveAutoPopulateZoneId(currentZoneId)
+
+        if not trackedZoneId then
+            local category, reason = self:GetAutoPopulateZoneRejectionReason(currentZoneId)
+            self:DebugLog(string.format(
+                "Auto populate debug: manual start did not populate because currentZoneId=%s category=%s reason=%s",
+                tostring(currentZoneId),
+                tostring(category),
+                tostring(reason)
+            ))
+
+            self:ShowStatusMessage(string.format("%s started auto populate for %s.", commandDisplayName, guildName))
+            PlaySound(SOUNDS.DEFAULT_CLICK)
+            return
         end
+
+        local shouldSkip, elapsed, cooldown = self:ShouldSkipAutoPopulateForZone(commandId, guildName, trackedZoneId)
+        if shouldSkip then
+            self:DebugLog(string.format(
+                "Auto populate debug: manual start skipped populate due to cooldown commandId=%s guildName=%s zoneId=%s elapsed=%s cooldown=%s",
+                tostring(commandId),
+                tostring(guildName),
+                tostring(trackedZoneId),
+                tostring(elapsed),
+                tostring(cooldown)
+            ))
+            self:ShowAutoPopulateCooldownAlert(commandId, guildName, trackedZoneId)
+            self:ShowStatusMessage(string.format("%s started auto populate for %s.", commandDisplayName, guildName))
+            PlaySound(SOUNDS.DEFAULT_CLICK)
+            return
+        end
+
+        self:ShowStatusMessage(string.format("%s started auto populate for %s.", commandDisplayName, guildName))
+        PlaySound(SOUNDS.DEFAULT_CLICK)
+        self:HandleZoneAutoPopulate()
+        return
     end
 
     local ok, err = self:PopulateChatBufferForCommand(
@@ -1594,6 +1744,917 @@ function SmartChatMsg:RegisterDynamicCommands()
     end
 end
 
+function SmartChatMsg:FormatStatusDuration(secondsRemaining)
+    if type(secondsRemaining) ~= "number" or secondsRemaining <= 0 then
+        return "Ready"
+    end
+
+    local total = math.max(0, math.floor(secondsRemaining))
+    local hours = math.floor(total / 3600)
+    local minutes = math.floor((total % 3600) / 60)
+    local seconds = total % 60
+
+    if hours > 0 then
+        return string.format("%d:%02d:%02d", hours, minutes, seconds)
+    end
+
+    return string.format("%02d:%02d", minutes, seconds)
+end
+
+function SmartChatMsg:GetStatusPanelZoneTimerText(zoneId, secondsRemaining, isCurrent)
+    if isCurrent then
+        if not self:IsAutoPopulateEligibleZone(zoneId) then
+            return "N/A", false
+        end
+    else
+        if type(zoneId) ~= "number" or zoneId == 0 then
+            return "N/A", false
+        end
+    end
+
+    return self:FormatStatusDuration(secondsRemaining), true
+end
+
+function SmartChatMsg:GetStatusPanelMaxVisibleCooldownRows()
+    return 10
+end
+
+function SmartChatMsg:GetStatusPanelScrollOffset()
+    local panel = self.statusPanel
+    if not panel then
+        return 0
+    end
+    local value = tonumber(panel.cooldownScrollOffset) or 0
+    return math.max(0, math.floor(value))
+end
+
+function SmartChatMsg:SetStatusPanelScrollOffset(offset, totalRows)
+    local panel = self.statusPanel
+    if not panel then
+        return
+    end
+    local maxVisible = self:GetStatusPanelMaxVisibleCooldownRows()
+    local maxOffset = math.max(0, (tonumber(totalRows) or 0) - maxVisible)
+    local clamped = math.max(0, math.min(maxOffset, math.floor(tonumber(offset) or 0)))
+    panel.cooldownScrollOffset = clamped
+end
+
+function SmartChatMsg:AdjustStatusPanelScrollOffset(delta, totalRows)
+    local current = self:GetStatusPanelScrollOffset()
+    self:SetStatusPanelScrollOffset(current + (delta or 0), totalRows)
+end
+
+
+function SmartChatMsg:GetAutoPopulateChannelStatusText(commandId, guildName)
+    local channel = self:GetSavedChatChannel(commandId, guildName)
+    local guildSlot = self:GetGuildSlotByName(guildName)
+
+    if channel == "Guild" and guildSlot then
+        return string.format("Guild (/g%d)", guildSlot)
+    elseif channel == "Officer" and guildSlot then
+        return string.format("Officer (/o%d)", guildSlot)
+    elseif channel == "Zone" then
+        return "Zone"
+    end
+
+    return channel or "Unknown"
+end
+
+function SmartChatMsg:GetAutoPopulateStatusRows(commandId, guildName)
+    local rows = {}
+    local seenZoneKeys = {}
+    local currentZoneId = GetZoneId(GetUnitZoneIndex("player"))
+    local currentTrackedZoneId = self:GetEffectiveAutoPopulateZoneId(currentZoneId)
+    local otherRows = {}
+
+    local function buildRow(zoneId, isCurrent)
+        if type(zoneId) ~= "number" or zoneId == 0 then
+            return nil
+        end
+
+        local zoneKey = tostring(zoneId)
+        if seenZoneKeys[zoneKey] then
+            return nil
+        end
+        seenZoneKeys[zoneKey] = true
+
+        local zoneName = self:GetAutoPopulateZoneDisplayName(zoneId)
+        local cooldownEndsAt = self:GetAutoPopulateCooldownEndsAt(commandId, guildName, zoneId)
+        local secondsRemaining = nil
+        if type(cooldownEndsAt) == "number" and cooldownEndsAt > 0 then
+            secondsRemaining = cooldownEndsAt - GetTimeStamp()
+        end
+
+        local statusText, isApplicable = self:GetStatusPanelZoneTimerText(zoneId, secondsRemaining, isCurrent)
+
+        return {
+            zoneId = zoneId,
+            zoneName = zoneName,
+            isCurrent = isCurrent == true,
+            secondsRemaining = secondsRemaining,
+            statusText = statusText,
+            isApplicable = isApplicable,
+            isReady = isApplicable and (type(secondsRemaining) ~= "number" or secondsRemaining <= 0) or false,
+        }
+    end
+
+    local currentRow = buildRow(currentTrackedZoneId or currentZoneId, true)
+    if currentRow then
+        table.insert(rows, currentRow)
+    end
+
+    local settings = self:GetCommandGuildSettings(commandId, guildName, false)
+    local byZone = settings and settings.lastAutoPopulateSentAtByZone or nil
+    if type(byZone) == "table" then
+        for zoneKey, timestamp in pairs(byZone) do
+            if type(timestamp) == "number" and timestamp > 0 then
+                local zoneId = tonumber(zoneKey)
+                local row = buildRow(zoneId, false)
+                if row then
+                    table.insert(otherRows, row)
+                end
+            end
+        end
+    end
+
+    table.sort(otherRows, function(a, b)
+        if a.isApplicable ~= b.isApplicable then
+            return a.isApplicable == true
+        end
+
+        if a.isReady ~= b.isReady then
+            return a.isReady == true
+        end
+
+        if a.isReady and b.isReady then
+            local aName = zo_strlower(a.zoneName or "")
+            local bName = zo_strlower(b.zoneName or "")
+            if aName == bName then
+                return (a.zoneId or 0) < (b.zoneId or 0)
+            end
+            return aName < bName
+        end
+
+        local aSeconds = math.max(0, math.floor(tonumber(a.secondsRemaining) or 0))
+        local bSeconds = math.max(0, math.floor(tonumber(b.secondsRemaining) or 0))
+        if aSeconds == bSeconds then
+            local aName = zo_strlower(a.zoneName or "")
+            local bName = zo_strlower(b.zoneName or "")
+            if aName == bName then
+                return (a.zoneId or 0) < (b.zoneId or 0)
+            end
+            return aName < bName
+        end
+        return aSeconds < bSeconds
+    end)
+
+    for _, row in ipairs(otherRows) do
+        table.insert(rows, row)
+    end
+
+    return rows
+end
+
+function SmartChatMsg:GetStatusPanelTimerColor(secondsRemaining, isApplicable)
+    if isApplicable == false then
+        return 0.70, 0.70, 0.70, 1
+    end
+
+    if type(secondsRemaining) ~= "number" or secondsRemaining <= 0 then
+        return 0.32, 0.86, 0.45, 1
+    end
+
+    if secondsRemaining <= 60 then
+        return 0.92, 0.28, 0.22, 1
+    end
+
+    return 0.95, 0.62, 0.24, 1
+end
+
+function SmartChatMsg:EstimateStatusPanelTextWidth(text)
+    local value = tostring(text or "")
+    local length = zo_strlen(value)
+    local bonus = 0
+    if value:find("%u%u") then
+        bonus = bonus + 8
+    end
+    if value:find("[/():]", 1) then
+        bonus = bonus + 10
+    end
+    return math.floor((length * 7.4) + bonus)
+end
+
+function SmartChatMsg:GetStatusPanelMeasuredTextWidth(control, fallbackText)
+    if control and control.GetTextDimensions then
+        local measuredWidth = select(1, control:GetTextDimensions())
+        if type(measuredWidth) == "number" and measuredWidth > 0 then
+            return math.floor(measuredWidth + 0.5)
+        end
+    end
+
+    if control and control.GetTextWidth then
+        local measuredWidth = control:GetTextWidth()
+        if type(measuredWidth) == "number" and measuredWidth > 0 then
+            return math.floor(measuredWidth + 0.5)
+        end
+    end
+
+    return self:EstimateStatusPanelTextWidth(fallbackText)
+end
+
+function SmartChatMsg:GetStatusPanelMeasuredTextHeight(control, fallbackHeight)
+    if control and control.GetTextDimensions then
+        local _, measuredHeight = control:GetTextDimensions()
+        if type(measuredHeight) == "number" and measuredHeight > 0 then
+            return math.floor(measuredHeight + 0.5)
+        end
+    end
+
+    return fallbackHeight or 24
+end
+
+function SmartChatMsg:GetStatusPanelTargetSize(active, rows)
+    local panel = self.statusPanel
+    local minWidth = 460
+    local maxWidth = 980
+    local contentWidth = 0
+
+    local function measured(control, fallback)
+        return self:GetStatusPanelMeasuredTextWidth(control, fallback)
+    end
+
+    if active and panel then
+        local firstLineWidth = 0
+        local firstLineControls = {
+            panel.statusLabel,
+            panel.commandLabel,
+            panel.guildLabel,
+            panel.channelLabel,
+        }
+
+        for _, control in ipairs(firstLineControls) do
+            if control and not control:IsHidden() then
+                firstLineWidth = firstLineWidth + measured(control, control.GetText and control:GetText() or "")
+            end
+        end
+        if firstLineWidth > 0 then
+            firstLineWidth = firstLineWidth + 54
+            contentWidth = math.max(contentWidth, firstLineWidth)
+        end
+
+        local stackedControls = {
+            panel.titleLabel,
+            panel.listHeader,
+            panel.currentLabel,
+            panel.footerLabel,
+        }
+
+        for _, control in ipairs(stackedControls) do
+            if control and not control:IsHidden() then
+                contentWidth = math.max(contentWidth, measured(control, control.GetText and control:GetText() or ""))
+            end
+        end
+
+        for _, row in ipairs(panel.rows or {}) do
+            if row and not row:IsHidden() then
+                local rowWidth = 0
+                if row.zone1 and not row.zone1:IsHidden() then
+                    rowWidth = rowWidth + measured(row.zone1, row.zone1:GetText())
+                end
+                if row.timer1 and not row.timer1:IsHidden() then
+                    rowWidth = rowWidth + 14 + measured(row.timer1, row.timer1:GetText())
+                end
+                if row.zone2 and not row.zone2:IsHidden() then
+                    rowWidth = rowWidth + 30 + measured(row.zone2, row.zone2:GetText())
+                end
+                if row.timer2 and not row.timer2:IsHidden() then
+                    rowWidth = rowWidth + 14 + measured(row.timer2, row.timer2:GetText())
+                end
+                contentWidth = math.max(contentWidth, rowWidth)
+            end
+        end
+    elseif active then
+        local commandName = self:BuildSlashCommandName(self:GetCommandNameById(active.commandId) or "") or "/command"
+        contentWidth = math.max(contentWidth, self:EstimateStatusPanelTextWidth("SmartChatMsg Status"))
+        contentWidth = math.max(contentWidth, self:EstimateStatusPanelTextWidth("Zone Cooldowns"))
+        contentWidth = math.max(contentWidth, self:EstimateStatusPanelTextWidth("Tracked Zones: 0 | Showing 0-0"))
+        contentWidth = math.max(contentWidth,
+            self:EstimateStatusPanelTextWidth("Auto: Active") +
+            self:EstimateStatusPanelTextWidth(tostring(commandName)) +
+            self:EstimateStatusPanelTextWidth(tostring(active.guildName)) +
+            self:EstimateStatusPanelTextWidth(tostring(self:GetAutoPopulateChannelStatusText(active.commandId, active.guildName))) +
+            54
+        )
+    else
+        contentWidth = math.max(
+            self:EstimateStatusPanelTextWidth("Auto: Inactive"),
+            self:EstimateStatusPanelTextWidth("Tracked Zones: 0 | Showing 0-0")
+        )
+    end
+
+    local width = math.max(minWidth, math.min(maxWidth, contentWidth + 72))
+
+    local height = 58
+    if panel then
+        local visibleControls = {
+            panel.titleLabel,
+            panel.statusLabel,
+            panel.commandLabel,
+            panel.guildLabel,
+            panel.channelLabel,
+            panel.listHeader,
+            panel.currentLabel,
+            panel.footerLabel,
+        }
+
+        for _, control in ipairs(visibleControls) do
+            if control and not control:IsHidden() then
+                height = height + self:GetStatusPanelMeasuredTextHeight(control, 18) + 4
+            end
+        end
+
+        if panel.divider and not panel.divider:IsHidden() then
+            height = height + 6
+        end
+
+        local visibleRowCount = 0
+        for _, row in ipairs(panel.rows or {}) do
+            if row and not row:IsHidden() then
+                visibleRowCount = visibleRowCount + 1
+            end
+        end
+
+        if panel.currentRow and not panel.currentRow:IsHidden() then
+            height = height + 14 + 6
+        end
+
+        height = height + (visibleRowCount * 14) + math.max(0, visibleRowCount - 1) * 2 + 4
+    else
+        local visibleRowCount = math.min(#(rows or {}), self:GetStatusPanelMaxVisibleCooldownRows())
+        height = active and (150 + (visibleRowCount * 16)) or 120
+    end
+
+    height = math.max(120, math.min(680, height))
+    return width, height
+end
+
+function SmartChatMsg:ApplyStatusPanelLayout(panel, width)
+    if not panel then
+        return
+    end
+
+    local contentWidth = math.max(372, width - 48)
+    local timerWidth = 70
+    local columnGap = 24
+    local pairGap = 12
+    local singleLineHeight = 14
+    local halfWidth = math.floor((contentWidth - columnGap) / 2)
+    local zoneWidth = math.max(90, halfWidth - timerWidth - pairGap)
+
+    local closeButtonReserve = 30
+
+    panel.dragBar:SetWidth(math.max(120, contentWidth - closeButtonReserve))
+    panel.titleLabel:SetWidth(math.max(120, contentWidth - closeButtonReserve))
+    panel.divider:SetWidth(contentWidth)
+    panel.listHeader:SetWidth(contentWidth)
+    panel.currentLabel:SetWidth(contentWidth)
+    panel.footerLabel:SetWidth(contentWidth)
+
+    local firstLineGap = 3
+    local statusWidth = math.max(60, self:EstimateStatusPanelTextWidth(panel.statusLabel:GetText()))
+    local commandWidth = math.max(110, self:EstimateStatusPanelTextWidth(panel.commandLabel:GetText()))
+    local guildWidth = math.max(110, self:EstimateStatusPanelTextWidth(panel.guildLabel:GetText()))
+    local remainingWidth = contentWidth - statusWidth - commandWidth - guildWidth - (firstLineGap * 3)
+    local channelWidth = math.max(110, remainingWidth)
+
+    panel.statusLabel:SetDimensions(statusWidth, singleLineHeight)
+    panel.commandLabel:SetDimensions(commandWidth, singleLineHeight)
+    panel.guildLabel:SetDimensions(guildWidth, singleLineHeight)
+    panel.channelLabel:SetDimensions(channelWidth, singleLineHeight)
+
+    panel.statusLabel:ClearAnchors()
+    panel.commandLabel:ClearAnchors()
+    panel.guildLabel:ClearAnchors()
+    panel.channelLabel:ClearAnchors()
+    panel.divider:ClearAnchors()
+    panel.listHeader:ClearAnchors()
+    panel.currentLabel:ClearAnchors()
+    panel.footerLabel:ClearAnchors()
+
+    panel.statusLabel:SetAnchor(TOPLEFT, panel.titleLabel, BOTTOMLEFT, 0, 8)
+    panel.commandLabel:SetAnchor(TOPLEFT, panel.statusLabel, TOPRIGHT, firstLineGap, 0)
+    panel.guildLabel:SetAnchor(TOPLEFT, panel.commandLabel, TOPRIGHT, firstLineGap, 0)
+    panel.channelLabel:SetAnchor(TOPLEFT, panel.guildLabel, TOPRIGHT, firstLineGap, 0)
+
+    panel.divider:SetAnchor(TOPLEFT, panel.statusLabel, BOTTOMLEFT, 0, 8)
+    panel.listHeader:SetAnchor(TOPLEFT, panel.divider, BOTTOMLEFT, 0, 8)
+    panel.currentLabel:SetAnchor(TOPLEFT, panel.listHeader, BOTTOMLEFT, 0, 6)
+
+    if panel.currentRow then
+        panel.currentRow:SetDimensions(contentWidth, singleLineHeight)
+        panel.currentRow:ClearAnchors()
+        panel.currentRow:SetAnchor(TOPLEFT, panel.currentLabel, BOTTOMLEFT, 0, 2)
+
+        panel.currentRow.zone:ClearAnchors()
+        panel.currentRow.timer:ClearAnchors()
+
+        local currentZoneWidth = math.max(90, contentWidth - timerWidth - pairGap)
+        panel.currentRow.zone:SetDimensions(currentZoneWidth, singleLineHeight)
+        panel.currentRow.timer:SetDimensions(timerWidth, singleLineHeight)
+
+        panel.currentRow.zone:SetAnchor(TOPLEFT, panel.currentRow, TOPLEFT, 0, 0)
+        panel.currentRow.timer:SetAnchor(TOPLEFT, panel.currentRow.zone, TOPRIGHT, pairGap, 0)
+
+        panel.currentRow.zone:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
+        panel.currentRow.timer:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
+        if panel.currentRow.zone.SetMaxLineCount then panel.currentRow.zone:SetMaxLineCount(1) end
+        if panel.currentRow.timer.SetMaxLineCount then panel.currentRow.timer:SetMaxLineCount(1) end
+        panel.currentRow.zone:SetHeight(singleLineHeight)
+        panel.currentRow.timer:SetHeight(singleLineHeight)
+    end
+
+    for index, row in ipairs(panel.rows or {}) do
+        row:SetDimensions(contentWidth, singleLineHeight)
+        row:ClearAnchors()
+        local previous = index == 1 and panel.currentRow or panel.rows[index - 1]
+        row:SetAnchor(TOPLEFT, previous, BOTTOMLEFT, 0, index == 1 and 6 or 2)
+
+        row.zone1:ClearAnchors()
+        row.timer1:ClearAnchors()
+        row.zone2:ClearAnchors()
+        row.timer2:ClearAnchors()
+
+        if row.isSingleSpan then
+            local spanZoneWidth = math.max(90, contentWidth - timerWidth - pairGap)
+            row.zone1:SetDimensions(spanZoneWidth, singleLineHeight)
+            row.timer1:SetDimensions(timerWidth, singleLineHeight)
+            row.zone2:SetDimensions(0, singleLineHeight)
+            row.timer2:SetDimensions(0, singleLineHeight)
+
+            row.zone1:SetAnchor(TOPLEFT, row, TOPLEFT, 0, 0)
+            row.timer1:SetAnchor(TOPLEFT, row.zone1, TOPRIGHT, pairGap, 0)
+        else
+            row.zone1:SetDimensions(zoneWidth, singleLineHeight)
+            row.timer1:SetDimensions(timerWidth, singleLineHeight)
+            row.zone2:SetDimensions(zoneWidth, singleLineHeight)
+            row.timer2:SetDimensions(timerWidth, singleLineHeight)
+
+            row.zone1:SetAnchor(TOPLEFT, row, TOPLEFT, 0, 0)
+            row.timer1:SetAnchor(TOPLEFT, row.zone1, TOPRIGHT, pairGap, 0)
+            row.zone2:SetAnchor(TOPLEFT, row.timer1, TOPRIGHT, columnGap, 0)
+            row.timer2:SetAnchor(TOPLEFT, row.zone2, TOPRIGHT, pairGap, 0)
+        end
+
+        row.zone1:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
+        row.timer1:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
+        row.zone2:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
+        row.timer2:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
+
+        if row.zone1.SetMaxLineCount then row.zone1:SetMaxLineCount(1) end
+        if row.timer1.SetMaxLineCount then row.timer1:SetMaxLineCount(1) end
+        if row.zone2.SetMaxLineCount then row.zone2:SetMaxLineCount(1) end
+        if row.timer2.SetMaxLineCount then row.timer2:SetMaxLineCount(1) end
+
+        row.zone1:SetHeight(singleLineHeight)
+        row.timer1:SetHeight(singleLineHeight)
+        row.zone2:SetHeight(singleLineHeight)
+        row.timer2:SetHeight(singleLineHeight)
+    end
+
+    local lastControl = panel.currentRow or panel.currentLabel or panel.listHeader
+    for _, row in ipairs(panel.rows or {}) do
+        if row and not row:IsHidden() then
+            lastControl = row
+        end
+    end
+    panel.footerLabel:SetAnchor(TOPLEFT, lastControl, BOTTOMLEFT, 0, 8)
+end
+
+function SmartChatMsg:StartStatusPanelSizeAnimation(targetWidth, targetHeight)
+    local panel = self.statusPanel
+    if not panel then
+        return
+    end
+
+    panel.targetWidth = math.floor(targetWidth or panel:GetWidth())
+    panel.targetHeight = math.floor(targetHeight or panel:GetHeight())
+
+    if panel.isAnimatingSize then
+        return
+    end
+
+    panel.isAnimatingSize = true
+    EVENT_MANAGER:RegisterForUpdate(self.name .. "_StatusPanelResize", 16, function()
+        local activePanel = SmartChatMsg.statusPanel
+        if not activePanel then
+            EVENT_MANAGER:UnregisterForUpdate(SmartChatMsg.name .. "_StatusPanelResize")
+            return
+        end
+
+        local currentWidth = activePanel:GetWidth()
+        local currentHeight = activePanel:GetHeight()
+        local targetW = activePanel.targetWidth or currentWidth
+        local targetH = activePanel.targetHeight or currentHeight
+
+        local nextWidth = currentWidth + ((targetW - currentWidth) * 0.30)
+        local nextHeight = currentHeight + ((targetH - currentHeight) * 0.30)
+
+        if math.abs(targetW - nextWidth) < 2 then
+            nextWidth = targetW
+        end
+        if math.abs(targetH - nextHeight) < 2 then
+            nextHeight = targetH
+        end
+
+        nextWidth = math.floor(nextWidth + 0.5)
+        nextHeight = math.floor(nextHeight + 0.5)
+
+        activePanel:SetDimensions(nextWidth, nextHeight)
+        SmartChatMsg:ApplyStatusPanelLayout(activePanel, nextWidth)
+
+        if nextWidth == targetW and nextHeight == targetH then
+            activePanel.isAnimatingSize = false
+            EVENT_MANAGER:UnregisterForUpdate(SmartChatMsg.name .. "_StatusPanelResize")
+        end
+    end)
+end
+
+function SmartChatMsg:SaveStatusPanelPosition(panel)
+    if not panel or not panel.GetLeft or not panel.GetTop then
+        return
+    end
+
+    local left = panel:GetLeft()
+    local top = panel:GetTop()
+    if type(left) ~= "number" or type(top) ~= "number" then
+        return
+    end
+
+    self:SetStatusPanelAnchorOffsets(math.floor(left + 0.5), math.floor(top + 0.5))
+end
+
+function SmartChatMsg:CreateStatusPanel()
+    if self.statusPanel then
+        return self.statusPanel
+    end
+
+    local offsetX, offsetY = self:GetStatusPanelAnchorOffsets()
+
+    local panel = WINDOW_MANAGER:CreateTopLevelWindow("SCM_StatusPanel")
+    panel:SetDimensions(460, 120)
+    panel:SetHidden(true)
+    panel:SetMovable(true)
+    panel:SetMouseEnabled(true)
+    panel:SetClampedToScreen(true)
+    panel:ClearAnchors()
+    panel:SetAnchor(TOPLEFT, GuiRoot, TOPLEFT, offsetX, offsetY)
+    panel.cooldownScrollOffset = 0
+    panel.currentCooldownRows = {}
+
+    local backdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_StatusPanelBackdrop", panel, "ZO_DefaultBackdrop")
+    backdrop:SetAnchorFill(panel)
+    backdrop:SetCenterColor(0.05, 0.05, 0.05, 0.90)
+    backdrop:SetEdgeColor(0.75, 0.62, 0.28, 0.95)
+    backdrop:SetMouseEnabled(true)
+
+    local dragBar = WINDOW_MANAGER:CreateControl("SCM_StatusPanelDragBar", panel, CT_CONTROL)
+    dragBar:SetDimensions(412, 22)
+    dragBar:SetAnchor(TOPLEFT, panel, TOPLEFT, 16, 10)
+    dragBar:SetMouseEnabled(true)
+
+    local title = WINDOW_MANAGER:CreateControl("SCM_StatusPanelTitle", panel, CT_LABEL)
+    title:SetFont("ZoFontWinH4")
+    title:SetColor(0.95, 0.83, 0.46, 1)
+    title:SetText("SmartChatMsg Status")
+    title:SetAnchor(TOPLEFT, dragBar, TOPLEFT, 0, 0)
+
+    local closeButton = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCloseButton", panel, CT_BUTTON)
+    closeButton:SetDimensions(24, 24)
+    closeButton:SetAnchor(TOPRIGHT, panel, TOPRIGHT, -10, 8)
+    closeButton:SetFont("ZoFontWinH3")
+    closeButton:SetText("X")
+    closeButton:SetNormalFontColor(0.92, 0.92, 0.92, 1)
+    closeButton:SetMouseOverFontColor(1, 0.35, 0.35, 1)
+    closeButton:SetPressedFontColor(0.75, 0.75, 0.75, 1)
+    closeButton:SetHandler("OnClicked", function()
+        SmartChatMsg:SetStatusPanelVisible(false)
+    end)
+    closeButton:SetHandler("OnMouseEnter", function(control)
+        InitializeTooltip(InformationTooltip, control, TOP, 0, 8)
+        SetTooltipText(InformationTooltip, "Close Status Panel")
+    end)
+    closeButton:SetHandler("OnMouseExit", function()
+        ClearTooltip(InformationTooltip)
+    end)
+
+    local statusLabel = WINDOW_MANAGER:CreateControl("SCM_StatusPanelState", panel, CT_LABEL)
+    statusLabel:SetFont("ZoFontGameSmall")
+    statusLabel:SetAnchor(TOPLEFT, title, BOTTOMLEFT, 0, 8)
+
+    local commandLabel = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCommand", panel, CT_LABEL)
+    commandLabel:SetFont("ZoFontGameSmall")
+    commandLabel:SetAnchor(TOPLEFT, statusLabel, TOPRIGHT, 18, 0)
+
+    local guildLabel = WINDOW_MANAGER:CreateControl("SCM_StatusPanelGuild", panel, CT_LABEL)
+    guildLabel:SetFont("ZoFontGameSmall")
+    guildLabel:SetAnchor(TOPLEFT, commandLabel, TOPRIGHT, 18, 0)
+
+    local channelLabel = WINDOW_MANAGER:CreateControl("SCM_StatusPanelChannel", panel, CT_LABEL)
+    channelLabel:SetFont("ZoFontGameSmall")
+    channelLabel:SetAnchor(TOPLEFT, guildLabel, TOPRIGHT, 18, 0)
+
+    local divider = WINDOW_MANAGER:CreateControl("SCM_StatusPanelDivider", panel, CT_BACKDROP)
+    divider:SetDimensions(412, 2)
+    divider:SetAnchor(TOPLEFT, statusLabel, BOTTOMLEFT, 0, 8)
+    divider:SetCenterColor(0.35, 0.35, 0.35, 0.9)
+    divider:SetEdgeColor(0, 0, 0, 0)
+
+    local listHeader = WINDOW_MANAGER:CreateControl("SCM_StatusPanelListHeader", panel, CT_LABEL)
+    listHeader:SetFont("ZoFontGameSmall")
+    listHeader:SetColor(0.95, 0.83, 0.46, 1)
+    listHeader:SetAnchor(TOPLEFT, divider, BOTTOMLEFT, 0, 8)
+
+    local currentLabel = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCurrentLabel", panel, CT_LABEL)
+    currentLabel:SetFont("ZoFontGameSmall")
+    currentLabel:SetColor(0.95, 0.83, 0.46, 1)
+    currentLabel:SetText("Current Zone")
+    currentLabel:SetAnchor(TOPLEFT, listHeader, BOTTOMLEFT, 0, 6)
+
+    local currentRow = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCurrentRow", panel, CT_CONTROL)
+    currentRow:SetDimensions(412, 16)
+    currentRow:SetAnchor(TOPLEFT, currentLabel, BOTTOMLEFT, 0, 2)
+
+    local currentZone = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCurrentZone", currentRow, CT_LABEL)
+    currentZone:SetFont("ZoFontGameSmall")
+    currentZone:SetHorizontalAlignment(TEXT_ALIGN_LEFT)
+
+    local currentTimer = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCurrentTimer", currentRow, CT_LABEL)
+    currentTimer:SetFont("ZoFontGameSmall")
+    currentTimer:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
+
+    currentRow.zone = currentZone
+    currentRow.timer = currentTimer
+
+    local rows = {}
+    local previous = currentRow
+    for index = 1, 10 do
+        local row = WINDOW_MANAGER:CreateControl("SCM_StatusPanelRow" .. tostring(index), panel, CT_CONTROL)
+        row:SetDimensions(412, 16)
+        row:SetAnchor(TOPLEFT, previous, BOTTOMLEFT, 0, index == 1 and 6 or 2)
+
+        local zone1 = WINDOW_MANAGER:CreateControl("SCM_StatusPanelRowZone1" .. tostring(index), row, CT_LABEL)
+        zone1:SetFont("ZoFontGameSmall")
+        zone1:SetHorizontalAlignment(TEXT_ALIGN_LEFT)
+
+        local timer1 = WINDOW_MANAGER:CreateControl("SCM_StatusPanelRowTimer1" .. tostring(index), row, CT_LABEL)
+        timer1:SetFont("ZoFontGameSmall")
+        timer1:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
+
+        local zone2 = WINDOW_MANAGER:CreateControl("SCM_StatusPanelRowZone2" .. tostring(index), row, CT_LABEL)
+        zone2:SetFont("ZoFontGameSmall")
+        zone2:SetHorizontalAlignment(TEXT_ALIGN_LEFT)
+
+        local timer2 = WINDOW_MANAGER:CreateControl("SCM_StatusPanelRowTimer2" .. tostring(index), row, CT_LABEL)
+        timer2:SetFont("ZoFontGameSmall")
+        timer2:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
+
+        row.zone1 = zone1
+        row.timer1 = timer1
+        row.zone2 = zone2
+        row.timer2 = timer2
+        rows[index] = row
+        previous = row
+    end
+
+    local footerLabel = WINDOW_MANAGER:CreateControl("SCM_StatusPanelFooter", panel, CT_LABEL)
+    footerLabel:SetFont("ZoFontGameSmall")
+    footerLabel:SetColor(0.80, 0.80, 0.80, 1)
+    footerLabel:SetAnchor(TOPLEFT, previous, BOTTOMLEFT, 0, 8)
+
+    local function beginMove(control)
+        if not panel.isMoving and control == panel.dragBar then
+            panel.isMoving = true
+            panel:StartMoving()
+        end
+    end
+
+    local function endMove(control)
+        if panel.isMoving then
+            panel.isMoving = false
+            panel:StopMovingOrResizing()
+            SmartChatMsg:SaveStatusPanelPosition(panel)
+        end
+    end
+
+    dragBar:SetHandler("OnMouseDown", function(control, button)
+        if button == MOUSE_BUTTON_INDEX_LEFT then
+            beginMove(control)
+        end
+    end)
+    dragBar:SetHandler("OnMouseUp", function(control, button)
+        if button == MOUSE_BUTTON_INDEX_LEFT then
+            endMove(control)
+        end
+    end)
+    panel:SetHandler("OnMoveStop", function()
+        panel.isMoving = false
+        SmartChatMsg:SaveStatusPanelPosition(panel)
+    end)
+    panel:SetHandler("OnMouseWheel", function(_, delta)
+        local currentRows = panel.currentCooldownRows or {}
+        if #currentRows <= SmartChatMsg:GetStatusPanelMaxVisibleCooldownRows() then
+            return
+        end
+        SmartChatMsg:AdjustStatusPanelScrollOffset(delta > 0 and -1 or 1, #currentRows)
+        SmartChatMsg:RefreshStatusPanel()
+    end)
+
+    panel.backdrop = backdrop
+    panel.dragBar = dragBar
+    panel.titleLabel = title
+    panel.closeButton = closeButton
+    panel.statusLabel = statusLabel
+    panel.commandLabel = commandLabel
+    panel.guildLabel = guildLabel
+    panel.channelLabel = channelLabel
+    panel.divider = divider
+    panel.listHeader = listHeader
+    panel.currentLabel = currentLabel
+    panel.currentRow = currentRow
+    panel.footerLabel = footerLabel
+    panel.rows = rows
+
+    self.statusPanel = panel
+    self:ApplyStatusPanelLayout(panel, panel:GetWidth())
+    return panel
+end
+
+function SmartChatMsg:RefreshStatusPanel()
+    local panel = self:CreateStatusPanel()
+    if not panel or panel:IsHidden() then
+        return
+    end
+
+    local active = self:GetActiveAutoPopulate()
+    local rows = {}
+
+    if not active then
+        panel.statusLabel:SetColor(0.82, 0.82, 0.82, 1)
+        panel.statusLabel:SetText("Auto: Inactive")
+        panel.commandLabel:SetHidden(true)
+        panel.guildLabel:SetHidden(true)
+        panel.channelLabel:SetHidden(true)
+        panel.divider:SetHidden(true)
+        panel.listHeader:SetHidden(true)
+        panel.currentLabel:SetHidden(true)
+        panel.currentRow:SetHidden(true)
+        panel.footerLabel:SetHidden(false)
+        panel.footerLabel:SetText("Tracked Zones: 0 | Showing 0-0")
+
+        for _, row in ipairs(panel.rows) do
+            row:SetHidden(true)
+        end
+
+        panel.currentCooldownRows = {}
+        self:SetStatusPanelScrollOffset(0, 0)
+
+        local width, height = self:GetStatusPanelTargetSize(nil, rows)
+        self:StartStatusPanelSizeAnimation(width, height)
+        return
+    end
+
+    local commandName = self:BuildSlashCommandName(self:GetCommandNameById(active.commandId) or "") or "/command"
+    panel.statusLabel:SetColor(0.32, 0.86, 0.45, 1)
+    panel.statusLabel:SetText("Auto: Active")
+
+    panel.commandLabel:SetHidden(false)
+    panel.guildLabel:SetHidden(false)
+    panel.channelLabel:SetHidden(false)
+    panel.divider:SetHidden(false)
+    panel.listHeader:SetHidden(false)
+    panel.currentLabel:SetHidden(false)
+    panel.currentRow:SetHidden(false)
+    panel.footerLabel:SetHidden(false)
+
+    panel.commandLabel:SetText(tostring(commandName))
+    panel.guildLabel:SetText(tostring(active.guildName))
+    panel.channelLabel:SetText(tostring(self:GetAutoPopulateChannelStatusText(active.commandId, active.guildName)))
+    panel.listHeader:SetText("Zone Cooldowns")
+    panel.currentLabel:SetText("Current Zone")
+
+    rows = self:GetAutoPopulateStatusRows(active.commandId, active.guildName)
+
+    local currentRowData = nil
+    local scrollRows = {}
+    for _, rowData in ipairs(rows) do
+        if rowData.isCurrent and not currentRowData then
+            currentRowData = rowData
+        else
+            table.insert(scrollRows, rowData)
+        end
+    end
+
+    if currentRowData then
+        panel.currentRow:SetHidden(false)
+        panel.currentRow.zone:SetText(tostring(currentRowData.zoneName))
+        panel.currentRow.zone:SetColor(1, 1, 1, 1)
+        panel.currentRow.timer:SetText(tostring(currentRowData.statusText))
+        panel.currentRow.timer:SetColor(self:GetStatusPanelTimerColor(currentRowData.secondsRemaining, currentRowData.isApplicable))
+    else
+        panel.currentRow:SetHidden(true)
+        panel.currentRow.zone:SetText("")
+        panel.currentRow.timer:SetText("")
+    end
+
+    panel.currentCooldownRows = scrollRows
+
+    local maxVisible = self:GetStatusPanelMaxVisibleCooldownRows()
+    self:SetStatusPanelScrollOffset(self:GetStatusPanelScrollOffset(), #scrollRows)
+    local startIndex = self:GetStatusPanelScrollOffset() + 1
+    local endIndex = math.min(#scrollRows, startIndex + maxVisible - 1)
+
+    local rowIndex = 1
+    local dataIndex = startIndex
+    while dataIndex <= endIndex and rowIndex <= #panel.rows do
+        local row = panel.rows[rowIndex]
+        local first = scrollRows[dataIndex]
+        local second = nil
+
+        local candidate = scrollRows[dataIndex + 1]
+        if candidate and (dataIndex + 1) <= endIndex then
+            second = candidate
+        end
+
+        row:SetHidden(false)
+        row.isSingleSpan = false
+
+        row.zone1:SetHidden(false)
+        row.timer1:SetHidden(false)
+        row.zone1:SetText(tostring(first.zoneName))
+        row.zone1:SetColor(0.92, 0.92, 0.92, 1)
+        row.timer1:SetText(tostring(first.statusText))
+        row.timer1:SetColor(self:GetStatusPanelTimerColor(first.secondsRemaining, first.isApplicable))
+
+        if second and not row.isSingleSpan then
+            row.zone2:SetHidden(false)
+            row.timer2:SetHidden(false)
+            row.zone2:SetText(tostring(second.zoneName))
+            row.zone2:SetColor(0.92, 0.92, 0.92, 1)
+            row.timer2:SetText(tostring(second.statusText))
+            row.timer2:SetColor(self:GetStatusPanelTimerColor(second.secondsRemaining, second.isApplicable))
+        else
+            row.zone2:SetHidden(true)
+            row.timer2:SetHidden(true)
+            row.zone2:SetText("")
+            row.timer2:SetText("")
+        end
+
+        dataIndex = dataIndex + (second and 2 or 1)
+        rowIndex = rowIndex + 1
+    end
+
+    for index = rowIndex, #panel.rows do
+        local row = panel.rows[index]
+        row:SetHidden(true)
+        row.isSingleSpan = false
+        row.zone1:SetText("")
+        row.timer1:SetText("")
+        row.zone2:SetText("")
+        row.timer2:SetText("")
+    end
+
+    local showingFrom = #scrollRows > 0 and startIndex or 0
+    local showingTo = #scrollRows > 0 and endIndex or 0
+    local moreText = #scrollRows > maxVisible and " | Mouse wheel to scroll" or ""
+    local totalTracked = #scrollRows + (currentRowData and 1 or 0)
+    panel.footerLabel:SetText(string.format("Tracked Zones: %d | Other Zones %d-%d%s", totalTracked, showingFrom, showingTo, moreText))
+
+    self:ApplyStatusPanelLayout(panel, panel:GetWidth())
+
+    local width, height = self:GetStatusPanelTargetSize(active, rows)
+    self:StartStatusPanelSizeAnimation(width, height)
+end
+
+function SmartChatMsg:SetStatusPanelVisible(shouldShow)
+    local panel = self:CreateStatusPanel()
+    local visible = shouldShow == true
+    self.statusPanelVisible = visible
+    self:SetStatusPanelVisiblePreference(visible)
+    panel:SetHidden(not visible)
+
+    EVENT_MANAGER:UnregisterForUpdate(self.statusPanelRefreshName)
+    if visible then
+        self:RefreshStatusPanel()
+        EVENT_MANAGER:RegisterForUpdate(self.statusPanelRefreshName, 1000, function()
+            SmartChatMsg:RefreshStatusPanel()
+        end)
+    end
+end
+
+function SmartChatMsg:ToggleStatusPanel()
+    self:SetStatusPanelVisible(not self.statusPanelVisible)
+end
+
 local function OnAddonLoaded(event, addonName)
     if addonName ~= SmartChatMsg.name then
         return
@@ -1606,7 +2667,12 @@ local function OnAddonLoaded(event, addonName)
     SmartChatMsg.activeReminderStates = {}
     SmartChatMsg:ClearPendingRestoreState()
     SmartChatMsg:CreateSettingsPanel()
+    SmartChatMsg:CreateStatusPanel()
     SmartChatMsg:RegisterDynamicCommands()
+
+    if SmartChatMsg:GetStatusPanelVisiblePreference() then
+        SmartChatMsg:SetStatusPanelVisible(true)
+    end
 
     if LibDebugLogger and LibDebugLogger.Create then
         SmartChatMsg.logger = LibDebugLogger.Create("SmartChatMsg")
@@ -1614,7 +2680,16 @@ local function OnAddonLoaded(event, addonName)
         SmartChatMsg.logger = nil
     end
 
-    SLASH_COMMANDS["/scm"] = function()
+    SLASH_COMMANDS["/scm"] = function(paramText)
+        local normalized = zo_strlower(SmartChatMsg:Trim(paramText or ""))
+        if normalized == "status" then
+            SmartChatMsg:ToggleStatusPanel()
+            return
+        elseif normalized ~= "" then
+            d("[SmartChatMsg] Usage: /scm or /scm status")
+            return
+        end
+
         SmartChatMsg:OpenSettings()
     end
 
