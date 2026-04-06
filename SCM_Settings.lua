@@ -1308,7 +1308,7 @@ local function BuildMessagesEditor(parent)
     local countLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesEditorCountLabel", container, CT_LABEL)
     countLabel:SetFont("ZoFontGame")
     countLabel:SetDimensions(ROW_WIDTH, 24)
-    countLabel:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 0)
+    countLabel:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 15)
 
     local rowsContainer = WINDOW_MANAGER:CreateControl("SCM_ExistingMessagesRows", container, CT_CONTROL)
     rowsContainer:SetAnchor(TOPLEFT, countLabel, BOTTOMLEFT, 0, 8)
