@@ -2221,12 +2221,42 @@ function SmartChatMsg:ApplyStatusPanelLayout(panel, width)
         row.timer2:SetHeight(singleLineHeight)
     end
 
-    local lastControl = panel.currentRow or panel.currentLabel or panel.listHeader
+    local lastControl = panel.statusLabel
+
+    if panel.commandLabel and not panel.commandLabel:IsHidden() then
+        lastControl = panel.commandLabel
+    end
+
+    if panel.guildLabel and not panel.guildLabel:IsHidden() then
+        lastControl = panel.guildLabel
+    end
+
+    if panel.channelLabel and not panel.channelLabel:IsHidden() then
+        lastControl = panel.channelLabel
+    end
+
+    if panel.divider and not panel.divider:IsHidden() then
+        lastControl = panel.divider
+    end
+
+    if panel.listHeader and not panel.listHeader:IsHidden() then
+        lastControl = panel.listHeader
+    end
+
+    if panel.currentLabel and not panel.currentLabel:IsHidden() then
+        lastControl = panel.currentLabel
+    end
+
+    if panel.currentRow and not panel.currentRow:IsHidden() then
+        lastControl = panel.currentRow
+    end
+
     for _, row in ipairs(panel.rows or {}) do
         if row and not row:IsHidden() then
             lastControl = row
         end
     end
+
     panel.footerLabel:SetAnchor(TOPLEFT, lastControl, BOTTOMLEFT, 0, 8)
 end
 
