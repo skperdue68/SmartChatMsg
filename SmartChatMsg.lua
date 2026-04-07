@@ -1,4 +1,7 @@
 SmartChatMsg = SmartChatMsg or {}
+
+self.savedVars = ZO_SavedVars:NewAccountWide("SmartChatMsgSavedVars", 1, nil, self.defaults)
+
 SmartChatMsg.name = "SmartChatMsg"
 SmartChatMsg.dynamicCommands = SmartChatMsg.dynamicCommands or {}
 SmartChatMsg.commandReminderTimers = SmartChatMsg.commandReminderTimers or {}
@@ -21,6 +24,8 @@ SmartChatMsg.startupQueueDelayName = SmartChatMsg.name .. "_StartupQueueDelay"
 
 SmartChatMsg.autoPopulateTestHouseZoneId = SmartChatMsg.autoPopulateTestHouseZoneId or 1109
 SmartChatMsg.infiniteArchiveZoneId = SmartChatMsg.infiniteArchiveZoneId or 1463
+
+
 
 
 function SmartChatMsg:DebugLog(message)
