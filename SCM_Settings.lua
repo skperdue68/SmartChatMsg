@@ -1899,7 +1899,7 @@ function SmartChatMsg:CreateSettingsPanel()
         name = "SmartChatMsg",
         displayName = "SmartChatMsg",
         author = "evainefaye",
-        version = "1.4.0",
+        version = "1.9.1",
         registerForRefresh = true,
         registerForDefaults = false,
     }
@@ -1961,7 +1961,7 @@ function SmartChatMsg:CreateSettingsPanel()
         },
         {
             type = "submenu",
-            name = "Credit / Edit / Delete Commands",
+            name = "Create / Edit / Delete Commands",
             controls = {
                 {
                     type = "description",

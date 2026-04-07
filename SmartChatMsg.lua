@@ -14,6 +14,10 @@ SmartChatMsg.logger = SmartChatMsg.logger or nil
 SmartChatMsg.statusPanel = SmartChatMsg.statusPanel or nil
 SmartChatMsg.statusPanelVisible = SmartChatMsg.statusPanelVisible == true
 SmartChatMsg.statusPanelRefreshName = SmartChatMsg.name .. "_StatusPanelRefresh"
+SmartChatMsg.startupQueue = SmartChatMsg.startupQueue or {}
+SmartChatMsg.startupQueueCurrent = SmartChatMsg.startupQueueCurrent or nil
+SmartChatMsg.startupQueueInitialized = SmartChatMsg.startupQueueInitialized == true
+SmartChatMsg.startupQueueDelayName = SmartChatMsg.name .. "_StartupQueueDelay"
 
 SmartChatMsg.autoPopulateTestHouseZoneId = SmartChatMsg.autoPopulateTestHouseZoneId or 1109
 SmartChatMsg.infiniteArchiveZoneId = SmartChatMsg.infiniteArchiveZoneId or 1463
@@ -969,6 +973,10 @@ function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fr
                 self:SetActiveAutoPopulate(metadata.commandId, metadata.guildName)
             end
         end
+
+        if metadata.startupQueue == true then
+            self:HandleStartupQueuePopulateSuccess(metadata)
+        end
     end
 
     self:DebugLog("Watcher matched populated message; restoring previous channel")
@@ -1032,6 +1040,10 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
 
         if pendingState and type(pendingState.metadata) == "table" and pendingState.metadata.reminderRepeat == true then
             SmartChatMsg:HandleReminderPopulateTimeout(pendingState.metadata)
+        end
+
+        if pendingState and type(pendingState.metadata) == "table" and pendingState.metadata.startupQueue == true then
+            SmartChatMsg:HandleStartupQueuePopulateTimeout(pendingState.metadata)
         end
 
         SmartChatMsg:ClearPendingRestoreState("restore timeout")
@@ -1744,6 +1756,168 @@ function SmartChatMsg:RegisterDynamicCommands()
     end
 end
 
+
+function SmartChatMsg:BuildStartupQueueEntries()
+    local entries = {}
+
+    for _, command in ipairs(self:GetCommands()) do
+        if type(command) == "table" and type(command.id) == "string" and command.id ~= "" then
+            for guildIndex = 1, 5 do
+                local guildId = GetGuildId(guildIndex)
+                if guildId and guildId ~= 0 then
+                    local guildName = self:GetGuildNameByIndex(guildIndex)
+                    if guildName and self:GetGuildRunAt(command.id, guildName) == "STARTUP" then
+                        table.insert(entries, {
+                            commandId = command.id,
+                            guildName = guildName,
+                            guildIndex = guildIndex,
+                            paramText = tostring(guildIndex),
+                        })
+                    end
+                end
+            end
+        end
+    end
+
+    return entries
+end
+
+function SmartChatMsg:GetStartupQueueRetryDelayMilliseconds()
+    return zo_random(0, 20000)
+end
+
+function SmartChatMsg:ScheduleStartupQueueNextStep(delayMs, reason)
+    EVENT_MANAGER:UnregisterForUpdate(self.startupQueueDelayName)
+
+    local queueCount = #(self.startupQueue or {})
+    if queueCount <= 0 then
+        self:DebugLog("Startup queue: nothing left to schedule reason=" .. tostring(reason or "unspecified"))
+        return
+    end
+
+    local effectiveDelayMs = math.max(0, math.floor(tonumber(delayMs) or 0))
+    self:DebugLog(string.format(
+        "Startup queue: scheduling next step delayMs=%s remaining=%s reason=%s",
+        tostring(effectiveDelayMs),
+        tostring(queueCount),
+        tostring(reason or "unspecified")
+    ))
+
+    EVENT_MANAGER:RegisterForUpdate(self.startupQueueDelayName, effectiveDelayMs, function()
+        EVENT_MANAGER:UnregisterForUpdate(SmartChatMsg.startupQueueDelayName)
+        SmartChatMsg:ProcessStartupQueue()
+    end)
+end
+
+function SmartChatMsg:FinalizeStartupQueueCurrent(success, reason)
+    local current = self.startupQueueCurrent
+    self.startupQueueCurrent = nil
+
+    if not current then
+        self:DebugLog("Startup queue: finalize called with no current item reason=" .. tostring(reason or "unspecified"))
+        return
+    end
+
+    self:DebugLog(string.format(
+        "Startup queue: finalizing commandId=%s guildName=%s success=%s reason=%s",
+        tostring(current.commandId),
+        tostring(current.guildName),
+        tostring(success == true),
+        tostring(reason or "unspecified")
+    ))
+
+    if success ~= true then
+        table.insert(self.startupQueue, current)
+        self:ScheduleStartupQueueNextStep(self:GetStartupQueueRetryDelayMilliseconds(), reason or "startup queue retry")
+        return
+    end
+
+    if #(self.startupQueue or {}) > 0 then
+        self:ScheduleStartupQueueNextStep(0, reason or "startup queue continue")
+    end
+end
+
+function SmartChatMsg:HandleStartupQueuePopulateSuccess(metadata)
+    if type(metadata) ~= "table" or metadata.startupQueue ~= true then
+        return
+    end
+
+    self:FinalizeStartupQueueCurrent(true, "startup queue message sent")
+end
+
+function SmartChatMsg:HandleStartupQueuePopulateTimeout(metadata)
+    if type(metadata) ~= "table" or metadata.startupQueue ~= true then
+        return
+    end
+
+    self:FinalizeStartupQueueCurrent(false, "startup queue timed out")
+end
+
+function SmartChatMsg:ProcessStartupQueue()
+    if not self.startupQueueInitialized then
+        self:DebugLog("Startup queue: process skipped because queue has not been initialized")
+        return
+    end
+
+    if self.startupQueueCurrent then
+        self:DebugLog("Startup queue: process skipped because current item is still active")
+        return
+    end
+
+    if self.pendingRestoreState then
+        self:DebugLog("Startup queue: process skipped because restore watcher is already armed")
+        return
+    end
+
+    local queue = self.startupQueue or {}
+    if #queue <= 0 then
+        self:DebugLog("Startup queue: complete")
+        return
+    end
+
+    local entry = table.remove(queue, 1)
+    self.startupQueue = queue
+    self.startupQueueCurrent = entry
+
+    local slashCommandName = self:GetSlashCommandDisplayName(entry.commandId)
+    self:DebugLog(string.format(
+        "Startup queue: processing commandId=%s guildName=%s paramText=%s remainingAfterPop=%s",
+        tostring(entry.commandId),
+        tostring(entry.guildName),
+        tostring(entry.paramText),
+        tostring(#queue)
+    ))
+
+    self:HandleDynamicSlashCommand(entry.commandId, slashCommandName, entry.paramText)
+
+    local pendingState = self.pendingRestoreState
+    local metadata = pendingState and pendingState.metadata or nil
+    if type(metadata) == "table"
+        and metadata.commandId == entry.commandId
+        and self:StringsEqualIgnoreCase(metadata.guildName or "", entry.guildName or "") then
+        metadata.startupQueue = true
+        return
+    end
+
+    self:FinalizeStartupQueueCurrent(true, "startup queue completed without pending chat")
+end
+
+function SmartChatMsg:InitializeStartupQueueOnce()
+    if self.startupQueueInitialized then
+        return
+    end
+
+    self.startupQueueInitialized = true
+    self.startupQueue = self:BuildStartupQueueEntries()
+    self.startupQueueCurrent = nil
+
+    self:DebugLog("Startup queue: initialized with " .. tostring(#(self.startupQueue or {})) .. " entries")
+
+    if #(self.startupQueue or {}) > 0 then
+        self:ScheduleStartupQueueNextStep(0, "startup queue initialize")
+    end
+end
+
 function SmartChatMsg:FormatStatusDuration(secondsRemaining)
     if type(secondsRemaining) ~= "number" or secondsRemaining <= 0 then
         return "Ready"
@@ -2223,32 +2397,22 @@ function SmartChatMsg:ApplyStatusPanelLayout(panel, width)
 
     local lastControl = panel.statusLabel
 
-    if panel.commandLabel and not panel.commandLabel:IsHidden() then
-        lastControl = panel.commandLabel
-    end
-
-    if panel.guildLabel and not panel.guildLabel:IsHidden() then
-        lastControl = panel.guildLabel
-    end
-
     if panel.channelLabel and not panel.channelLabel:IsHidden() then
         lastControl = panel.channelLabel
-    end
-
-    if panel.divider and not panel.divider:IsHidden() then
-        lastControl = panel.divider
-    end
-
-    if panel.listHeader and not panel.listHeader:IsHidden() then
-        lastControl = panel.listHeader
-    end
-
-    if panel.currentLabel and not panel.currentLabel:IsHidden() then
-        lastControl = panel.currentLabel
+    elseif panel.guildLabel and not panel.guildLabel:IsHidden() then
+        lastControl = panel.guildLabel
+    elseif panel.commandLabel and not panel.commandLabel:IsHidden() then
+        lastControl = panel.commandLabel
     end
 
     if panel.currentRow and not panel.currentRow:IsHidden() then
         lastControl = panel.currentRow
+    elseif panel.currentLabel and not panel.currentLabel:IsHidden() then
+        lastControl = panel.currentLabel
+    elseif panel.listHeader and not panel.listHeader:IsHidden() then
+        lastControl = panel.listHeader
+    elseif panel.divider and not panel.divider:IsHidden() then
+        lastControl = panel.divider
     end
 
     for _, row in ipairs(panel.rows or {}) do
@@ -2745,6 +2909,7 @@ local function OnAddonLoaded(event, addonName)
 
     EVENT_MANAGER:RegisterForEvent(SmartChatMsg.name .. "_PlayerActivated", EVENT_PLAYER_ACTIVATED, function()
         SmartChatMsg:HandleZoneAutoPopulate()
+        SmartChatMsg:InitializeStartupQueueOnce()
     end)
 end
 
