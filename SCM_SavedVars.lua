@@ -8,7 +8,7 @@ SmartChatMsg.defaults = {
     messages = {}, -- { { id = "...", commandId = "...", guildIndex = n, guildName = "...", text = "..." }, ... }
 
     chatChannels = {}, -- [commandId] = { [guildKey] = "Zone"|"Guild"|"Officer" }
-    commandGuildSettings = {}, -- [commandId] = { [guildKey] = { reminderMinutes = n|nil, reminderRetryMinutes = n, autoPopulateOnZone = bool, autoPopulateCooldownMinutes = n, openStatusPanelOnRun = bool, populateSound = "DUEL_START"|"NONE"|soundKey, lastUsedAt = unixTime|nil, lastUsedParamText = "..."|nil, lastUsedGuildIndex = n|nil, lastAutoPopulateSentAtByZone = { [zoneKey] = unixTime, ... } }, ... }
+    commandGuildSettings = {}, -- [commandId] = { [guildKey] = { reminderMinutes = n|nil, reminderRetryMinutes = n, autoPopulateOnZone = bool, autoPopulateCooldownMinutes = n, runAt = "ON_DEMAND"|"STARTUP"|"SCHEDULED", openStatusPanelOnRun = bool, populateSound = "DUEL_START"|"NONE"|soundKey, lastUsedAt = unixTime|nil, lastUsedParamText = "..."|nil, lastUsedGuildIndex = n|nil, lastAutoPopulateSentAtByZone = { [zoneKey] = unixTime, ... } }, ... }
 
     selectedMessagesCommand = nil, -- commandId
     selectedMessagesGuildIndex = nil,
@@ -132,6 +132,7 @@ function SmartChatMsg:InitializeSavedVars()
                         reminderRetryMinutes = self:NormalizeReminderRetryMinutes(settings.reminderRetryMinutes),
                         autoPopulateOnZone = self:NormalizeAutoPopulateOnZone(settings.autoPopulateOnZone),
                         autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(settings.autoPopulateCooldownMinutes),
+                        runAt = self:NormalizeRunAt(settings.runAt),
                         openStatusPanelOnRun = self:NormalizeOpenStatusPanelOnRun(settings.openStatusPanelOnRun),
                         populateSound = self:NormalizePopulateSound(settings.populateSound),
                         lastUsedAt = (type(settings.lastUsedAt) == "number" and settings.lastUsedAt >= 0) and math.floor(settings.lastUsedAt) or nil,
@@ -187,6 +188,9 @@ function SmartChatMsg:InitializeSavedVars()
                     end
                     if settings.autoPopulateCooldownMinutes == nil then
                         settings.autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(nil)
+                    end
+                    if settings.runAt == nil then
+                        settings.runAt = self:NormalizeRunAt(nil)
                     end
                     if settings.openStatusPanelOnRun == nil then
                         settings.openStatusPanelOnRun = self:NormalizeOpenStatusPanelOnRun(nil)
@@ -333,6 +337,15 @@ function SmartChatMsg:NormalizePopulateSound(value)
     return "DUEL_START"
 end
 
+function SmartChatMsg:NormalizeRunAt(value)
+    local normalized = zo_strupper(self:Trim(tostring(value or "ON_DEMAND")))
+    if normalized == "STARTUP" or normalized == "SCHEDULED" then
+        return normalized
+    end
+
+    return "ON_DEMAND"
+end
+
 function SmartChatMsg:NormalizeOpenStatusPanelOnRun(value)
     return value == true
 end
@@ -461,6 +474,7 @@ function SmartChatMsg:BuildExportString()
                         self:EscapeImportExportField(settings.lastUsedGuildIndex or ""),
                         self:EscapeImportExportField(table.concat(zonePairs, ",")),
                         self:EscapeImportExportField(settings.populateSound or "DUEL_START"),
+                        self:EscapeImportExportField(settings.runAt or "ON_DEMAND"),
                         self:EscapeImportExportField(settings.openStatusPanelOnRun == true and "1" or "0"),
                     }, "|"))
                 end
@@ -633,6 +647,7 @@ elseif recordType == "GUILDSETTING" then
     local lastUsedGuildIndex = nil
     local zoneTimestampText = ""
     local populateSound = "DUEL_START"
+    local runAt = "ON_DEMAND"
     local openStatusPanelOnRun = false
 
     if parts[11] ~= nil then
@@ -653,6 +668,12 @@ elseif recordType == "GUILDSETTING" then
             zoneTimestampText = self:UnescapeImportExportField(parts[10] or "")
             populateSound = normalizedPart11
             openStatusPanelOnRun = self:UnescapeImportExportField(parts[12] or "") == "1"
+
+            local possibleRunAt = self:UnescapeImportExportField(parts[12] or "")
+            if possibleRunAt == "ON_DEMAND" or possibleRunAt == "STARTUP" or possibleRunAt == "SCHEDULED" or parts[13] ~= nil then
+                runAt = self:NormalizeRunAt(possibleRunAt)
+                openStatusPanelOnRun = self:UnescapeImportExportField(parts[13] or "") == "1"
+            end
         else
             -- Legacy format with per-guild revert:
             -- GUILDSETTING|commandId|guildKey|reminderMinutes|retry|autoPopulate|cooldown|revert|lastUsedAt|lastUsedParamText|lastUsedGuildIndex|zoneTimestamps
@@ -713,6 +734,7 @@ elseif recordType == "GUILDSETTING" then
                     lastUsedGuildIndex = lastUsedGuildIndex and math.floor(lastUsedGuildIndex) or nil,
                     lastAutoPopulateSentAtByZone = lastAutoPopulateSentAtByZone,
                     populateSound = self:NormalizePopulateSound(populateSound),
+                    runAt = self:NormalizeRunAt(runAt),
                     openStatusPanelOnRun = self:NormalizeOpenStatusPanelOnRun(openStatusPanelOnRun),
                 }
             end
@@ -865,6 +887,15 @@ function SmartChatMsg:GetGuildPopulateSound(commandId, guildName)
     end
 
     return self:NormalizePopulateSound(nil)
+end
+
+function SmartChatMsg:GetGuildRunAt(commandId, guildName)
+    local settings = self:GetCommandGuildSettings(commandId, guildName, false)
+    if settings and settings.runAt ~= nil then
+        return self:NormalizeRunAt(settings.runAt)
+    end
+
+    return "ON_DEMAND"
 end
 
 function SmartChatMsg:GetGuildOpenStatusPanelOnRun(commandId, guildName)
@@ -1029,6 +1060,21 @@ function SmartChatMsg:SetGuildPopulateSound(commandId, guildName, populateSound)
     end
 
     settings.populateSound = self:NormalizePopulateSound(populateSound)
+    return true
+end
+
+function SmartChatMsg:SetGuildRunAt(commandId, guildName, runAt)
+    local command = self:GetCommandById(commandId)
+    if not command then
+        return false, "The selected Command no longer exists."
+    end
+
+    local settings = self:GetCommandGuildSettings(commandId, guildName, true)
+    if not settings then
+        return false, "Select a Guild first."
+    end
+
+    settings.runAt = self:NormalizeRunAt(runAt)
     return true
 end
 

@@ -9,6 +9,7 @@ SmartChatMsg.settings = SmartChatMsg.settings or {
     pendingGuildReminderMinutes = "",
     pendingGuildReminderRetryMinutes = "0",
     pendingGuildAutoPopulateOnZone = false,
+    pendingGuildRunAt = "ON_DEMAND",
     pendingGuildOpenStatusPanelOnRun = false,
     pendingGuildAutoPopulateCooldownMinutes = "60",
     pendingGuildPopulateSound = "DUEL_START",
@@ -80,6 +81,15 @@ local function GetUsefulSoundOptions()
     end
 
     return options
+end
+
+
+local function GetRunAtOptions()
+    return {
+        { value = "ON_DEMAND", label = "On Demand" },
+        { value = "STARTUP", label = "Startup" },
+        { value = "SCHEDULED", label = "Scheduled" },
+    }
 end
 
 local DELETE_DIALOG_NAME = "SCM_CONFIRM_DELETE_MESSAGE_TYPE"
@@ -298,6 +308,7 @@ function SmartChatMsg.settings:InitializeState()
         self.pendingGuildReminderMinutes = reminderMinutes and tostring(reminderMinutes) or ""
         self.pendingGuildReminderRetryMinutes = tostring(SmartChatMsg:GetGuildEffectiveReminderRetryMinutes(commandId, guildName) or 0)
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
+        self.pendingGuildRunAt = SmartChatMsg:GetGuildRunAt(commandId, guildName) or "ON_DEMAND"
         self.pendingGuildOpenStatusPanelOnRun = SmartChatMsg:GetGuildOpenStatusPanelOnRun(commandId, guildName) == true
         self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
         self.pendingGuildPopulateSound = SmartChatMsg:GetGuildPopulateSound(commandId, guildName) or "DUEL_START"
@@ -306,6 +317,7 @@ function SmartChatMsg.settings:InitializeState()
         self.pendingGuildReminderMinutes = ""
         self.pendingGuildReminderRetryMinutes = "0"
         self.pendingGuildAutoPopulateOnZone = false
+        self.pendingGuildRunAt = "ON_DEMAND"
         self.pendingGuildOpenStatusPanelOnRun = false
         self.pendingGuildAutoPopulateCooldownMinutes = "60"
         self.pendingGuildPopulateSound = "DUEL_START"
@@ -344,6 +356,11 @@ function SmartChatMsg.settings:SaveBehaviorSettings()
     end
 
     ok, err = SmartChatMsg:SetGuildAutoPopulateCooldownMinutes(commandId, guildName, self.pendingGuildAutoPopulateCooldownMinutes)
+    if not ok then
+        return false, err
+    end
+
+    ok, err = SmartChatMsg:SetGuildRunAt(commandId, guildName, self.pendingGuildRunAt)
     if not ok then
         return false, err
     end
@@ -395,6 +412,7 @@ function SmartChatMsg.settings:ResetNewMessageSection()
         self.pendingGuildReminderMinutes = reminderMinutes and tostring(reminderMinutes) or ""
         self.pendingGuildReminderRetryMinutes = tostring(SmartChatMsg:GetGuildEffectiveReminderRetryMinutes(commandId, guildName) or 0)
         self.pendingGuildAutoPopulateOnZone = SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName) == true
+        self.pendingGuildRunAt = SmartChatMsg:GetGuildRunAt(commandId, guildName) or "ON_DEMAND"
         self.pendingGuildOpenStatusPanelOnRun = SmartChatMsg:GetGuildOpenStatusPanelOnRun(commandId, guildName) == true
         self.pendingGuildAutoPopulateCooldownMinutes = tostring(SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName) or 60)
         self.pendingGuildPopulateSound = SmartChatMsg:GetGuildPopulateSound(commandId, guildName) or "DUEL_START"
@@ -403,6 +421,7 @@ function SmartChatMsg.settings:ResetNewMessageSection()
         self.pendingGuildReminderMinutes = ""
         self.pendingGuildReminderRetryMinutes = "0"
         self.pendingGuildAutoPopulateOnZone = false
+        self.pendingGuildRunAt = "ON_DEMAND"
         self.pendingGuildOpenStatusPanelOnRun = false
         self.pendingGuildAutoPopulateCooldownMinutes = "60"
         self.pendingGuildPopulateSound = "DUEL_START"
@@ -1010,7 +1029,7 @@ end
 
 local function BuildMessagesBehaviorSettings(parent)
     local container = WINDOW_MANAGER:CreateControl("SCM_MessagesBehaviorSettingsContainer", parent, CT_CONTROL)
-    container:SetDimensions(ROW_WIDTH, 160)
+    container:SetDimensions(ROW_WIDTH, 235)
 
     local function HasActiveRepeatAfter()
         local value = tonumber(SmartChatMsg.settings.pendingGuildReminderMinutes or "")
@@ -1121,8 +1140,51 @@ local function BuildMessagesBehaviorSettings(parent)
         SmartChatMsg:RefreshSettingsUI()
     end)
 
+    local runAtLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesRunAtLabel", container, CT_LABEL)
+    runAtLabel:SetFont("ZoFontWinH4")
+    runAtLabel:SetText("Run At")
+    runAtLabel:SetDimensions(LABEL_WIDTH, 30)
+    runAtLabel:SetAnchor(TOPLEFT, autoPopulateCheckbox, BOTTOMLEFT, 0, 0)
+
+    local runAtComboBoxControl = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesRunAtDropdown", container, "ZO_ComboBox")
+    runAtComboBoxControl:SetDimensions(DROPDOWN_WIDTH, 28)
+    runAtComboBoxControl:SetAnchor(LEFT, runAtLabel, RIGHT, 8, 0)
+
+    local runAtComboBox = ZO_ComboBox_ObjectFromContainer(runAtComboBoxControl)
+    runAtComboBox:SetSortsItems(false)
+
+    local function RefreshRunAtDropdown()
+        runAtComboBox:ClearItems()
+
+        local selectedValue = SmartChatMsg.settings.pendingGuildRunAt or "ON_DEMAND"
+        local selectedLabel = "On Demand"
+
+        for _, option in ipairs(GetRunAtOptions()) do
+            if option.value == selectedValue then
+                selectedLabel = option.label
+            end
+
+            local entry = runAtComboBox:CreateItemEntry(option.label, function()
+                SmartChatMsg.settings.pendingGuildRunAt = option.value
+
+                local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
+                if not ok and err then
+                    ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
+                    return
+                end
+
+                SmartChatMsg:RefreshSettingsUI()
+            end)
+            runAtComboBox:AddItem(entry)
+        end
+
+        runAtComboBox:SetSelectedItem(selectedLabel)
+    end
+
     local openStatusPanelCheckbox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesOpenStatusPanelOnRunCheckbox", container, "ZO_CheckButton")
-    openStatusPanelCheckbox:SetAnchor(TOPLEFT, autoPopulateCheckbox, BOTTOMLEFT, 0, 8)
+    openStatusPanelCheckbox:SetAnchor(TOPLEFT, autoPopulateCheckbox, BOTTOMLEFT, 0, 18)
+    runAtLabel:ClearAnchors()
+    runAtLabel:SetAnchor(TOPLEFT, openStatusPanelCheckbox, BOTTOMLEFT, -70, 12)
     ZO_CheckButton_SetLabelText(openStatusPanelCheckbox, "Open Status Panel on Run")
     ZO_CheckButton_SetToggleFunction(openStatusPanelCheckbox, function(_, checked)
         if not HasAutomationBehaviorEnabled() then
@@ -1177,8 +1239,8 @@ local function BuildMessagesBehaviorSettings(parent)
     local soundLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesPopulateSoundLabel", container, CT_LABEL)
     soundLabel:SetFont("ZoFontWinH4")
     soundLabel:SetText("Notify Sound")
-    soundLabel:SetDimensions(135, 30)
-    soundLabel:SetAnchor(TOPLEFT, openStatusPanelCheckbox, BOTTOMLEFT, -70, 18)
+    soundLabel:SetDimensions(LABEL_WIDTH, 30)
+    soundLabel:SetAnchor(TOPLEFT, runAtLabel, BOTTOMLEFT, 0, 18)
 
     local soundComboBoxControl = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesPopulateSoundDropdown", container, "ZO_ComboBox")
     soundComboBoxControl:SetDimensions(DROPDOWN_WIDTH, 28)
@@ -1278,6 +1340,7 @@ local function BuildMessagesBehaviorSettings(parent)
         reminderRetryBackdrop:SetAlpha(repeatEnabled and 1 or 0.5)
         reminderRetryLabel:SetAlpha(repeatEnabled and 1 or 0.5)
 
+        RefreshRunAtDropdown()
         RefreshSoundDropdown()
 
         local soundIsNone = (SmartChatMsg.settings.pendingGuildPopulateSound or "DUEL_START") == "NONE"
@@ -1291,6 +1354,7 @@ local function BuildMessagesBehaviorSettings(parent)
     SmartChatMsg.settings.controls.messagesBehaviorReminderEditBox = reminderEditBox
     SmartChatMsg.settings.controls.messagesBehaviorReminderRetryEditBox = reminderRetryEditBox
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCheckbox = autoPopulateCheckbox
+    SmartChatMsg.settings.controls.messagesBehaviorRunAtDropdown = runAtComboBoxControl
     SmartChatMsg.settings.controls.messagesBehaviorOpenStatusPanelOnRunCheckbox = openStatusPanelCheckbox
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCooldownEditBox = cooldownEditBox
     SmartChatMsg.settings.controls.messagesBehaviorPopulateSoundDropdown = soundComboBoxControl
@@ -1308,7 +1372,7 @@ local function BuildMessagesEditor(parent)
     local countLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesEditorCountLabel", container, CT_LABEL)
     countLabel:SetFont("ZoFontGame")
     countLabel:SetDimensions(ROW_WIDTH, 24)
-    countLabel:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 15)
+    countLabel:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 45)
 
     local rowsContainer = WINDOW_MANAGER:CreateControl("SCM_ExistingMessagesRows", container, CT_CONTROL)
     rowsContainer:SetAnchor(TOPLEFT, countLabel, BOTTOMLEFT, 0, 8)
@@ -2020,7 +2084,7 @@ function SmartChatMsg:CreateSettingsPanel()
                     type = "custom",
                     reference = "SCM_MessagesBehaviorSettingsHolder",
                     createFunc = function(control)
-                        control:SetHeight(110)
+                        control:SetHeight(335)
                         messagesBehaviorSettingsHolder = BuildMessagesBehaviorSettings(control)
                         messagesBehaviorSettingsHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
                     end,
@@ -2029,7 +2093,7 @@ function SmartChatMsg:CreateSettingsPanel()
                             messagesBehaviorSettingsHolder:RefreshEditor()
                         end
 
-                        control:SetHeight(SmartChatMsg:IsMessagesSelectionComplete() and 154 or 0)
+                        control:SetHeight(SmartChatMsg:IsMessagesSelectionComplete() and 335 or 0)
                     end,
                 },
                 {
@@ -2038,7 +2102,7 @@ function SmartChatMsg:CreateSettingsPanel()
                     createFunc = function(control)
                         control:SetHeight(0)
                         messagesEditorHolder = BuildMessagesEditor(control)
-                        messagesEditorHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
+                        messagesEditorHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 30)
                     end,
                     refreshFunc = function(control)
                         if messagesEditorHolder and messagesEditorHolder.RefreshEditor then
