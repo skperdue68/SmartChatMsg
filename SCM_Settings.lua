@@ -2050,22 +2050,6 @@ function SmartChatMsg:CreateSettingsPanel()
                 },
                 {
                     type = "custom",
-                    reference = "SCM_MessagesChannelDescriptionHolder",
-                    createFunc = function(control)
-                        control:SetHeight(24)
-                        local messagesChannelDescriptionHolder = BuildMessagesChannelDescription(control)
-                        messagesChannelDescriptionHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
-                    end,
-                    refreshFunc = function(control)
-                        if SmartChatMsg.settings.controls.messagesChannelDescription and SmartChatMsg.settings.controls.messagesChannelDescription.RefreshDescription then
-                            SmartChatMsg.settings.controls.messagesChannelDescription:RefreshDescription()
-                        end
-
-                        control:SetHeight(SmartChatMsg:IsMessagesSelectionComplete() and 24 or 0)
-                    end,
-                },
-                {
-                    type = "custom",
                     reference = "SCM_MessagesChannelDropdownHolder",
                     createFunc = function(control)
                         control:SetHeight(40)
