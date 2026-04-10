@@ -692,7 +692,8 @@ function SmartChatMsg:GetEmbeddedDayOffset(text, nowEpoch, timeMatch)
     end
 
     local source = zo_strlower(tostring(text or ""))
-    local now = os.date("*t", tonumber(nowEpoch) or os.time())
+    local nowEpochSafe = tonumber(nowEpoch) or os.time()
+    local now = os.date("*t", nowEpochSafe)
     local beforeScope = source
     local afterScope = ""
 
@@ -710,6 +711,100 @@ function SmartChatMsg:GetEmbeddedDayOffset(text, nowEpoch, timeMatch)
     else
         self:DebugLog("Countdown debug: day scan could not locate detected time in source; using full text as before-scope")
     end
+
+    local function tryExtractDateOffset(scope, anchor)
+        local scopeText = tostring(scope or "")
+        if scopeText == "" then
+            self:DebugLog("Countdown debug: no date token seen anchor=" .. tostring(anchor) .. " scope=empty")
+            return nil
+        end
+
+        local dateToken = nil
+        local m, d, y = nil, nil, nil
+
+        local function isDateBoundary(startPos, endPos)
+            local beforeChar = (startPos and startPos > 1) and scopeText:sub(startPos - 1, startPos - 1) or ""
+            local afterChar = (endPos and endPos < #scopeText) and scopeText:sub(endPos + 1, endPos + 1) or ""
+            local beforeOk = beforeChar == "" or not beforeChar:match("[%d]")
+            local afterOk = afterChar == "" or not afterChar:match("[%d]")
+            return beforeOk and afterOk
+        end
+
+        local s1, e1, m1, d1, y1 = scopeText:find("(%d?%d)%s*/%s*(%d?%d)%s*/%s*(%d%d%d%d)")
+        if s1 and isDateBoundary(s1, e1) then
+            m, d, y = m1, d1, y1
+            dateToken = string.format("%s/%s/%s", m, d, y)
+        else
+            local s2, e2, m2, d2 = scopeText:find("(%d?%d)%s*/%s*(%d?%d)")
+            if s2 and isDateBoundary(s2, e2) then
+                m, d = m2, d2
+                dateToken = string.format("%s/%s", m, d)
+            end
+        end
+
+        if not m then
+            self:DebugLog("Countdown debug: no date token seen anchor=" .. tostring(anchor) .. " scope=" .. tostring(scopeText))
+            return nil
+        end
+
+        local month = tonumber(m)
+        local day = tonumber(d)
+        local year = tonumber(y)
+        if not month or not day or month < 1 or month > 12 or day < 1 or day > 31 then
+            self:DebugLog("Countdown debug: date token ignored anchor=" .. tostring(anchor) .. " token=" .. tostring(dateToken) .. " reason=invalid_month_or_day")
+            return nil
+        end
+
+        if not year then
+            year = now.year
+        elseif year < 100 then
+            year = 2000 + year
+        end
+
+        local candidateEpoch = os.time({year = year, month = month, day = day, hour = 12, min = 0, sec = 0})
+        if not candidateEpoch then
+            self:DebugLog("Countdown debug: date token ignored anchor=" .. tostring(anchor) .. " token=" .. tostring(dateToken) .. " reason=os_time_failed")
+            return nil
+        end
+
+        local candidateDate = os.date("*t", candidateEpoch)
+        if candidateDate.year ~= year or candidateDate.month ~= month or candidateDate.day ~= day then
+            self:DebugLog("Countdown debug: date token ignored anchor=" .. tostring(anchor) .. " token=" .. tostring(dateToken) .. " reason=normalized_to_different_date")
+            return nil
+        end
+
+        local nowStartOfDay = os.time({year = now.year, month = now.month, day = now.day, hour = 0, min = 0, sec = 0})
+        local candidateStartOfDay = os.time({year = year, month = month, day = day, hour = 0, min = 0, sec = 0})
+        local dayOffset = math.floor((candidateStartOfDay - nowStartOfDay) / (24 * 60 * 60))
+
+        if dayOffset < 0 then
+            self:DebugLog("Countdown debug: date detected but ignored anchor=" .. tostring(anchor) .. " token=" .. tostring(dateToken) .. " dayOffset=" .. tostring(dayOffset) .. " reason=past_date")
+            return nil
+        end
+
+        self:DebugLog("Countdown debug: date detected anchor=" .. tostring(anchor) .. " token=" .. tostring(dateToken) .. " resolvedYear=" .. tostring(year) .. " resolvedMonth=" .. tostring(month) .. " resolvedDay=" .. tostring(day) .. " dayOffset=" .. tostring(dayOffset))
+        return dayOffset
+    end
+
+    local beforeDateOffset = tryExtractDateOffset(beforeScope, "before_time")
+    if beforeDateOffset ~= nil then
+        self:DebugLog("Countdown debug: day detection selected date_before_time dayOffset=" .. tostring(beforeDateOffset))
+        return beforeDateOffset
+    end
+
+    local afterDateWindow = afterScope
+    if #afterDateWindow > 64 then
+        afterDateWindow = afterDateWindow:sub(1, 64)
+    end
+    local afterDateOffset = tryExtractDateOffset(afterDateWindow, "after_time")
+    if afterDateOffset ~= nil then
+        self:DebugLog("Countdown debug: day detection selected date_after_time dayOffset=" .. tostring(afterDateOffset))
+        return afterDateOffset
+    end
+
+    -- Do not let a broad full-text date scan suppress relative-day words like tomorrow.
+    -- Prefer scoped dates near the detected time first; only use full-text date fallback
+    -- after scoped relative-day / weekday parsing has had a chance to win.
 
     local function normalizeScope(scope)
         local normalizedScope = zo_strlower(tostring(scope or ""))
@@ -789,6 +884,12 @@ function SmartChatMsg:GetEmbeddedDayOffset(text, nowEpoch, timeMatch)
     if fullOffset ~= nil then
         self:DebugLog("Countdown debug: day detection selected full_text_fallback dayOffset=" .. tostring(fullOffset))
         return fullOffset
+    end
+
+    local fullDateOffset = tryExtractDateOffset(source, "full_text_fallback")
+    if fullDateOffset ~= nil then
+        self:DebugLog("Countdown debug: day detection selected date_full_text_fallback dayOffset=" .. tostring(fullDateOffset))
+        return fullDateOffset
     end
 
     self:DebugLog("Countdown debug: no day detected for matched time; defaulting dayOffset=nil")
@@ -925,50 +1026,123 @@ function SmartChatMsg:InsertCountdownIntoMessageText(text)
         return source
     end
 
+    local function consumeLeadingPattern(segment, pattern)
+        local matched = segment:match(pattern)
+        if not matched or matched == "" then
+            return "", segment
+        end
+
+        return matched, segment:sub(#matched + 1)
+    end
+
+    local function consumeLeadingSupportedTimezone(segment)
+        local tokens = self:GetSupportedTimezoneTokens() or {}
+        local working = segment
+        local leadingWhitespace = working:match("^(%s*)") or ""
+        local afterWhitespace = working:sub(#leadingWhitespace + 1)
+        local lowerAfterWhitespace = zo_strlower(afterWhitespace)
+
+        local bestToken = nil
+        for _, token in ipairs(tokens) do
+            local trimmedToken = self:Trim(token)
+            if trimmedToken ~= "" then
+                local lowerToken = zo_strlower(trimmedToken)
+                if lowerAfterWhitespace:sub(1, #lowerToken) == lowerToken then
+                    local nextChar = afterWhitespace:sub(#trimmedToken + 1, #trimmedToken + 1)
+                    if nextChar == "" or not nextChar:match("[%a]") then
+                        if not bestToken or #trimmedToken > #bestToken then
+                            bestToken = trimmedToken
+                        end
+                    end
+                end
+            end
+        end
+
+        if not bestToken then
+            return "", segment
+        end
+
+        local consumed = leadingWhitespace .. afterWhitespace:sub(1, #bestToken)
+        return consumed, segment:sub(#consumed + 1)
+    end
+
     local fullDisplayStart = matchStart
     local fullDisplayEnd = matchEnd
     local fullDisplayMatch = source:sub(fullDisplayStart, fullDisplayEnd)
-
     local trailing = source:sub(matchEnd + 1)
-    local trailingPrefix = trailing:match("^%s*[AaPp]%.?%s*[Mm]%.?%s*[A-Za-z%.]+")
-        or trailing:match("^%s*[AaPp]%.?%s*[Mm]%.")
-        or trailing:match("^%s*[AaPp]%.?%s*[Mm]%f[%A]")
-        or trailing:match("^%s*[A-Za-z][A-Za-z][A-Za-z]%f[%A]")
 
-    if trailingPrefix and trailingPrefix ~= "" then
-        fullDisplayEnd = matchEnd + #trailingPrefix
+    local consumedMeridiem = ""
+    consumedMeridiem, trailing = consumeLeadingPattern(trailing, "^%s*[AaPp]%.?%s*[Mm]%.?")
+    if consumedMeridiem ~= "" then
+        fullDisplayEnd = fullDisplayEnd + #consumedMeridiem
+        fullDisplayMatch = source:sub(fullDisplayStart, fullDisplayEnd)
+    end
+
+    local consumedTimezone = ""
+    consumedTimezone, trailing = consumeLeadingSupportedTimezone(trailing)
+    if consumedTimezone ~= "" then
+        fullDisplayEnd = fullDisplayEnd + #consumedTimezone
         fullDisplayMatch = source:sub(fullDisplayStart, fullDisplayEnd)
     end
 
     local explicitMeridiemMatch = fullDisplayMatch:match("(%s*[AaPp]%.?%s*[Mm]%.?)")
-    local existingTimezoneMatch = nil
-    if explicitMeridiemMatch then
-        existingTimezoneMatch = fullDisplayMatch:match("%s*[AaPp]%.?%s*[Mm]%.?(%s*[A-Za-z][A-Za-z][A-Za-z]%f[%A])")
-    else
-        existingTimezoneMatch = fullDisplayMatch:match("(%s*[A-Za-z][A-Za-z][A-Za-z]%f[%A])")
-    end
-
     local assumedMeridiemSuffix = ""
     if countdownMeta and countdownMeta.assumedMeridiem and not explicitMeridiemMatch then
         assumedMeridiemSuffix = " " .. countdownMeta.assumedMeridiem
     end
 
-    local timezoneSuffix = ""
-    if existingTimezoneMatch and self:Trim(existingTimezoneMatch) ~= "" then
-        timezoneSuffix = existingTimezoneMatch
-        if explicitMeridiemMatch then
-            fullDisplayMatch = fullDisplayMatch:gsub(self:EscapeLuaPattern(existingTimezoneMatch) .. "$", "")
-        else
-            fullDisplayMatch = fullDisplayMatch:gsub(self:EscapeLuaPattern(existingTimezoneMatch) .. "$", "")
+    local existingTimezoneInDisplay = ""
+    do
+        local tokens = self:GetSupportedTimezoneTokens() or {}
+        local bestToken = nil
+        local lowerDisplay = zo_strlower(fullDisplayMatch)
+        for _, token in ipairs(tokens) do
+            local trimmedToken = self:Trim(token)
+            if trimmedToken ~= "" then
+                local pattern = "(%s+" .. self:EscapeLuaPattern(trimmedToken) .. ")%s*$"
+                local match = fullDisplayMatch:match(pattern)
+                if match and (not bestToken or #trimmedToken > #bestToken) then
+                    bestToken = trimmedToken
+                    existingTimezoneInDisplay = match
+                end
+            end
         end
+    end
+
+    local timezoneSuffix = ""
+    if existingTimezoneInDisplay ~= "" and self:Trim(existingTimezoneInDisplay) ~= "" then
+        timezoneSuffix = existingTimezoneInDisplay
+    elseif consumedTimezone ~= "" and self:Trim(consumedTimezone) ~= "" then
+        timezoneSuffix = consumedTimezone
     elseif sourceTz and self:Trim(sourceTz) ~= "" then
         timezoneSuffix = " " .. self:Trim(sourceTz)
     else
         timezoneSuffix = " " .. self:GetLocalTimezoneDisplayName()
     end
 
-    local insertionText = fullDisplayMatch .. assumedMeridiemSuffix .. timezoneSuffix .. " (" .. countdownText .. ")"
-    local updatedText = source:sub(1, fullDisplayStart - 1) .. insertionText .. source:sub(fullDisplayEnd + 1)
+    local insertionText = fullDisplayMatch .. assumedMeridiemSuffix
+    if existingTimezoneInDisplay == "" and consumedTimezone == "" then
+        insertionText = insertionText .. timezoneSuffix
+    end
+    insertionText = insertionText .. " (" .. countdownText .. ")"
+
+    local remainder = source:sub(fullDisplayEnd + 1)
+    local normalizedTimezoneSuffix = self:Trim(timezoneSuffix)
+    if normalizedTimezoneSuffix ~= "" then
+        local leadingWhitespace = remainder:match("^(%s*)") or ""
+        local afterWhitespace = remainder:sub(#leadingWhitespace + 1)
+        local lowerAfterWhitespace = zo_strlower(afterWhitespace)
+        local lowerTimezoneSuffix = zo_strlower(normalizedTimezoneSuffix)
+        if lowerAfterWhitespace:sub(1, #lowerTimezoneSuffix) == lowerTimezoneSuffix then
+            local nextChar = afterWhitespace:sub(#normalizedTimezoneSuffix + 1, #normalizedTimezoneSuffix + 1)
+            if nextChar == "" or not nextChar:match("[%a]") then
+                remainder = leadingWhitespace .. afterWhitespace:sub(#normalizedTimezoneSuffix + 1)
+                self:DebugLog("Countdown debug: removed duplicate trailing timezone token from remainder token=" .. tostring(normalizedTimezoneSuffix))
+            end
+        end
+    end
+
+    local updatedText = source:sub(1, fullDisplayStart - 1) .. insertionText .. remainder
     self:DebugLog("Countdown debug: updated message text=" .. tostring(updatedText))
     return updatedText
 end
