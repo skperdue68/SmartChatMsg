@@ -319,21 +319,35 @@ function SmartChatMsg:GetApproximateCountdownTextFromSeconds(diffSeconds, source
     return "about " .. table.concat(parts, " ")
 end
 
-function SmartChatMsg:GetLocalUtcOffsetHours(epochSeconds)
-    local now = tonumber(epochSeconds) or os.time()
-    local localTime = os.date("*t", now)
-    local utcTime = os.date("!*t", now)
-
-    local localEpoch = os.time(localTime)
-    local utcEpochAsLocal = os.time(utcTime)
-    return (localEpoch - utcEpochAsLocal) / 3600
+local function scm_get_utc_now()
+    return os.time(os.date("!*t"))
 end
 
-function SmartChatMsg:GetResolvedTimezoneOffsetHours(timezoneName, epochSeconds)
+local function scm_get_local_utc_offset_seconds(epoch)
+    local targetEpoch = tonumber(epoch) or os.time()
+    return targetEpoch - os.time(os.date("!*t", targetEpoch))
+end
+
+local function scm_build_utc_timestamp(year, month, day, hour, minute, second)
+    local localEpoch = os.time({
+        year = year,
+        month = month,
+        day = day,
+        hour = hour,
+        min = minute,
+        sec = second or 0,
+    })
+
+    return localEpoch + scm_get_local_utc_offset_seconds(localEpoch)
+end
+
+function SmartChatMsg:GetUtcNow()
+    return scm_get_utc_now()
+end
+
+function SmartChatMsg:GetResolvedTimezoneOffsetHours(timezoneName, eventEpoch)
     local normalized = self:Trim(tostring(timezoneName or ""))
-    if normalized == "" then
-        return nil
-    end
+    if normalized == "" then return nil end
 
     normalized = zo_strupper(normalized)
     normalized = normalized:gsub("%.", "")
@@ -357,8 +371,13 @@ function SmartChatMsg:GetResolvedTimezoneOffsetHours(timezoneName, epochSeconds)
         return fixedOffsets[normalized]
     end
 
-    local when = tonumber(epochSeconds) or os.time()
-    local isDst = os.date("*t", when).isdst == true
+    -- DST based on EVENT TIME (NOT local)
+    local isDst = false
+    if eventEpoch then
+        local t = os.date("*t", eventEpoch)
+        isDst = t and t.isdst == true
+    end
+
     local genericOffsets = {
         ET = isDst and -4 or -5,
         EASTERN = isDst and -4 or -5,
@@ -507,7 +526,8 @@ function SmartChatMsg:GetLocalTimezoneDisplayName(epochSeconds)
     local timezoneName = self:Trim(os.date("%Z", when) or "")
     local normalized = zo_strupper(timezoneName):gsub("%.", ""):gsub("%s+TIME$", ""):gsub("%s+", "")
 
-    local isDst = os.date("*t", when).isdst == true
+    local localDate = os.date("*t", when)
+    local isDst = localDate and localDate.isdst == true
     local aliasMap = {
         UTC = "UTC",
         GMT = "GMT",
@@ -533,7 +553,18 @@ function SmartChatMsg:GetLocalTimezoneDisplayName(epochSeconds)
         return aliasMap[normalized]
     end
 
-    local offset = self:GetLocalUtcOffsetHours(when)
+    local utcDate = os.date("!*t", when)
+    local localEpoch = os.time(localDate)
+    local utcEpochAsLocal = os.time(utcDate)
+    local offset = (localEpoch - utcEpochAsLocal) / 3600
+    if type(offset) ~= "number" then
+        return "UTC"
+    end
+
+    if offset ~= math.floor(offset) then
+        return string.format("UTC%+.1f", offset)
+    end
+
     local lookup = {
         [-8] = "PST",
         [-7] = isDst and "MDT" or "MST",
@@ -613,772 +644,6 @@ function SmartChatMsg:TryReturnDetectedTime(source, fullMatch, hour, minute, tim
     return fullMatch, hour, normalizedMinute, timezoneToken
 end
 
-
-function SmartChatMsg:FindEmbeddedTimeDetails(text)
-    local source = tostring(text or "")
-    local lowerSource, sourceIndexMap = self:BuildLowercaseSourceIndexMap(source)
-    self:DebugLog("Countdown debug: scanning for embedded time in text=" .. tostring(source))
-
-    local function tryPattern(pattern, patternName, timezoneToken, hourTransform)
-        local searchStart = 1
-        while searchStart <= #lowerSource do
-            local startPos, endPos, a, b, c = lowerSource:find(pattern, searchStart)
-            if not startPos then
-                break
-            end
-
-            local hour, minute = hourTransform(a, b, c)
-            if hour ~= nil and minute ~= nil then
-                local originalMatch = self:SliceOriginalByLowerPositions(source, sourceIndexMap, startPos, endPos)
-                local detectedMatch, detectedHour, detectedMinute, detectedTimezone = self:TryReturnDetectedTime(source, originalMatch, hour, minute, timezoneToken, patternName)
-                if detectedMatch then
-                    return detectedMatch, detectedHour, detectedMinute, detectedTimezone
-                end
-            end
-
-            searchStart = startPos + 1
-        end
-
-        return nil, nil, nil, nil
-    end
-
-    local function isTokenBoundary(startPos, endPos)
-        local beforeChar = (startPos and startPos > 1) and lowerSource:sub(startPos - 1, startPos - 1) or ""
-        local afterChar = (endPos and endPos < #lowerSource) and lowerSource:sub(endPos + 1, endPos + 1) or ""
-        local beforeOk = beforeChar == "" or not beforeChar:match("[%a%d]")
-        local afterOk = afterChar == "" or not afterChar:match("[%a%d]")
-        return beforeOk and afterOk
-    end
-
-    local snippetPatterns = {
-        {
-            pattern = "(%d%d?)%s*:%s*(%d%d)%s*([ap])%.?%s*[m]%.?",
-            name = "12h_with_minutes",
-            transform = function(h, m, ap)
-                local meridiem = (ap == "a") and "AM" or "PM"
-                local hour = self:NormalizeExtractedHour(h, meridiem)
-                local minute = tonumber(m)
-                if hour and minute and minute >= 0 and minute <= 59 then return hour, minute end
-            end,
-        },
-        {
-            pattern = "(%d%d?)%s*([ap])%.?%s*[m]%.?",
-            name = "12h_hour_only",
-            transform = function(h, ap)
-                local meridiem = (ap == "a") and "AM" or "PM"
-                local hour = self:NormalizeExtractedHour(h, meridiem)
-                if hour then return hour, 0 end
-            end,
-        },
-        {
-            pattern = "(%d)(%d%d)%s*([ap])%.?%s*[m]%.?",
-            name = "12h_compact_3digit",
-            transform = function(h, m, ap)
-                local meridiem = (ap == "a") and "AM" or "PM"
-                local hour = self:NormalizeExtractedHour(h, meridiem)
-                local minute = tonumber(m)
-                if hour and minute and minute >= 0 and minute <= 59 then return hour, minute end
-            end,
-        },
-        {
-            pattern = "(%d%d)(%d%d)%s*([ap])%.?%s*[m]%.?",
-            name = "12h_compact_4digit",
-            transform = function(h, m, ap)
-                local meridiem = (ap == "a") and "AM" or "PM"
-                local hour = self:NormalizeExtractedHour(h, meridiem)
-                local minute = tonumber(m)
-                if hour and minute and minute >= 0 and minute <= 59 then return hour, minute end
-            end,
-        },
-        {
-            pattern = "(%d%d?)%s*:%s*(%d%d)",
-            name = "24h_with_minutes",
-            transform = function(h, m, snippetText, relStartPos, relEndPos)
-                local tail = tostring(snippetText or ""):sub((relEndPos or 0) + 1)
-                if tail:match("^%s*[ap]%.?%s*m%f[%A]") then
-                    return nil, nil
-                end
-
-                local hour = tonumber(h)
-                local minute = tonumber(m)
-                if hour and minute and hour >= 0 and hour <= 23 and minute >= 0 and minute <= 59 then return hour, minute end
-            end,
-        },
-    }
-
-    local function parseSnippet(snippet, snippetStart, matchEndLimit, timezoneToken, labelPrefix)
-        for _, entry in ipairs(snippetPatterns) do
-            local searchStart = 1
-            while searchStart <= #snippet do
-                local relStart, relEnd, a, b, c = snippet:find(entry.pattern, searchStart)
-                if not relStart then
-                    break
-                end
-
-                local absStart = snippetStart + relStart - 1
-                local absEnd = snippetStart + relEnd - 1
-                if (not matchEndLimit or absEnd <= matchEndLimit) then
-                    if isTokenBoundary(absStart, absEnd) then
-                        local hour, minute = entry.transform(a, b, c, snippet, relStart, relEnd)
-                        if hour ~= nil and minute ~= nil then
-                            local originalMatch = self:SliceOriginalByLowerPositions(source, sourceIndexMap, absStart, absEnd)
-                            local detectedMatch, detectedHour, detectedMinute, detectedTimezone =
-                                self:TryReturnDetectedTime(source, originalMatch, hour, minute, timezoneToken, labelPrefix .. entry.name)
-                            if detectedMatch then
-                                return detectedMatch, detectedHour, detectedMinute, detectedTimezone
-                            end
-                        end
-                    end
-                end
-
-                searchStart = relStart + 1
-            end
-        end
-
-        return nil, nil, nil, nil
-    end
-
-    local function trySnippetBeforeTimezone(token, tokenStart, tokenEnd)
-        local snippetStart = math.max(1, tokenStart - 32)
-        local snippet = lowerSource:sub(snippetStart, tokenStart - 1)
-        return parseSnippet(snippet, snippetStart, tokenStart - 1, token, "tz_near_token_")
-    end
-
-    for _, token in ipairs(self:GetSupportedTimezoneTokens()) do
-        local normalizedToken = zo_strlower(token)
-        local searchStart = 1
-        while searchStart <= #lowerSource do
-            local tokenStart, tokenEnd = lowerSource:find(normalizedToken, searchStart, true)
-            if not tokenStart then break end
-            if isTokenBoundary(tokenStart, tokenEnd) then
-                local detectedMatch, detectedHour, detectedMinute, detectedTimezone = trySnippetBeforeTimezone(token, tokenStart, tokenEnd)
-                if detectedMatch then return detectedMatch, detectedHour, detectedMinute, detectedTimezone end
-            end
-            searchStart = tokenStart + 1
-        end
-    end
-
-    self:DebugLog("Countdown debug: timezone-aware patterns produced no match; trying local fallback patterns")
-
-    do
-        local detectedMatch, detectedHour, detectedMinute, detectedTimezone =
-            parseSnippet(lowerSource, 1, nil, nil, "local_scan_")
-        if detectedMatch then
-            return detectedMatch, detectedHour, detectedMinute, detectedTimezone
-        end
-    end
-
-    local noonStart, noonEnd = lowerSource:find("%f[%a]noon%f[%A]")
-    if noonStart then
-        local originalMatch = self:SliceOriginalByLowerPositions(source, sourceIndexMap, noonStart, noonEnd)
-        local m, h, mi = self:TryReturnDetectedTime(source, originalMatch, 12, 0, nil, "keyword_noon")
-        if m then return m, h, mi, nil end
-    end
-
-    local midnightStart, midnightEnd = lowerSource:find("%f[%a]midnight%f[%A]")
-    if midnightStart then
-        local originalMatch = self:SliceOriginalByLowerPositions(source, sourceIndexMap, midnightStart, midnightEnd)
-        local m, h, mi = self:TryReturnDetectedTime(source, originalMatch, 0, 0, nil, "keyword_midnight")
-        if m then return m, h, mi, nil end
-    end
-
-    self:DebugLog("Countdown debug: no embedded time detected")
-    return nil, nil, nil, nil
-end
-function SmartChatMsg:ExtractEmbeddedTimeParts(text)
-    local _, hour, minute, timezoneToken = self:FindEmbeddedTimeDetails(text)
-    return hour, minute, timezoneToken
-end
-
-function SmartChatMsg:FindEmbeddedTimeSubstring(text)
-    local fullMatch = self:FindEmbeddedTimeDetails(text)
-    return fullMatch
-end
-
-
-function SmartChatMsg:GetExpandedDetectedTimeSpan(sourceText, timeMatch)
-    local source = tostring(sourceText or "")
-    local detected = tostring(timeMatch or "")
-    if source == "" or detected == "" then
-        return nil
-    end
-
-    local lowerSource = zo_strlower(source)
-    local lowerDetected = zo_strlower(detected)
-
-    local matchStart, matchEnd = lowerSource:find(self:EscapeLuaPattern(lowerDetected), 1)
-    if not matchStart then
-        return nil
-    end
-
-    local fullDisplayStart = matchStart
-    local fullDisplayEnd = matchEnd
-
-    if not self:HasExplicitMeridiem(detected) then
-        local trailingLower = lowerSource:sub(fullDisplayEnd + 1)
-        local meridiemStart, meridiemEnd = trailingLower:find("^%s*[ap]%.?%s*m%.?%f[%A]")
-        if meridiemStart and meridiemEnd then
-            fullDisplayEnd = fullDisplayEnd + meridiemEnd
-        end
-    end
-
-    local trailingOriginal = source:sub(fullDisplayEnd + 1)
-    local _, timezoneFullMatch = self:FindLeadingSupportedTimezoneToken(trailingOriginal)
-    if timezoneFullMatch and timezoneFullMatch ~= "" then
-        fullDisplayEnd = fullDisplayEnd + #timezoneFullMatch
-    end
-
-    local fullDisplayMatch = source:sub(fullDisplayStart, fullDisplayEnd)
-
-    return {
-        startIndex = fullDisplayStart,
-        endIndex = fullDisplayEnd,
-        baseMatchStart = matchStart,
-        baseMatchEnd = matchEnd,
-        fullMatch = fullDisplayMatch,
-        replacedSubstring = fullDisplayMatch,
-    }
-end
-
-function SmartChatMsg:GetWeekdayIndexByName(dayName)
-    local normalized = zo_strlower(self:Trim(tostring(dayName or "")))
-    normalized = normalized:gsub("%.", "")
-
-    local weekdayMap = {
-        sunday = 1,
-        sun = 1,
-        monday = 2,
-        mon = 2,
-        tuesday = 3,
-        tue = 3,
-        tues = 3,
-        wednesday = 4,
-        wed = 4,
-        thursday = 5,
-        thu = 5,
-        thur = 5,
-        thurs = 5,
-        friday = 6,
-        fri = 6,
-        saturday = 7,
-        sat = 7,
-    }
-
-    return weekdayMap[normalized]
-end
-
-function SmartChatMsg:GetEmbeddedDayOffset(text, nowEpoch, timeMatch)
-    if not timeMatch or timeMatch == "" then
-        self:DebugLog("Countdown debug: day detection skipped because no time was detected")
-        return nil
-    end
-
-    local sourceOriginal = tostring(text or "")
-    local source = zo_strlower(sourceOriginal)
-    local nowEpochSafe = tonumber(nowEpoch) or os.time()
-    local now = os.date("*t", nowEpochSafe)
-    local beforeScope = source
-    local afterScope = ""
-
-    local span = self:GetExpandedDetectedTimeSpan(sourceOriginal, timeMatch)
-    if span then
-        beforeScope = source:sub(1, span.startIndex - 1)
-        afterScope = source:sub(span.endIndex + 1)
-        self:DebugLog(string.format(
-            "Countdown debug: day scan scopes prepared timeMatch=%s expandedMatch=%s beforeScope=%s afterScope=%s",
-            tostring(timeMatch),
-            tostring(span.fullMatch),
-            tostring(beforeScope),
-            tostring(afterScope)
-        ))
-    else
-        self:DebugLog("Countdown debug: day scan could not locate detected time in source; using full text as before-scope")
-    end
-
-    local function tryExtractDateOffset(scope, anchor)
-        local scopeText = tostring(scope or "")
-        if scopeText == "" then
-            self:DebugLog("Countdown debug: no date token seen anchor=" .. tostring(anchor) .. " scope=empty")
-            return nil
-        end
-
-        local dateToken = nil
-        local m, d, y = nil, nil, nil
-
-        local function isDateBoundary(startPos, endPos)
-            local beforeChar = (startPos and startPos > 1) and scopeText:sub(startPos - 1, startPos - 1) or ""
-            local afterChar = (endPos and endPos < #scopeText) and scopeText:sub(endPos + 1, endPos + 1) or ""
-            local beforeOk = beforeChar == "" or not beforeChar:match("[%d]")
-            local afterOk = afterChar == "" or not afterChar:match("[%d]")
-            return beforeOk and afterOk
-        end
-
-        local s1, e1, m1, d1, y1 = scopeText:find("(%d?%d)%s*/%s*(%d?%d)%s*/%s*(%d%d%d%d)")
-        if s1 and isDateBoundary(s1, e1) then
-            m, d, y = m1, d1, y1
-            dateToken = string.format("%s/%s/%s", m, d, y)
-        else
-            local s2, e2, m2, d2 = scopeText:find("(%d?%d)%s*/%s*(%d?%d)")
-            if s2 and isDateBoundary(s2, e2) then
-                m, d = m2, d2
-                dateToken = string.format("%s/%s", m, d)
-            end
-        end
-
-        if not m then
-            self:DebugLog("Countdown debug: no date token seen anchor=" .. tostring(anchor) .. " scope=" .. tostring(scopeText))
-            return nil
-        end
-
-        local month = tonumber(m)
-        local day = tonumber(d)
-        local year = tonumber(y)
-        if not month or not day or month < 1 or month > 12 or day < 1 or day > 31 then
-            self:DebugLog("Countdown debug: date token ignored anchor=" .. tostring(anchor) .. " token=" .. tostring(dateToken) .. " reason=invalid_month_or_day")
-            return nil
-        end
-
-        if not year then
-            year = now.year
-        elseif year < 100 then
-            year = 2000 + year
-        end
-
-        local candidateEpoch = os.time({year = year, month = month, day = day, hour = 12, min = 0, sec = 0})
-        if not candidateEpoch then
-            self:DebugLog("Countdown debug: date token ignored anchor=" .. tostring(anchor) .. " token=" .. tostring(dateToken) .. " reason=os_time_failed")
-            return nil
-        end
-
-        local candidateDate = os.date("*t", candidateEpoch)
-        if candidateDate.year ~= year or candidateDate.month ~= month or candidateDate.day ~= day then
-            self:DebugLog("Countdown debug: date token ignored anchor=" .. tostring(anchor) .. " token=" .. tostring(dateToken) .. " reason=normalized_to_different_date")
-            return nil
-        end
-
-        local nowStartOfDay = os.time({year = now.year, month = now.month, day = now.day, hour = 0, min = 0, sec = 0})
-        local candidateStartOfDay = os.time({year = year, month = month, day = day, hour = 0, min = 0, sec = 0})
-        local dayOffset = math.floor((candidateStartOfDay - nowStartOfDay) / (24 * 60 * 60))
-
-        if dayOffset < 0 then
-            self:DebugLog("Countdown debug: date detected but ignored anchor=" .. tostring(anchor) .. " token=" .. tostring(dateToken) .. " dayOffset=" .. tostring(dayOffset) .. " reason=past_date")
-            return nil
-        end
-
-        self:DebugLog("Countdown debug: date detected anchor=" .. tostring(anchor) .. " token=" .. tostring(dateToken) .. " resolvedYear=" .. tostring(year) .. " resolvedMonth=" .. tostring(month) .. " resolvedDay=" .. tostring(day) .. " dayOffset=" .. tostring(dayOffset))
-        return dayOffset
-    end
-
-    local beforeDateOffset = tryExtractDateOffset(beforeScope, "before_time")
-    if beforeDateOffset ~= nil then
-        self:DebugCountdownState("day_resolution_result", {
-            timeMatch = timeMatch,
-            resultDayOffset = beforeDateOffset,
-            selectedFrom = "date_before_time",
-            sourcePreview = tostring(text or ""):sub(1, 120),
-        })
-        self:DebugLog("Countdown debug: day detection selected date_before_time dayOffset=" .. tostring(beforeDateOffset))
-        return beforeDateOffset
-    end
-
-    local afterDateWindow = afterScope
-    if #afterDateWindow > 64 then
-        afterDateWindow = afterDateWindow:sub(1, 64)
-    end
-    local afterDateOffset = tryExtractDateOffset(afterDateWindow, "after_time")
-    if afterDateOffset ~= nil then
-        self:DebugCountdownState("day_resolution_result", {
-            timeMatch = timeMatch,
-            resultDayOffset = afterDateOffset,
-            selectedFrom = "date_after_time",
-            sourcePreview = tostring(text or ""):sub(1, 120),
-        })
-        self:DebugLog("Countdown debug: day detection selected date_after_time dayOffset=" .. tostring(afterDateOffset))
-        return afterDateOffset
-    end
-
-    local function normalizeScope(scope)
-        local normalizedScope = zo_strlower(tostring(scope or ""))
-        normalizedScope = normalizedScope:gsub("[^%a%s]", " ")
-        normalizedScope = normalizedScope:gsub("%s+", " ")
-        normalizedScope = self:Trim(normalizedScope)
-        return normalizedScope
-    end
-
-    local function extractDayToken(scope, anchor)
-        if not scope or scope == "" then
-            self:DebugLog("Countdown debug: no day token seen anchor=" .. tostring(anchor) .. " scope=empty")
-            return nil
-        end
-
-        local normalizedScope = normalizeScope(scope)
-        self:DebugLog("Countdown debug: normalized day scope anchor=" .. tostring(anchor) .. " scope=" .. tostring(normalizedScope))
-        if normalizedScope == "" then
-            self:DebugLog("Countdown debug: no day token seen anchor=" .. tostring(anchor) .. " scope=empty_after_normalize")
-            return nil
-        end
-
-        local words = {}
-        for word in normalizedScope:gmatch("%a+") do
-            table.insert(words, word)
-        end
-        self:DebugLog("Countdown debug: day scan tokens anchor=" .. tostring(anchor) .. " tokens=" .. table.concat(words, "|"))
-
-        for _, word in ipairs(words) do
-            if word == "tomorrow" then
-                self:DebugLog("Countdown debug: relative day detected=tomorrow anchor=" .. tostring(anchor) .. " dayOffset=1")
-                return 1
-            end
-            if word == "today" or word == "tonight" then
-                self:DebugLog("Countdown debug: relative day detected=today_or_tonight anchor=" .. tostring(anchor) .. " dayOffset=0")
-                return 0
-            end
-        end
-
-        for _, word in ipairs(words) do
-            local targetWday = self:GetWeekdayIndexByName(word)
-            if targetWday then
-                local delta = (targetWday - now.wday) % 7
-                self:DebugLog(string.format(
-                    "Countdown debug: weekday detected=%s anchor=%s dayOffset=%s currentWday=%s targetWday=%s",
-                    tostring(word),
-                    tostring(anchor),
-                    tostring(delta),
-                    tostring(now.wday),
-                    tostring(targetWday)
-                ))
-                return delta
-            end
-        end
-
-        self:DebugLog("Countdown debug: no day token seen anchor=" .. tostring(anchor) .. " scope=" .. tostring(normalizedScope))
-        return nil
-    end
-
-    local beforeOffset = extractDayToken(beforeScope, "before_time")
-    if beforeOffset ~= nil then
-        self:DebugCountdownState("day_resolution_result", {
-            timeMatch = timeMatch,
-            resultDayOffset = beforeOffset,
-            selectedFrom = "before_time",
-            sourcePreview = tostring(text or ""):sub(1, 120),
-        })
-        self:DebugLog("Countdown debug: day detection selected before_time dayOffset=" .. tostring(beforeOffset))
-        return beforeOffset
-    end
-
-    local afterWindow = afterScope
-    if #afterWindow > 48 then
-        afterWindow = afterWindow:sub(1, 48)
-    end
-    local afterOffset = extractDayToken(afterWindow, "after_time")
-    if afterOffset ~= nil then
-        self:DebugCountdownState("day_resolution_result", {
-            timeMatch = timeMatch,
-            resultDayOffset = afterOffset,
-            selectedFrom = "after_time",
-            sourcePreview = tostring(text or ""):sub(1, 120),
-        })
-        self:DebugLog("Countdown debug: day detection selected after_time dayOffset=" .. tostring(afterOffset))
-        return afterOffset
-    end
-
-    local fullOffset = extractDayToken(source, "full_text_fallback")
-    if fullOffset ~= nil then
-        self:DebugCountdownState("day_resolution_result", {
-            timeMatch = timeMatch,
-            resultDayOffset = fullOffset,
-            selectedFrom = "full_text_fallback",
-            sourcePreview = tostring(text or ""):sub(1, 120),
-        })
-        self:DebugLog("Countdown debug: day detection selected full_text_fallback dayOffset=" .. tostring(fullOffset))
-        return fullOffset
-    end
-
-    local fullDateOffset = tryExtractDateOffset(source, "full_text_fallback")
-    if fullDateOffset ~= nil then
-        self:DebugCountdownState("day_resolution_result", {
-            timeMatch = timeMatch,
-            resultDayOffset = fullDateOffset,
-            selectedFrom = "date_full_text_fallback",
-            sourcePreview = tostring(text or ""):sub(1, 120),
-        })
-        self:DebugLog("Countdown debug: day detection selected date_full_text_fallback dayOffset=" .. tostring(fullDateOffset))
-        return fullDateOffset
-    end
-
-    self:DebugCountdownState("day_resolution_result", {
-        timeMatch = timeMatch,
-        resultDayOffset = "nil",
-        sourcePreview = tostring(text or ""):sub(1, 120),
-    })
-    self:DebugLog("Countdown debug: no day detected for matched time; defaulting dayOffset=nil")
-    return nil
-end
-
-function SmartChatMsg:GetCountdownUntilEmbeddedTimeText(text)
-    local timeMatch, hour, minute, sourceTz = self:FindEmbeddedTimeDetails(text)
-    if not hour then
-        self:DebugLog("Countdown debug: countdown not computed because no time was detected")
-        return nil
-    end
-
-    local nowEpoch = os.time()
-    local nowLocal = os.date("*t", nowEpoch)
-    local localOffset = self:GetLocalUtcOffsetHours(nowEpoch)
-
-    if not sourceTz or self:Trim(sourceTz) == "" or self:Trim(sourceTz) == "TZ?" then
-        self:DebugCountdownState("timezone_resolution", {
-            timeMatch = timeMatch,
-            sourceTz = "TZ?",
-            localOffset = localOffset,
-            sourceOffset = "TZ?",
-            nowEpoch = nowEpoch,
-            countdownSkipped = true,
-            skipReason = "missing_explicit_timezone",
-        })
-        self:DebugLog("Countdown debug: countdown not computed because no explicit timezone was detected")
-        return nil
-    end
-
-    local sourceOffset = localOffset
-
-    if sourceTz and self:Trim(sourceTz) ~= "" then
-        local resolvedOffset = self:GetResolvedTimezoneOffsetHours(sourceTz)
-        if resolvedOffset == nil then
-            self:DebugLog("Countdown debug: countdown not computed because timezone could not be resolved for " .. tostring(sourceTz))
-            return nil
-        end
-        sourceOffset = resolvedOffset
-    end
-
-    self:DebugCountdownState("timezone_resolution", {
-        timeMatch = timeMatch,
-        sourceTz = sourceTz or "TZ?",
-        localOffset = localOffset,
-        sourceOffset = sourceOffset,
-        nowEpoch = nowEpoch,
-    })
-
-    local dayOffset = self:GetEmbeddedDayOffset(text, nowEpoch, timeMatch)
-    if dayOffset == nil then
-        dayOffset = 0
-    end
-
-    local hasExplicitMeridiem = self:HasExplicitMeridiem(timeMatch)
-    local shouldUseNearestFuture12Hour = (not hasExplicitMeridiem) and hour >= 1 and hour <= 12
-
-    local function buildTargetEpoch(candidateHour)
-        local candidateEpoch = os.time({
-            year = nowLocal.year,
-            month = nowLocal.month,
-            day = nowLocal.day + dayOffset,
-            hour = candidateHour,
-            min = minute,
-            sec = 0,
-        }) + ((localOffset + sourceOffset) * 3600)
-
-        if dayOffset == 0 then
-            while candidateEpoch <= nowEpoch do
-                candidateEpoch = candidateEpoch + (24 * 60 * 60)
-            end
-        elseif candidateEpoch <= nowEpoch then
-            candidateEpoch = candidateEpoch + (7 * 24 * 60 * 60)
-        end
-
-        self:DebugCountdownState("target_epoch_candidate", {
-            candidateHour = candidateHour,
-            minute = minute,
-            dayOffset = dayOffset,
-            localOffset = localOffset,
-            sourceOffset = sourceOffset,
-            candidateEpoch = candidateEpoch,
-        })
-
-        return candidateEpoch
-    end
-
-    local targetEpoch = nil
-    local resolvedHour = hour
-    if shouldUseNearestFuture12Hour then
-        local candidateHours = { hour }
-        local pmHour = hour % 12 + 12
-        if pmHour ~= hour then
-            table.insert(candidateHours, pmHour)
-        end
-
-        for _, candidateHour in ipairs(candidateHours) do
-            local candidateEpoch = buildTargetEpoch(candidateHour)
-            if not targetEpoch or candidateEpoch < targetEpoch then
-                targetEpoch = candidateEpoch
-                resolvedHour = candidateHour
-            end
-        end
-
-        self:DebugLog(string.format(
-            "Countdown debug: ambiguous 12-hour time without meridiem resolved to next future occurrence match=%s baseHour=%s chosenHour=%s chosenTargetEpoch=%s dayOffset=%s",
-            tostring(timeMatch),
-            tostring(hour),
-            tostring(resolvedHour),
-            tostring(targetEpoch),
-            tostring(dayOffset)
-        ))
-    else
-        targetEpoch = buildTargetEpoch(hour)
-        resolvedHour = hour
-    end
-
-    local countdownText = self:GetApproximateCountdownTextFromSeconds(targetEpoch - nowEpoch, text, self:FindEmbeddedTimeSubstring(text))
-
-    self:DebugCountdownState("countdown_final", {
-        timeMatch = timeMatch,
-        resolvedHour24 = resolvedHour,
-        minute = minute,
-        hasExplicitMeridiem = hasExplicitMeridiem,
-        dayOffset = dayOffset,
-        nowEpoch = nowEpoch,
-        targetEpoch = targetEpoch,
-        diffSeconds = targetEpoch - nowEpoch,
-        countdownText = countdownText,
-        sourceTz = sourceTz or "TZ?",
-    })
-
-    local metadata = {
-        timeMatch = timeMatch,
-        sourceTz = sourceTz,
-        hasExplicitMeridiem = hasExplicitMeridiem,
-        shouldUseNearestFuture12Hour = shouldUseNearestFuture12Hour,
-        assumedMeridiem = nil,
-        resolvedHour24 = resolvedHour,
-    }
-
-    if shouldUseNearestFuture12Hour then
-        metadata.assumedMeridiem = (resolvedHour >= 12) and "PM" or "AM"
-    end
-
-    self:DebugCountdownState("countdown_metadata", {
-        timeMatch = metadata.timeMatch,
-        sourceTz = metadata.sourceTz or "TZ?",
-        hasExplicitMeridiem = metadata.hasExplicitMeridiem,
-        shouldUseNearestFuture12Hour = metadata.shouldUseNearestFuture12Hour,
-        assumedMeridiem = metadata.assumedMeridiem or "nil",
-        resolvedHour24 = metadata.resolvedHour24,
-    })
-
-    return countdownText, metadata
-end
-
-function SmartChatMsg:InsertCountdownIntoMessageText(text)
-    local source = tostring(text or "")
-    local timeMatch, _, _, sourceTz = self:FindEmbeddedTimeDetails(source)
-    if not timeMatch or timeMatch == "" then
-        self:DebugLog("Countdown debug: message text left unchanged because no time was detected")
-        return source
-    end
-
-    local countdownText, countdownMeta = self:GetCountdownUntilEmbeddedTimeText(source)
-    if not countdownText or countdownText == "" then
-        self:DebugLog("Countdown debug: message text left unchanged because countdown text could not be computed")
-        return source
-    end
-
-    local span = self:GetExpandedDetectedTimeSpan(source, timeMatch)
-    if not span then
-        self:DebugLog("Countdown debug: message text left unchanged because detected time could not be located in source")
-        return source
-    end
-
-    local fullDisplayStart = span.startIndex
-    local fullDisplayEnd = span.endIndex
-    local fullDisplayMatch = span.fullMatch
-    local originalReplacedSubstring = span.replacedSubstring
-    local explicitMeridiemMatch = fullDisplayMatch:match("(%s*[AaPp]%.?%s*[Mm]%.?)")
-    local existingTimezoneToken, existingTimezoneMatch = self:GetTrailingSupportedTimezoneToken(fullDisplayMatch)
-
-    local assumedMeridiemSuffix = ""
-    if countdownMeta and countdownMeta.assumedMeridiem and not explicitMeridiemMatch then
-        assumedMeridiemSuffix = " " .. countdownMeta.assumedMeridiem
-    end
-
-    local timezoneSuffix = ""
-    local hasExplicitTimezone = false
-    if existingTimezoneMatch and self:Trim(existingTimezoneMatch) ~= "" then
-        timezoneSuffix = existingTimezoneMatch
-        hasExplicitTimezone = true
-        fullDisplayMatch = fullDisplayMatch:gsub(self:EscapeLuaPattern(existingTimezoneMatch) .. "$", "")
-    elseif sourceTz and self:Trim(sourceTz) ~= "" and self:Trim(sourceTz) ~= "TZ?" then
-        timezoneSuffix = " " .. self:Trim(sourceTz)
-        hasExplicitTimezone = true
-    else
-        timezoneSuffix = " TZ?"
-    end
-
-    self:DebugCountdownState("countdown_insertion_parts", {
-        timeMatch = timeMatch,
-        fullDisplayMatch = fullDisplayMatch,
-        explicitMeridiem = explicitMeridiemMatch or "nil",
-        existingTimezone = existingTimezoneMatch or "nil",
-        assumedMeridiemSuffix = assumedMeridiemSuffix ~= "" and assumedMeridiemSuffix or "nil",
-        timezoneSuffix = timezoneSuffix ~= "" and timezoneSuffix or "nil",
-        countdownText = countdownText,
-    })
-
-    local insertionText = fullDisplayMatch .. assumedMeridiemSuffix .. timezoneSuffix
-    if hasExplicitTimezone and countdownText and countdownText ~= "" then
-        insertionText = insertionText .. " (" .. countdownText .. ")"
-    end
-
-    local remainder = source:sub(fullDisplayEnd + 1)
-    local normalizedTimezoneSuffix = self:Trim(timezoneSuffix)
-    if normalizedTimezoneSuffix ~= "" then
-        local remainderTimezoneToken, remainderTimezoneFullMatch = self:FindLeadingSupportedTimezoneToken(remainder)
-        if remainderTimezoneToken and self:StringsEqualIgnoreCase(remainderTimezoneToken, normalizedTimezoneSuffix) then
-            remainder = remainder:sub(#remainderTimezoneFullMatch + 1)
-            self:DebugLog(string.format(
-                "Countdown debug: removed duplicate trailing timezone token from remainder token=%s fullMatch=%s",
-                tostring(remainderTimezoneToken),
-                tostring(remainderTimezoneFullMatch)
-            ))
-        end
-    end
-
-    local updatedText = source:sub(1, fullDisplayStart - 1) .. insertionText .. remainder
-    self:DebugCountdownState("countdown_insertion_result", {
-        insertionStartIndex = fullDisplayStart,
-        insertionEndIndex = fullDisplayEnd,
-        replacedSubstring = originalReplacedSubstring,
-        insertedText = insertionText,
-        finalOutput = updatedText,
-    })
-    self:DebugLog("Countdown debug: updated message text=" .. tostring(updatedText))
-    return updatedText
-end
-
-function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName)
-    local result = tostring(text or "")
-    local timeOfDay = self:GetCurrentTimeTokenValue()
-
-    local substitutions = {
-        ["timeofday"] = timeOfDay,
-        ["greeting"] = timeOfDay,
-        ["time"] = timeOfDay,
-        ["guild"] = self:Trim(guildName or ""),
-        ["zone"] = self:GetCurrentZoneName() or "",
-    }
-
-    result = result:gsub("%%([%a]+)%%", function(tokenName)
-        local normalizedToken = zo_strlower(tokenName or "")
-        local replacement = substitutions[normalizedToken]
-        if replacement ~= nil and replacement ~= "" then
-            return replacement
-        end
-
-        return "%" .. tostring(tokenName or "") .. "%"
-    end)
-
-    result = self:InsertCountdownIntoMessageText(result)
-    return result
-end
 
 function SmartChatMsg:ShowCommandTestNotification(commandName, parameterValue)
     local message = string.format("SmartChatMsg test: command %s called with parameter %s", tostring(commandName), tostring(parameterValue))
@@ -4881,128 +4146,117 @@ local function scm_is_dst_active(nowTableOrEpoch)
     return false
 end
 
-local function scm_day_of_week(year, month, day)
-    local ts = os.time({ year = year, month = month, day = day, hour = 12, min = 0, sec = 0 })
-    if not ts then
-        return nil
-    end
-    local t = os.date("*t", ts)
-    return t and t.wday or nil
-end
-
-local function scm_nth_weekday_of_month(year, month, weekday, nth)
-    local firstWday = scm_day_of_week(year, month, 1)
-    if not firstWday then
-        return nil
-    end
-    local delta = (weekday - firstWday) % 7
-    return 1 + delta + ((nth - 1) * 7)
-end
-
-local function scm_is_us_dst_for_local_datetime(year, month, day, hour, minute)
-    if not year or not month or not day then
-        return false
-    end
-
-    local safeHour = tonumber(hour) or 0
-
-    if month < 3 or month > 11 then
-        return false
-    end
-    if month > 3 and month < 11 then
-        return true
-    end
-
-    local secondSundayInMarch = scm_nth_weekday_of_month(year, 3, 1, 2)
-    local firstSundayInNovember = scm_nth_weekday_of_month(year, 11, 1, 1)
-
-    if month == 3 then
-        if day > secondSundayInMarch then
-            return true
-        elseif day < secondSundayInMarch then
-            return false
-        end
-        return safeHour >= 2
-    end
-
-    if month == 11 then
-        if day < firstSundayInNovember then
-            return true
-        elseif day > firstSundayInNovember then
-            return false
-        end
-        return safeHour < 2
-    end
-
-    return false
-end
-
-local function scm_get_timezone_family_info(tz)
+local function scm_get_timezone_family(tz)
     if not tz or tz == "" then
         return nil
     end
 
     local normalized = tostring(tz):upper():gsub("%.", ""):gsub("%s+TIME$", ""):gsub("%s+", "")
+    if normalized == "ET" or normalized == "EST" or normalized == "EDT" or normalized == "EASTERN" then
+        return "EASTERN"
+    elseif normalized == "CT" or normalized == "CST" or normalized == "CDT" or normalized == "CENTRAL" then
+        return "CENTRAL"
+    elseif normalized == "MT" or normalized == "MST" or normalized == "MDT" or normalized == "MOUNTAIN" then
+        return "MOUNTAIN"
+    elseif normalized == "PT" or normalized == "PST" or normalized == "PDT" or normalized == "PACIFIC" then
+        return "PACIFIC"
+    end
 
-    local families = {
-        EST = { family = "EASTERN", std = "EST", dst = "EDT", usesDst = true, fixed = true },
-        EDT = { family = "EASTERN", std = "EST", dst = "EDT", usesDst = true, fixed = true },
-        ET = { family = "EASTERN", std = "EST", dst = "EDT", usesDst = true, fixed = false },
-        EASTERN = { family = "EASTERN", std = "EST", dst = "EDT", usesDst = true, fixed = false },
+    return nil
+end
 
-        CST = { family = "CENTRAL", std = "CST", dst = "CDT", usesDst = true, fixed = true },
-        CDT = { family = "CENTRAL", std = "CST", dst = "CDT", usesDst = true, fixed = true },
-        CT = { family = "CENTRAL", std = "CST", dst = "CDT", usesDst = true, fixed = false },
-        CENTRAL = { family = "CENTRAL", std = "CST", dst = "CDT", usesDst = true, fixed = false },
+local function scm_get_family_timezone_for_dst(family, isDst)
+    if family == "EASTERN" then
+        return isDst and "EDT" or "EST"
+    elseif family == "CENTRAL" then
+        return isDst and "CDT" or "CST"
+    elseif family == "MOUNTAIN" then
+        return isDst and "MDT" or "MST"
+    elseif family == "PACIFIC" then
+        return isDst and "PDT" or "PST"
+    end
 
-        MST = { family = "MOUNTAIN", std = "MST", dst = "MDT", usesDst = true, fixed = true },
-        MDT = { family = "MOUNTAIN", std = "MST", dst = "MDT", usesDst = true, fixed = true },
-        MT = { family = "MOUNTAIN", std = "MST", dst = "MDT", usesDst = true, fixed = false },
-        MOUNTAIN = { family = "MOUNTAIN", std = "MST", dst = "MDT", usesDst = true, fixed = false },
+    return nil
+end
 
-        PST = { family = "PACIFIC", std = "PST", dst = "PDT", usesDst = true, fixed = true },
-        PDT = { family = "PACIFIC", std = "PST", dst = "PDT", usesDst = true, fixed = true },
-        PT = { family = "PACIFIC", std = "PST", dst = "PDT", usesDst = true, fixed = false },
-        PACIFIC = { family = "PACIFIC", std = "PST", dst = "PDT", usesDst = true, fixed = false },
+local function scm_is_dst_timezone_name(timezoneName)
+    local normalized = tostring(timezoneName or ""):upper():gsub("%.", ""):gsub("%s+TIME$", ""):gsub("%s+", "")
+    return normalized == "EDT" or normalized == "CDT" or normalized == "MDT" or normalized == "PDT"
+end
 
-        UTC = { family = "UTC", fixed = true, usesDst = false, canonical = "UTC" },
-        GMT = { family = "GMT", fixed = true, usesDst = false, canonical = "GMT" },
+local function scm_resolve_timezone_context(token, eventEpoch, defaultTimezone)
+    local fixedOffsets = {
+        UTC = 0,
+        GMT = 0,
+        EST = -5,
+        EDT = -4,
+        CST = -6,
+        CDT = -5,
+        MST = -7,
+        MDT = -6,
+        PST = -8,
+        PDT = -7,
     }
 
-    return families[normalized], normalized
-end
-
-local function scm_get_target_datetime_parts(nowTableOrEpoch)
-    if type(nowTableOrEpoch) == "number" then
-        local target = os.date("*t", nowTableOrEpoch)
-        if target then
-            return target.year, target.month, target.day, target.hour, target.min
+    local function normalize_timezone_name(value)
+        local normalized = tostring(value or ""):upper():gsub("%.", ""):gsub("%s+TIME$", ""):gsub("%s+", "")
+        if normalized == "" then
+            return nil
         end
-    elseif type(nowTableOrEpoch) == "table" then
-        return nowTableOrEpoch.year, nowTableOrEpoch.month, nowTableOrEpoch.day, nowTableOrEpoch.hour, nowTableOrEpoch.min
+        return normalized
     end
 
-    local current = os.date("*t")
-    return current.year, current.month, current.day, current.hour, current.min
+    local requested = normalize_timezone_name(token)
+    local fallback = normalize_timezone_name(defaultTimezone) or SCM_DEFAULT_TIMEZONE
+    local normalized = requested or fallback
+
+    local family = scm_get_timezone_family(normalized)
+    local resolvedName = normalized
+    local targetIsDst = false
+
+    if family then
+        local isDst = false
+        if type(eventEpoch) == "number" then
+            local eventTable = os.date("*t", eventEpoch)
+            if eventTable and eventTable.isdst ~= nil then
+                isDst = eventTable.isdst == true
+            end
+        end
+
+        resolvedName = scm_get_family_timezone_for_dst(family, isDst) or normalized
+        targetIsDst = isDst
+    else
+        targetIsDst = scm_is_dst_timezone_name(normalized)
+    end
+
+    local offsetHours = fixedOffsets[resolvedName]
+    local isSupported = offsetHours ~= nil
+
+    if not requested and not isSupported then
+        resolvedName = SCM_DEFAULT_TIMEZONE
+        offsetHours = fixedOffsets[resolvedName]
+        isSupported = offsetHours ~= nil
+        targetIsDst = scm_is_dst_timezone_name(resolvedName)
+    end
+
+    return {
+        requestedToken = requested,
+        resolvedName = resolvedName,
+        offsetHours = offsetHours,
+        offsetSeconds = offsetHours and (offsetHours * 3600) or nil,
+        isSupported = isSupported,
+        targetIsDst = targetIsDst,
+        usedDefault = requested == nil,
+    }
 end
 
-local function scm_canonicalize_timezone_token(tz, nowTable)
-    if not tz or tz == "" then
-        return nil
-    end
+local function scm_canonicalize_timezone_token(token, eventEpoch, defaultTimezone)
+    local context = scm_resolve_timezone_context(token, eventEpoch, defaultTimezone)
+    return context and context.resolvedName or nil
+end
 
-    local info, normalized = scm_get_timezone_family_info(tz)
-    if not info then
-        return tostring(tz):upper():gsub("%.", ""):gsub("%s+TIME$", ""):gsub("%s+", "")
-    end
-
-    if info.usesDst ~= true then
-        return info.canonical or normalized
-    end
-
-    local year, month, day, hour, minute = scm_get_target_datetime_parts(nowTable)
-    local shouldUseDst = scm_is_us_dst_for_local_datetime(year, month, day, hour, minute)
-    return shouldUseDst and info.dst or info.std
+function SmartChatMsg:scm_canonicalize_timezone_token(token, eventEpoch)
+    return scm_canonicalize_timezone_token(token, eventEpoch)
 end
 
 local function scm_normalize_timezone(tz, defaultTimezone, nowTable)
@@ -5517,145 +4771,84 @@ local function scm_detect_timezone_after_fuzzy(text, startPos, defaultTimezone, 
     return nil, false, nil, nil, startPos
 end
 
-local function scm_get_local_utc_offset_hours(epochSeconds)
-    local now = tonumber(epochSeconds) or os.time()
-    local timezoneName = tostring(os.date("%Z", now) or ""):upper():gsub("%.", ""):gsub("%s+TIME$", ""):gsub("%s+", "")
-    local isDst = os.date("*t", now).isdst == true
-
-    local aliasMap = {
-        UTC = 0,
-        GMT = 0,
-        EST = -5,
-        EDT = -4,
-        CST = -6,
-        CDT = -5,
-        MST = -7,
-        MDT = -6,
-        PST = -8,
-        PDT = -7,
-        ET = isDst and -4 or -5,
-        CT = isDst and -5 or -6,
-        MT = isDst and -6 or -7,
-        PT = isDst and -7 or -8,
-        EASTERN = isDst and -4 or -5,
-        CENTRAL = isDst and -5 or -6,
-        MOUNTAIN = isDst and -6 or -7,
-        PACIFIC = isDst and -7 or -8,
-    }
-
-    if aliasMap[timezoneName] ~= nil then
-        return aliasMap[timezoneName]
-    end
-
-    local localTime = os.date("*t", now)
-    local utcTime = os.date("!*t", now)
-    local localEpoch = os.time(localTime)
-    local utcEpochAsLocal = os.time(utcTime)
-    return (localEpoch - utcEpochAsLocal) / 3600
-end
-
-local function scm_get_timezone_offset_hours(timezoneName, nowTable)
-    local normalized = scm_canonicalize_timezone_token(timezoneName, nowTable)
-    if not normalized or normalized == "" or normalized == SCM_DEFAULT_TIMEZONE then
-        return nil
-    end
-
-    local fixedOffsets = {
-        UTC = 0,
-        GMT = 0,
-        EST = -5,
-        EDT = -4,
-        CST = -6,
-        CDT = -5,
-        MST = -7,
-        MDT = -6,
-        PST = -8,
-        PDT = -7,
-    }
-
-    return fixedOffsets[normalized]
+local function scm_get_timezone_offset_hours(timezoneName, eventEpoch, defaultTimezone)
+    local context = scm_resolve_timezone_context(timezoneName, eventEpoch, defaultTimezone)
+    return context and context.offsetHours or nil
 end
 
 local function scm_resolve_time(hour, minute, detectedAmpm, explicit24Hour, usableDateInfo, tomorrowInfo, weekdayInfo, nowTable, sourceTimezone)
-    local nowEpoch = os.time({
-        year = nowTable.year,
-        month = nowTable.month,
-        day = nowTable.day,
-        hour = nowTable.hour,
-        min = nowTable.min,
-        sec = nowTable.sec or 0,
-        isdst = nowTable.isdst,
-    })
+    local nowEpoch = scm_build_utc_timestamp(
+        nowTable.year,
+        nowTable.month,
+        nowTable.day,
+        nowTable.hour,
+        nowTable.min,
+        nowTable.sec or 0
+    )
 
-    local function refresh_timing_for_parsed_timestamp(timing)
-        if not timing or type(timing.parsedTimestamp) ~= "number" then
+    local function refresh_timing_for_event_timestamp(timing)
+        if not timing or type(timing.eventTimestamp) ~= "number" then
             return timing
         end
 
-        timing.localUtcOffsetHours = 0
-        timing.localUtcOffsetSeconds = 0
-        timing.sourceTimezoneDisplay = sourceTimezone and scm_canonicalize_timezone_token(sourceTimezone, timing.parsedTimestamp) or nil
-        timing.sourceUtcOffsetHours = sourceTimezone and scm_get_timezone_offset_hours(sourceTimezone, timing.parsedTimestamp) or nil
-        timing.sourceUtcOffsetSeconds = timing.sourceUtcOffsetHours and (timing.sourceUtcOffsetHours * 3600) or nil
-        timing.sourceTimezoneSupported = (sourceTimezone == nil or sourceTimezone == "") and false or (timing.sourceUtcOffsetHours ~= nil)
-        timing.targetIsDst = scm_is_dst_active(timing.parsedTimestamp)
+        local timezoneContext = scm_resolve_timezone_context(sourceTimezone, timing.eventTimestamp)
+        timing.timezoneContext = timezoneContext
+        timing.sourceTimezoneDisplay = timezoneContext and timezoneContext.resolvedName or nil
+        timing.sourceUtcOffsetHours = timezoneContext and timezoneContext.offsetHours or nil
+        timing.sourceUtcOffsetSeconds = timezoneContext and timezoneContext.offsetSeconds or nil
+        timing.sourceTimezoneSupported = timezoneContext and timezoneContext.isSupported or false
+        timing.targetIsDst = timezoneContext and timezoneContext.targetIsDst or false
 
-        local appliedOffsetHours = -(timing.sourceUtcOffsetHours or 0)
-        local appliedOffsetSeconds = -(timing.sourceUtcOffsetSeconds or 0)
-
-        timing.rawEventTimestamp = timing.parsedTimestamp
-        timing.offsetDeltaHours = appliedOffsetHours
-        timing.offsetDeltaSeconds = appliedOffsetSeconds
-        timing.targetTimestamp = timing.parsedTimestamp + appliedOffsetSeconds
-        timing.adjustedEventTimestamp = timing.targetTimestamp
-        timing.diffSeconds = timing.targetTimestamp - nowEpoch
+        timing.diffSeconds = timing.eventTimestamp - nowEpoch
 
         return timing
     end
 
-    local function build_resolved_target(year, month, day, hour24, min24)
-        local parsedTimestamp = os.time({
-            year = year,
-            month = month,
-            day = day,
-            hour = hour24,
-            min = min24,
-            sec = 0,
-        })
+    local function build_event_timing(year, month, day, hour24, min24)
+        local provisionalUtcTimestamp = scm_build_utc_timestamp(year, month, day, hour24, min24, 0)
+        local timezoneContext = scm_resolve_timezone_context(sourceTimezone, provisionalUtcTimestamp)
+        local offsetSeconds = timezoneContext and timezoneContext.offsetSeconds or 0
+        local eventTimestamp = provisionalUtcTimestamp - offsetSeconds
 
         local timing = {
-            parsedTimestamp = parsedTimestamp,
+            eventTimestamp = eventTimestamp,
+            timezoneContext = timezoneContext,
+            sourceTimezoneDisplay = timezoneContext and timezoneContext.resolvedName or nil,
+            sourceUtcOffsetHours = timezoneContext and timezoneContext.offsetHours or nil,
+            sourceUtcOffsetSeconds = offsetSeconds,
+            sourceTimezoneSupported = timezoneContext and timezoneContext.isSupported or false,
+            targetIsDst = timezoneContext and timezoneContext.targetIsDst or false,
         }
 
-        return refresh_timing_for_parsed_timestamp(timing)
+        return refresh_timing_for_event_timestamp(timing)
     end
 
     local function delta_for(hour24, min24)
         if usableDateInfo then
-            local timing = build_resolved_target(usableDateInfo.year, usableDateInfo.month, usableDateInfo.day, hour24, min24)
+            local timing = build_event_timing(usableDateInfo.year, usableDateInfo.month, usableDateInfo.day, hour24, min24)
             return math.floor(timing.diffSeconds / 60), timing
         end
 
         if tomorrowInfo then
-            local timing = build_resolved_target(nowTable.year, nowTable.month, nowTable.day + 1, hour24, min24)
+            local timing = build_event_timing(nowTable.year, nowTable.month, nowTable.day + 1, hour24, min24)
             return math.floor(timing.diffSeconds / 60), timing
         end
 
         if weekdayInfo then
             local currentWday = (nowTable and nowTable.wday) or os.date("*t").wday
             local dayOffset = (weekdayInfo.wday - currentWday) % 7
-            local timing = build_resolved_target(nowTable.year, nowTable.month, nowTable.day + dayOffset, hour24, min24)
-            if dayOffset == 0 and timing.targetTimestamp <= nowEpoch then
-                timing.parsedTimestamp = timing.parsedTimestamp + (7 * 24 * 60 * 60)
-                timing = refresh_timing_for_parsed_timestamp(timing)
+            local timing = build_event_timing(nowTable.year, nowTable.month, nowTable.day + dayOffset, hour24, min24)
+            if dayOffset == 0 and timing.eventTimestamp <= nowEpoch then
+                timing.eventTimestamp = timing.eventTimestamp + (7 * 24 * 60 * 60)
+                timing = refresh_timing_for_event_timestamp(timing)
             end
             return math.floor(timing.diffSeconds / 60), timing
         end
 
-        local timing = build_resolved_target(nowTable.year, nowTable.month, nowTable.day, hour24, min24)
-        if timing.targetTimestamp < nowEpoch then
-            timing.parsedTimestamp = timing.parsedTimestamp + (24 * 60 * 60)
-            timing = refresh_timing_for_parsed_timestamp(timing)
+        local timing = build_event_timing(nowTable.year, nowTable.month, nowTable.day, hour24, min24)
+        if timing.eventTimestamp < nowEpoch then
+            timing.eventTimestamp = timing.eventTimestamp + (24 * 60 * 60)
+            timing = refresh_timing_for_event_timestamp(timing)
         end
         return math.floor(timing.diffSeconds / 60), timing
     end
@@ -5672,21 +4865,13 @@ local function scm_resolve_time(hour, minute, detectedAmpm, explicit24Hour, usab
             explicit24Hour = explicit24HourValue,
             minutesUntil = minutesUntil,
             nowTimestamp = nowEpoch,
-            parsedTimestamp = timing and timing.parsedTimestamp or nil,
-            rawEventTimestamp = timing and timing.rawEventTimestamp or nil,
-            adjustedEventTimestamp = timing and timing.adjustedEventTimestamp or nil,
-            targetTimestamp = timing and timing.targetTimestamp or nil,
+            eventTimestamp = timing and timing.eventTimestamp or nil,
             diffSeconds = timing and timing.diffSeconds or nil,
-            localUtcOffsetHours = timing and timing.localUtcOffsetHours or nil,
-            localUtcOffsetSeconds = timing and timing.localUtcOffsetSeconds or nil,
             sourceUtcOffsetHours = timing and timing.sourceUtcOffsetHours or nil,
             sourceUtcOffsetSeconds = timing and timing.sourceUtcOffsetSeconds or nil,
-            offsetDeltaHours = timing and timing.offsetDeltaHours or nil,
-            offsetDeltaSeconds = timing and timing.offsetDeltaSeconds or nil,
             sourceTimezoneDisplay = timing and timing.sourceTimezoneDisplay or nil,
             sourceTimezoneSupported = timing and timing.sourceTimezoneSupported or false,
             targetIsDst = timing and timing.targetIsDst or false,
-            utcOnlyModel = true,
         }
     end
 
@@ -5832,8 +5017,8 @@ end
 
 function SmartChatMsg:AnalyzeEmbeddedTime(text, defaultTimezone, nowTable)
     local originalText = tostring(text or "")
-    defaultTimezone = defaultTimezone or self:GetLocalTimezoneDisplayName() or SCM_DEFAULT_TIMEZONE
-    nowTable = nowTable or os.date("*t")
+    defaultTimezone = defaultTimezone or SCM_DEFAULT_TIMEZONE
+    nowTable = nowTable or os.date("!*t")
 
     local protectedText, protectedSegments = self:ProtectEsoLinksInText(originalText)
     local core, allCores = scm_detect_time_core(protectedText)
@@ -5887,22 +5072,21 @@ function SmartChatMsg:AnalyzeEmbeddedTime(text, defaultTimezone, nowTable)
         detectedDateInfo.normalizedOutput = scm_format_date_mdy(detectedDateInfo.month, detectedDateInfo.day, detectedDateInfo.year)
     end
 
-    local displayTimezone = (explicitTimezone and (resolved.sourceTimezoneDisplay or timezone)) or "TZ?"
+    self:DebugCountdownState("dst_resolution", {
+        inputTimezone = explicitTimezone and (timezone or "nil") or "local",
+        normalizedTimezone = resolved and resolved.sourceTimezoneDisplay or "nil",
+        eventEpoch = resolved and resolved.eventTimestamp or "nil",
+        eventIsDst = resolved and tostring(resolved.targetIsDst) or "nil",
+        sourceOffset = resolved and resolved.sourceUtcOffsetHours or "nil",
+    })
 
-    if self.debugEnabled then
-        self:DebugLog(string.format(
-            "Timezone correction debug: input=%s display=%s supported=%s localOffsetHours=%s sourceOffsetHours=%s offsetDeltaHours=%s rawEventTimestamp=%s adjustedEventTimestamp=%s targetTimestamp=%s",
-            tostring(timezone),
-            tostring(displayTimezone),
-            tostring(resolved.sourceTimezoneSupported),
-            tostring(resolved.localUtcOffsetHours),
-            tostring(resolved.sourceUtcOffsetHours),
-            tostring(resolved.offsetDeltaHours),
-            tostring(resolved.rawEventTimestamp),
-            tostring(resolved.adjustedEventTimestamp),
-            tostring(resolved.targetTimestamp)
-        ))
-    end
+    self:DebugCountdownState("epoch_compare", {
+        now = resolved and resolved.nowTimestamp or scm_get_utc_now(),
+        event = resolved and resolved.eventTimestamp or "nil",
+        diffSeconds = resolved and resolved.diffSeconds or "nil",
+    })
+
+    local displayTimezone = (explicitTimezone and (resolved.sourceTimezoneDisplay or timezone)) or "TZ?"
     local skipCountdownForMissingTimezone = not explicitTimezone
     local skipCountdownForUnsupportedTimezone = explicitTimezone and not resolved.sourceTimezoneSupported
     local timeString = scm_format_time_string(resolved.resolvedHour24, resolved.resolvedMinute24, displayTimezone)
@@ -5977,29 +5161,15 @@ function SmartChatMsg:AnalyzeEmbeddedTime(text, defaultTimezone, nowTable)
         resolvedMinute24 = resolved.resolvedMinute24,
         minutesUntil = resolved.minutesUntil,
         nowTimestamp = resolved.nowTimestamp,
-        parsedTimestamp = resolved.parsedTimestamp,
-        targetTimestamp = resolved.targetTimestamp,
+        eventTimestamp = resolved.eventTimestamp,
         diffSeconds = resolved.diffSeconds,
-        rawEventTimestamp = resolved.rawEventTimestamp,
-        adjustedEventTimestamp = resolved.adjustedEventTimestamp,
-        localUtcOffsetHours = resolved.localUtcOffsetHours,
-        localUtcOffsetSeconds = resolved.localUtcOffsetSeconds,
         sourceUtcOffsetHours = resolved.sourceUtcOffsetHours,
         sourceUtcOffsetSeconds = resolved.sourceUtcOffsetSeconds,
-        offsetDeltaHours = resolved.offsetDeltaHours,
-        offsetDeltaSeconds = resolved.offsetDeltaSeconds,
         sourceTimezoneSupported = resolved.sourceTimezoneSupported,
         targetIsDst = resolved.targetIsDst,
         coreCandidatesFound = allCores and #allCores or 0,
         protectedEsoLinks = #protectedSegments,
     }, allCores or {}
-end
-
-local function scm_format_debug_timestamp(timestamp)
-    if type(timestamp) ~= "number" then
-        return "nil"
-    end
-    return string.format("%d (%s)", timestamp, os.date("%m/%d/%Y %I:%M:%S %p", timestamp))
 end
 
 function SmartChatMsg:EmitCountdownDebugResult(label, input, best, all)
@@ -6031,19 +5201,11 @@ function SmartChatMsg:EmitCountdownDebugResult(label, input, best, all)
     d("[SmartChatMsg] Source kind: " .. tostring(best.sourceKind))
     d("[SmartChatMsg] Detected AM/PM: " .. tostring(best.detectedAmpm))
     d("[SmartChatMsg] Timezone: " .. tostring(best.timezone))
-    d("[SmartChatMsg] Current Timestamp: " .. scm_format_debug_timestamp(best.nowTimestamp))
-    d("[SmartChatMsg] Parsed Timestamp: " .. scm_format_debug_timestamp(best.parsedTimestamp))
-    d("[SmartChatMsg] Raw Event Timestamp: " .. scm_format_debug_timestamp(best.rawEventTimestamp))
-    d("[SmartChatMsg] Adjusted Event Timestamp: " .. scm_format_debug_timestamp(best.adjustedEventTimestamp))
-    d("[SmartChatMsg] Target Timestamp: " .. scm_format_debug_timestamp(best.targetTimestamp))
+    d("[SmartChatMsg] Current Timestamp: " .. tostring(best.nowTimestamp))
+    d("[SmartChatMsg] Event Timestamp: " .. tostring(best.eventTimestamp))
     d("[SmartChatMsg] Diff Seconds: " .. tostring(best.diffSeconds))
-    d("[SmartChatMsg] UTC Only Model: " .. tostring(best.utcOnlyModel))
-    d("[SmartChatMsg] Local UTC Offset Hours (unused): " .. tostring(best.localUtcOffsetHours))
-    d("[SmartChatMsg] Local UTC Offset Seconds (unused): " .. tostring(best.localUtcOffsetSeconds))
     d("[SmartChatMsg] Source UTC Offset Hours: " .. tostring(best.sourceUtcOffsetHours))
     d("[SmartChatMsg] Source UTC Offset Seconds: " .. tostring(best.sourceUtcOffsetSeconds))
-    d("[SmartChatMsg] Offset Delta Hours: " .. tostring(best.offsetDeltaHours))
-    d("[SmartChatMsg] Offset Delta Seconds: " .. tostring(best.offsetDeltaSeconds))
     d("[SmartChatMsg] Ambiguous: " .. tostring(best.ambiguous))
     d("[SmartChatMsg] Inferred meridiem: " .. tostring(best.inferredMeridiem))
     d("[SmartChatMsg] Resolved AM/PM: " .. tostring(best.resolvedAmpm))
@@ -6083,12 +5245,12 @@ function SmartChatMsg:GetExpandedDetectedTimeSpan(sourceText, timeMatch)
 end
 
 function SmartChatMsg:GetEmbeddedDayOffset(text, nowEpoch, timeMatch)
-    local best = self:AnalyzeEmbeddedTime(text, self:GetLocalTimezoneDisplayName(nowEpoch), os.date("*t", tonumber(nowEpoch) or os.time()))
+    local best = self:AnalyzeEmbeddedTime(text, SCM_DEFAULT_TIMEZONE, os.date("!*t", tonumber(nowEpoch) or scm_get_utc_now()))
     if not best then return nil end
     if best.detectedDateDayDelta ~= nil then return best.detectedDateDayDelta end
     if best.tomorrowRaw then return 1 end
     if best.weekdayWday then
-        local nowTable = os.date("*t", tonumber(nowEpoch) or os.time())
+        local nowTable = os.date("!*t", tonumber(nowEpoch) or scm_get_utc_now())
         return (best.weekdayWday - nowTable.wday) % 7
     end
     return 0
@@ -6175,3 +5337,4 @@ function SmartChatMsg:HandleScmDebugCommand(paramText)
     end
     d("[SmartChatMsg] Usage: /scmdebug, /scmdebug on, /scmdebug off, /scmdebug status, /scmdebug queue, /scmdebug countdown <text>")
 end
+    
