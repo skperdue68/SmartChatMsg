@@ -7,5 +7,6 @@
 ## OptionalDependsOn: LibDebugLogger
 
 SmartChatMsg.lua
+SCM_StatusPanel.lua
 SCM_SavedVars.lua
 SCM_Settings.lua
