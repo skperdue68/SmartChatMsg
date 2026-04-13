@@ -169,7 +169,7 @@ function SmartChatMsg:InitializeSavedVars()
                     end
                 end
 
-                for _, entry in ipairs(self.savedVars.messages or {}) do
+                for _, entry in ipairs(self:GetSavedMessageEntriesArray()) do
                     if type(entry) == "table" and entry.commandId == command.id then
                         local guildName = entry.guildName
                         if (not guildName or guildName == "") and entry.guildIndex then
@@ -212,21 +212,48 @@ function SmartChatMsg:InitializeSavedVars()
         end
     end
 
-    local seenMessageIds = {}
-    for _, entry in ipairs(self.savedVars.messages) do
+    local normalizedMessages = {}
+    for _, entry in ipairs(self:GetSavedMessageEntriesArray()) do
         if type(entry) == "table" then
-            local entryId = entry.id
-            if type(entryId) ~= "string" or entryId == "" or seenMessageIds[entryId] then
-                entryId = self:GenerateUuid()
-                while seenMessageIds[entryId] do
-                    entryId = self:GenerateUuid()
+            local commandId = type(entry.commandId) == "string" and entry.commandId or ""
+            local guildName = self:Trim(entry.guildName or "")
+
+            if guildName == "" and entry.guildIndex then
+                guildName = self:Trim(self:GetGuildNameByIndex(entry.guildIndex) or "")
+                if guildName ~= "" then
+                    entry.guildName = guildName
                 end
+            end
+
+            local messageText = self:Trim(entry.text or "")
+            local entryId = nil
+            if commandId ~= "" and messageText ~= "" then
+                entryId = self:GenerateMessageEntryIdForCommandGuild(commandId, guildName, messageText)
+            end
+
+            entryId = self:Trim(entryId or entry.id or "")
+            if entryId == "" then
+                entryId = self:GenerateUuid()
+            end
+
+            entry.commandName = self:GetMessageCommandName(commandId, entry)
+            entry.id = entryId
+
+            if normalizedMessages[entryId] and normalizedMessages[entryId] ~= entry then
+                local counter = 2
+                local uniqueId = entryId .. "_" .. tostring(counter)
+                while normalizedMessages[uniqueId] do
+                    counter = counter + 1
+                    uniqueId = entryId .. "_" .. tostring(counter)
+                end
+                entryId = uniqueId
                 entry.id = entryId
             end
 
-            seenMessageIds[entryId] = true
+            normalizedMessages[entryId] = entry
         end
     end
+    self.savedVars.messages = normalizedMessages
 end
 
 function SmartChatMsg:Trim(value)
@@ -390,6 +417,144 @@ function SmartChatMsg:GenerateUuid()
     end))
 end
 
+function SmartChatMsg:BuildDeterministicMessageHash(sourceText)
+    local hash = 5381
+    local text = tostring(sourceText or "")
+
+    for index = 1, #text do
+        local byteValue = string.byte(text, index)
+        hash = ((hash * 33) + byteValue) % 4294967296
+    end
+
+    return string.format("%08X", hash)
+end
+
+function SmartChatMsg:BuildMessageIdentitySource(channel, guildName, messageText)
+    local normalizedChannel = self:Trim(channel or "")
+    local normalizedGuildName = self:Trim(guildName or "")
+    local normalizedMessageText = self:Trim(messageText or "")
+
+    if normalizedChannel == "Zone" then
+        return normalizedMessageText
+    end
+
+    return normalizedGuildName .. "||" .. normalizedMessageText
+end
+
+function SmartChatMsg:GenerateMessageEntryIdForChannel(channel, guildName, messageText)
+    return self:BuildDeterministicMessageHash(self:BuildMessageIdentitySource(channel, guildName, messageText))
+end
+
+function SmartChatMsg:GetMessageEntryChannel(commandId, guildName)
+    local channel = self:GetSavedChatChannel(commandId, guildName)
+    channel = self:Trim(channel or "")
+
+    if channel == "Guild" or channel == "Officer" or channel == "Zone" then
+        return channel
+    end
+
+    return "Guild"
+end
+
+function SmartChatMsg:GenerateMessageEntryIdForCommandGuild(commandId, guildName, messageText)
+    return self:GenerateMessageEntryIdForChannel(self:GetMessageEntryChannel(commandId, guildName), guildName, messageText)
+end
+
+function SmartChatMsg:BuildSavedMessageEntryIdLookup()
+    local lookup = {}
+
+    for entryId, entry in pairs(self.savedVars.messages or {}) do
+        if type(entry) == "table" then
+            local normalizedEntryId = type(entry.id) == "string" and entry.id ~= "" and entry.id or tostring(entryId or "")
+            if normalizedEntryId ~= "" then
+                entry.id = normalizedEntryId
+                lookup[normalizedEntryId] = entry
+            end
+        end
+    end
+
+    return lookup
+end
+
+function SmartChatMsg:GetMessageCommandName(commandId, fallbackEntry)
+    local commandName = self:Trim(self:GetCommandNameById(commandId) or "")
+    if commandName ~= "" then
+        return commandName
+    end
+
+    if type(fallbackEntry) == "table" then
+        commandName = self:Trim(fallbackEntry.commandName or "")
+        if commandName ~= "" then
+            return commandName
+        end
+    end
+
+    return nil
+end
+
+function SmartChatMsg:GetSavedMessageEntriesTable()
+    if type(self.savedVars.messages) ~= "table" then
+        self.savedVars.messages = {}
+    end
+
+    return self.savedVars.messages
+end
+
+function SmartChatMsg:GetSavedMessageEntriesArray()
+    local results = {}
+
+    for entryId, entry in pairs(self:GetSavedMessageEntriesTable()) do
+        if type(entry) == "table" then
+            if type(entry.id) ~= "string" or entry.id == "" then
+                entry.id = tostring(entryId or "")
+            end
+            table.insert(results, entry)
+        end
+    end
+
+    table.sort(results, function(a, b)
+        local aId = type(a) == "table" and a.id or ""
+        local bId = type(b) == "table" and b.id or ""
+        return tostring(aId) < tostring(bId)
+    end)
+
+    return results
+end
+
+function SmartChatMsg:GetSavedMessageEntryById(entryId)
+    if type(entryId) ~= "string" or entryId == "" then
+        return nil
+    end
+
+    local entry = self:GetSavedMessageEntriesTable()[entryId]
+    if type(entry) ~= "table" then
+        return nil
+    end
+
+    if type(entry.id) ~= "string" or entry.id == "" then
+        entry.id = entryId
+    end
+
+    return entry
+end
+
+function SmartChatMsg:SetSavedMessageEntry(entryId, entry)
+    if type(entryId) ~= "string" or entryId == "" or type(entry) ~= "table" then
+        return
+    end
+
+    entry.id = entryId
+    self:GetSavedMessageEntriesTable()[entryId] = entry
+end
+
+function SmartChatMsg:RemoveSavedMessageEntry(entryId)
+    if type(entryId) ~= "string" or entryId == "" then
+        return
+    end
+
+    self:GetSavedMessageEntriesTable()[entryId] = nil
+end
+
 
 function SmartChatMsg:EscapeImportExportField(value)
     local text = tostring(value or "")
@@ -427,7 +592,7 @@ function SmartChatMsg:BuildExportString()
         end
     end
 
-    for _, entry in ipairs(self.savedVars.messages or {}) do
+    for _, entry in ipairs(self:GetSavedMessageEntriesArray()) do
         if type(entry) == "table" then
             table.insert(lines, table.concat({
                 "MESSAGE",
@@ -438,6 +603,7 @@ function SmartChatMsg:BuildExportString()
                 self:EscapeImportExportField(entry.text or ""),
                 self:EscapeImportExportField(entry.lastUsedAt or ""),
                 self:EscapeImportExportField(entry.useCount or ""),
+                self:EscapeImportExportField(entry.commandName or self:GetMessageCommandName(entry.commandId, entry) or ""),
             }, "|"))
         end
     end
@@ -619,18 +785,20 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
             local messageText = self:Trim(self:UnescapeImportExportField(parts[5] or ""))
             local lastUsedAt = tonumber(self:UnescapeImportExportField(parts[6] or ""))
             local useCount = tonumber(self:UnescapeImportExportField(parts[7] or ""))
+            local commandName = self:SanitizeCommandName(self:UnescapeImportExportField(parts[8] or ""))
 
             if id ~= "" and not messageIds[id] and commandIds[commandId] and messageText ~= "" then
                 messageIds[id] = true
-                table.insert(imported.messages, {
+                imported.messages[id] = {
                     id = id,
                     commandId = commandId,
+                    commandName = commandName ~= "" and commandName or self:GetCommandNameById(commandId),
                     guildIndex = guildIndex and math.floor(guildIndex) or nil,
                     guildName = guildName,
                     text = messageText,
                     lastUsedAt = lastUsedAt and math.floor(lastUsedAt) or nil,
                     useCount = useCount and math.floor(useCount) or nil,
-                })
+                }
             end
         elseif recordType == "CHANNEL" then
             local commandId = self:UnescapeImportExportField(parts[1] or "")
@@ -1729,7 +1897,7 @@ function SmartChatMsg:GetMessageEntriesForSelection()
         return results
     end
 
-    for _, entry in ipairs(self.savedVars.messages) do
+    for _, entry in ipairs(self:GetSavedMessageEntriesArray()) do
         if type(entry) == "table" and entry.commandId == selectedCommandId then
             local entryGuildName = entry.guildName
 
@@ -1773,16 +1941,19 @@ function SmartChatMsg:AddMessageEntryForSelection(text)
 
     local guildIndex = self.savedVars.selectedMessagesGuildIndex
     local guildName = self:GetSelectedGuildNameForMessages()
+    local commandId = self.savedVars.selectedMessagesCommand
 
+    local entryId = self:GenerateMessageEntryIdForChannel(channel, guildName, trimmed)
     local entry = {
-        id = self:GenerateUuid(),
-        commandId = self.savedVars.selectedMessagesCommand,
+        id = entryId,
+        commandId = commandId,
+        commandName = self:GetMessageCommandName(commandId),
         guildIndex = guildIndex,
         guildName = guildName,
         text = trimmed,
     }
 
-    table.insert(self.savedVars.messages, entry)
+    self:SetSavedMessageEntry(entryId, entry)
 
     return true
 end
@@ -1802,25 +1973,29 @@ function SmartChatMsg:UpdateMessageEntry(entryId, text)
     local guildName = self:GetSelectedGuildNameForMessages()
     local commandId = self.savedVars.selectedMessagesCommand
 
-    for _, entry in ipairs(self.savedVars.messages) do
-        if entry.id == entryId then
-            entry.text = trimmed
-            entry.commandId = commandId
-            entry.guildIndex = guildIndex
-            entry.guildName = guildName
-            return true
-        end
+    local entry = self:GetSavedMessageEntryById(entryId)
+    if not entry then
+        return false, "That message entry no longer exists."
     end
 
-    return false, "That message entry no longer exists."
+    self:RemoveSavedMessageEntry(entryId)
+
+    local newEntryId = self:GenerateMessageEntryIdForChannel(channel, guildName, trimmed)
+    entry.text = trimmed
+    entry.commandId = commandId
+    entry.commandName = self:GetMessageCommandName(commandId, entry)
+    entry.guildIndex = guildIndex
+    entry.guildName = guildName
+    entry.id = newEntryId
+
+    self:SetSavedMessageEntry(newEntryId, entry)
+    return true
 end
 
 function SmartChatMsg:DeleteMessageEntry(entryId)
-    for index, entry in ipairs(self.savedVars.messages) do
-        if entry.id == entryId then
-            table.remove(self.savedVars.messages, index)
-            return true
-        end
+    if self:GetSavedMessageEntryById(entryId) then
+        self:RemoveSavedMessageEntry(entryId)
+        return true
     end
 
     return false, "That message entry no longer exists."
@@ -1836,18 +2011,14 @@ function SmartChatMsg:DeleteMessageEntries(entryIds)
         toDelete[entryId] = true
     end
 
-    local filtered = {}
     local removedCount = 0
 
-    for _, entry in ipairs(self.savedVars.messages) do
-        if toDelete[entry.id] then
+    for entryId, _ in pairs(toDelete) do
+        if self:GetSavedMessageEntryById(entryId) then
+            self:RemoveSavedMessageEntry(entryId)
             removedCount = removedCount + 1
-        else
-            table.insert(filtered, entry)
         end
     end
-
-    self.savedVars.messages = filtered
 
     if removedCount == 0 then
         return false, "No matching message entries were selected."
@@ -1877,6 +2048,13 @@ function SmartChatMsg:RenameCommand(commandId, newName, reminderMinutes, autoPop
     end
 
     command.name = sanitizedNew
+
+    for _, entry in ipairs(self:GetSavedMessageEntriesArray()) do
+        if type(entry) == "table" and entry.commandId == commandId then
+            entry.commandName = sanitizedNew
+        end
+    end
+
     self:SortCommands()
 
     if self.RegisterDynamicCommands then
@@ -1907,15 +2085,11 @@ function SmartChatMsg:DeleteCommand(commandId)
     table.remove(self.savedVars.commands, foundIndex)
 
     if type(self.savedVars.messages) == "table" then
-        local filtered = {}
-
-        for _, entry in ipairs(self.savedVars.messages) do
-            if not (type(entry) == "table" and entry.commandId == commandId) then
-                table.insert(filtered, entry)
+        for entryKey, entry in pairs(self:GetSavedMessageEntriesTable()) do
+            if type(entry) == "table" and entry.commandId == commandId then
+                self.savedVars.messages[entryKey] = nil
             end
         end
-
-        self.savedVars.messages = filtered
     end
 
     self:DeleteSavedChatChannelsForCommand(commandId)

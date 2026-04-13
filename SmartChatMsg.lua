@@ -698,7 +698,7 @@ function SmartChatMsg:GetMessageEntriesForCommandAndGuild(commandId, guildName)
         return results
     end
 
-    for _, entry in ipairs(self.savedVars.messages or {}) do
+    for _, entry in ipairs(self:GetSavedMessageEntriesArray()) do
         if type(entry) == "table" and entry.commandId == commandId then
             local entryGuildName = entry.guildName
 
@@ -1693,24 +1693,322 @@ function SmartChatMsg:RemoveQueuedEntryById(entryId)
     return false
 end
 
-function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fromName, text, isCustomerService)
-    local state = self.pendingRestoreState
-    if not state then
-        self:DebugLog("HandleRestoreWatcherChatMessage called without pending state")
+function SmartChatMsg:IsWatchedIncomingChatChannel(channelType)
+    if channelType == CHAT_CHANNEL_ZONE then
+        return true
+    end
+
+    if channelType >= CHAT_CHANNEL_GUILD_1 and channelType <= CHAT_CHANNEL_GUILD_5 then
+        return true
+    end
+
+    if channelType >= CHAT_CHANNEL_OFFICER_1 and channelType <= CHAT_CHANNEL_OFFICER_5 then
+        return true
+    end
+
+    return false
+end
+
+function SmartChatMsg:GetIncomingChatChannelDetails(channelType)
+    if channelType == CHAT_CHANNEL_ZONE then
+        return {
+            channel = "Zone",
+            guildIndex = nil,
+            guildName = nil,
+        }
+    end
+
+    if channelType >= CHAT_CHANNEL_GUILD_1 and channelType <= CHAT_CHANNEL_GUILD_5 then
+        local guildIndex = (channelType - CHAT_CHANNEL_GUILD_1) + 1
+        return {
+            channel = "Guild",
+            guildIndex = guildIndex,
+            guildName = self:GetGuildNameByIndex(guildIndex),
+        }
+    end
+
+    if channelType >= CHAT_CHANNEL_OFFICER_1 and channelType <= CHAT_CHANNEL_OFFICER_5 then
+        local guildIndex = (channelType - CHAT_CHANNEL_OFFICER_1) + 1
+        return {
+            channel = "Officer",
+            guildIndex = guildIndex,
+            guildName = self:GetGuildNameByIndex(guildIndex),
+        }
+    end
+
+    return nil
+end
+
+function SmartChatMsg:IsPlayerChatSender(fromName, fromDisplayName)
+    local function normalizeName(name)
+        if not name or name == "" then
+            return ""
+        end
+
+        return zo_strformat(SI_UNIT_NAME, name)
+    end
+
+    local normalizedFrom = normalizeName(fromName)
+    local normalizedDisplay = normalizeName(fromDisplayName)
+    local playerDisplay = normalizeName(GetUnitDisplayName("player"))
+    local playerCharacter = normalizeName(GetUnitName("player"))
+
+    if normalizedFrom ~= "" and (normalizedFrom == playerDisplay or normalizedFrom == playerCharacter) then
+        return true
+    end
+
+    if normalizedDisplay ~= "" and normalizedDisplay == playerDisplay then
+        return true
+    end
+
+    return false
+end
+
+function SmartChatMsg:FindSavedMessageEntryById(entryId, commandId, guildName, text)
+    if type(entryId) ~= "string" or entryId == "" then
+        return nil
+    end
+
+    local normalizedGuildName = self:Trim(guildName or "")
+    local normalizedText = self:Trim(text or "")
+
+    local entry = self:GetSavedMessageEntryById(entryId)
+    if type(entry) ~= "table" then
+        return nil
+    end
+
+    local entryGuildName = self:Trim(entry.guildName or "")
+    if entryGuildName == "" and entry.guildIndex then
+        entryGuildName = self:Trim(self:GetGuildNameByIndex(entry.guildIndex) or "")
+    end
+
+    if (commandId == nil or entry.commandId == commandId)
+        and (normalizedGuildName == "" or self:StringsEqualIgnoreCase(entryGuildName, normalizedGuildName))
+        and (normalizedText == "" or self:Trim(entry.text or "") == normalizedText) then
+        return entry
+    end
+
+    return nil
+end
+
+function SmartChatMsg:HasSavedMessageEntryId(entryId)
+    return self:FindSavedMessageEntryById(entryId) ~= nil
+end
+
+function SmartChatMsg:HandleIncomingDuplicateChatCheck(channelType, fromName, text, isCustomerService, fromDisplayName)
+    if not self.debugEnabled then
+        return
+    end
+
+    local trimmedText = self:Trim(text or "")
+    local isPlayerSender = self:IsPlayerChatSender(fromName, fromDisplayName)
+
+    if trimmedText == "" then
+        self:DebugLog(string.format(
+            "Remote trigger check not met: empty text channelType=%s sender=%s isPlayer=%s",
+            tostring(channelType),
+            tostring(fromName or ""),
+            tostring(isPlayerSender)
+        ))
+        return
+    end
+
+    if not self:IsWatchedIncomingChatChannel(channelType) then
+        self:DebugLog(string.format(
+            "Remote trigger check not met: unwatched channel channelType=%s sender=%s text=%s isPlayer=%s",
+            tostring(channelType),
+            tostring(fromName or ""),
+            tostring(trimmedText),
+            tostring(isPlayerSender)
+        ))
+        return
+    end
+
+    local details = self:GetIncomingChatChannelDetails(channelType)
+    if not details then
+        self:DebugLog(string.format(
+            "Remote trigger check not met: channel details unavailable channelType=%s sender=%s text=%s isPlayer=%s",
+            tostring(channelType),
+            tostring(fromName or ""),
+            tostring(trimmedText),
+            tostring(isPlayerSender)
+        ))
+        return
+    end
+
+    local hash = self:GenerateMessageEntryIdForChannel(details.channel, details.guildName, trimmedText)
+
+    self:DebugLog(string.format(
+        "Remote trigger check evaluating channel=%s guildName=%s hash=%s sender=%s isPlayer=%s text=%s",
+        tostring(details.channel),
+        tostring(details.guildName or ""),
+        tostring(hash),
+        tostring(fromName or ""),
+        tostring(isPlayerSender),
+        tostring(trimmedText)
+    ))
+
+    if self:HasSavedMessageEntryId(hash) then
+        self:DebugLog(string.format(
+            "Remote trigger met channel=%s guildName=%s hash=%s sender=%s isPlayer=%s",
+            tostring(details.channel),
+            tostring(details.guildName or ""),
+            tostring(hash),
+            tostring(fromName or ""),
+            tostring(isPlayerSender)
+        ))
         return
     end
 
     self:DebugLog(string.format(
-        "Chat watcher eventCode=%s messageType=%s fromName=%s text=%s",
+        "Remote trigger not met channel=%s guildName=%s hash=%s sender=%s isPlayer=%s",
+        tostring(details.channel),
+        tostring(details.guildName or ""),
+        tostring(hash),
+        tostring(fromName or ""),
+        tostring(isPlayerSender)
+    ))
+end
+
+function SmartChatMsg:HandleChatMessageChannel(eventCode, channelType, fromName, text, isCustomerService, fromDisplayName)
+    local successMatched = self:HandleRestoreWatcherChatMessage(eventCode, channelType, fromName, text, isCustomerService, fromDisplayName)
+    if successMatched then
+        self:DebugLog("Success matched - short circuiting further checks")
+        self:DebugLog("Skipping remote trigger check due to successful send match")
+        return
+    end
+
+    self:HandleIncomingDuplicateChatCheck(channelType, fromName, text, isCustomerService, fromDisplayName)
+end
+
+function SmartChatMsg:RegisterChatMessageWatchers()
+    EVENT_MANAGER:UnregisterForEvent(self.restoreWatcherEventName, EVENT_CHAT_MESSAGE_CHANNEL)
+    EVENT_MANAGER:UnregisterForEvent(self.name .. "_IncomingDuplicateChatWatcher", EVENT_CHAT_MESSAGE_CHANNEL)
+
+    EVENT_MANAGER:RegisterForEvent(
+        self.restoreWatcherEventName,
+        EVENT_CHAT_MESSAGE_CHANNEL,
+        function(...)
+            SmartChatMsg:HandleChatMessageChannel(...)
+        end
+    )
+
+    self.incomingDuplicateWatcherRegistered = true
+    self:DebugLog("Chat message watchers registered.")
+end
+
+function SmartChatMsg:GetOutgoingMessageTypeKey(messageType)
+    if type(messageType) ~= "number" then
+        return nil
+    end
+
+    if messageType == CHAT_CHANNEL_ZONE or messageType == CHAT_CATEGORY_ZONE then
+        return "zone"
+    end
+
+    if messageType == CHAT_CHANNEL_SAY or messageType == CHAT_CATEGORY_SAY then
+        return "say"
+    end
+
+    if messageType == CHAT_CHANNEL_YELL or messageType == CHAT_CATEGORY_YELL then
+        return "yell"
+    end
+
+    if messageType == CHAT_CHANNEL_EMOTE or messageType == CHAT_CATEGORY_EMOTE then
+        return "emote"
+    end
+
+    if messageType == CHAT_CHANNEL_PARTY or messageType == CHAT_CATEGORY_PARTY then
+        return "party"
+    end
+
+    if messageType == CHAT_CHANNEL_WHISPER or messageType == CHAT_CHANNEL_WHISPER_SENT
+        or messageType == CHAT_CATEGORY_WHISPER or messageType == CHAT_CATEGORY_WHISPER_SENT then
+        return "whisper"
+    end
+
+    if messageType >= CHAT_CHANNEL_GUILD_1 and messageType <= CHAT_CHANNEL_GUILD_5 then
+        return "guildslot:" .. tostring((messageType - CHAT_CHANNEL_GUILD_1) + 1)
+    end
+
+    if messageType >= CHAT_CHANNEL_OFFICER_1 and messageType <= CHAT_CHANNEL_OFFICER_5 then
+        return "guildslot:" .. tostring((messageType - CHAT_CHANNEL_OFFICER_1) + 1)
+    end
+
+    if messageType == CHAT_CATEGORY_GUILD_1 then return "guildslot:1" end
+    if messageType == CHAT_CATEGORY_GUILD_2 then return "guildslot:2" end
+    if messageType == CHAT_CATEGORY_GUILD_3 then return "guildslot:3" end
+    if messageType == CHAT_CATEGORY_GUILD_4 then return "guildslot:4" end
+    if messageType == CHAT_CATEGORY_GUILD_5 then return "guildslot:5" end
+
+    if messageType == CHAT_CATEGORY_OFFICER_1 then return "guildslot:1" end
+    if messageType == CHAT_CATEGORY_OFFICER_2 then return "guildslot:2" end
+    if messageType == CHAT_CATEGORY_OFFICER_3 then return "guildslot:3" end
+    if messageType == CHAT_CATEGORY_OFFICER_4 then return "guildslot:4" end
+    if messageType == CHAT_CATEGORY_OFFICER_5 then return "guildslot:5" end
+
+    return nil
+end
+
+function SmartChatMsg:GetExpectedOutgoingChannelKey(channel, guildName)
+    local normalizedChannel = self:Trim(channel or "")
+
+    if normalizedChannel == "Zone" then
+        return "zone"
+    elseif normalizedChannel == "Say" then
+        return "say"
+    elseif normalizedChannel == "Yell" then
+        return "yell"
+    elseif normalizedChannel == "Emote" then
+        return "emote"
+    elseif normalizedChannel == "Party" then
+        return "party"
+    elseif normalizedChannel == "Whisper" then
+        return "whisper"
+    elseif normalizedChannel == "Guild" or normalizedChannel == "Officer" then
+        local guildSlot = self:GetGuildSlotByName(guildName)
+        if type(guildSlot) ~= "number" then
+            return nil
+        end
+
+        return "guildslot:" .. tostring(guildSlot)
+    end
+
+    return zo_strlower(normalizedChannel) ~= "" and zo_strlower(normalizedChannel) or nil
+end
+
+function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fromName, text, isCustomerService)
+    local state = self.pendingRestoreState
+    if not state then
+        self:DebugLog("HandleRestoreWatcherChatMessage called without pending state")
+        return false
+    end
+
+    local actualChannelKey = self:GetOutgoingMessageTypeKey(messageType)
+
+    self:DebugLog(string.format(
+        "Chat watcher eventCode=%s messageType=%s actualChannelKey=%s expectedChannelKey=%s fromName=%s text=%s",
         tostring(eventCode),
         tostring(messageType),
+        tostring(actualChannelKey),
+        tostring(state.expectedOutgoingChannelKey),
         tostring(fromName or ""),
         tostring(text or "")
     ))
 
     if not self:IsOutgoingChatMessageType(messageType) then
         self:DebugLog(string.format("Chat watcher ignored non-outgoing event type=%s text=%s", tostring(messageType), tostring(text or "")))
-        return
+        return false
+    end
+
+    if state.expectedOutgoingChannelKey and actualChannelKey ~= state.expectedOutgoingChannelKey then
+        self:DebugLog(string.format(
+            "Chat watcher ignored mismatched channel actual=%s expected=%s text=%s",
+            tostring(actualChannelKey),
+            tostring(state.expectedOutgoingChannelKey),
+            tostring(text or "")
+        ))
+        return false
     end
 
     local details = self:GetFuzzyMessageMatchDetails(state.expectedText, text or "")
@@ -1725,17 +2023,20 @@ function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fr
     ))
 
     if not details.matched then
-        return
+        return false
     end
 
     local metadata = state.metadata
     if type(metadata) == "table" then
         if type(metadata.selectedEntryId) == "string" and metadata.selectedEntryId ~= "" then
-            for _, entry in ipairs(self.savedVars.messages or {}) do
-                if type(entry) == "table" and entry.id == metadata.selectedEntryId then
-                    self:MarkMessageEntryUsed(entry)
-                    break
-                end
+            local usedEntry = self:FindSavedMessageEntryById(
+                metadata.selectedEntryId,
+                metadata.commandId,
+                metadata.guildName,
+                metadata.selectedEntryText
+            )
+            if usedEntry then
+                self:MarkMessageEntryUsed(usedEntry)
             end
         end
 
@@ -1765,17 +2066,21 @@ function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fr
         end
     end
 
-    self:DebugLog("Watcher matched populated message; restoring previous channel")
+    self:DebugLog("Watcher matched populated message; clearing chat buffer and restoring previous channel")
+    local cleared = self:ClearPendingChatBuffer()
+    self:DebugLog("Clear pending chat result after watcher match=" .. tostring(cleared))
+
     local restored = self:RestoreChatChannel(state.previousChannel)
     self:DebugLog("Restore attempt after watcher match restored=" .. tostring(restored))
     self:ClearPendingRestoreState("watcher matched outgoing message")
+    return true
 end
 
 function SmartChatMsg:GetRestoreWatcherTimeoutSeconds(metadata)
     return self:GetRevertChatSeconds() or 60
 end
 
-function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, metadata)
+function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, metadata, expectedOutgoingChannelKey)
     self:ClearPendingRestoreState("arming new restore state")
 
     if not previousChannelInfo or not previousChannelInfo.id then
@@ -1794,6 +2099,7 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
     self.pendingRestoreState = {
         previousChannel = previousChannelInfo,
         expectedText = normalizedExpected,
+        expectedOutgoingChannelKey = expectedOutgoingChannelKey,
         metadata = type(metadata) == "table" and metadata or nil,
         timeoutSeconds = timeoutSeconds,
         armedAt = GetFrameTimeMilliseconds and GetFrameTimeMilliseconds() or nil,
@@ -1801,15 +2107,10 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
 
     self:DebugLog("Armed restore watcher with previous channel: " .. self:FormatChatChannelInfo(previousChannelInfo))
     self:DebugLog("Expected outgoing text: " .. tostring(normalizedExpected))
+    self:DebugLog("Expected outgoing channel key: " .. tostring(expectedOutgoingChannelKey))
     self:DebugLog("Restore watcher timeout seconds: " .. tostring(timeoutSeconds))
 
-    EVENT_MANAGER:RegisterForEvent(
-        self.restoreWatcherEventName,
-        EVENT_CHAT_MESSAGE_CHANNEL,
-        function(...)
-            SmartChatMsg:HandleRestoreWatcherChatMessage(...)
-        end
-    )
+    self:RegisterChatMessageWatchers()
 
     EVENT_MANAGER:RegisterForUpdate(self.restoreWatcherTimeoutName, timeoutSeconds * 1000, function()
         local pendingState = SmartChatMsg.pendingRestoreState
@@ -2225,6 +2526,9 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
     local channel = channelOverride or self:GetSavedChatChannel(commandId, guildName)
     self:DebugLog("PopulateChatBufferForCommand resolved channel=" .. tostring(channel))
 
+    local expectedOutgoingChannelKey = self:GetExpectedOutgoingChannelKey(channel, guildName)
+    self:DebugLog("PopulateChatBufferForCommand expected outgoing channel key=" .. tostring(expectedOutgoingChannelKey))
+
     local previousChannelInfo = self:GetPreciseChatChannelInfo()
     self:DebugLog("PopulateChatBufferForCommand previous channel=" .. self:FormatChatChannelInfo(previousChannelInfo))
 
@@ -2240,13 +2544,14 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
     watcherMetadata.commandId = watcherMetadata.commandId or commandId
     watcherMetadata.guildName = watcherMetadata.guildName or guildName
     watcherMetadata.selectedEntryId = selectedEntry.id
+    watcherMetadata.selectedEntryText = messageText
 
     local currentQueueItem = self.startupQueueCurrent
     if type(currentQueueItem) == "table" and type(currentQueueItem.id) == "string" and currentQueueItem.id ~= "" then
         watcherMetadata.queueItemId = currentQueueItem.id
     end
 
-    local armedRestore = self:ArmPendingRestoreState(previousChannelInfo, resolvedMessageText, watcherMetadata)
+    local armedRestore = self:ArmPendingRestoreState(previousChannelInfo, resolvedMessageText, watcherMetadata, expectedOutgoingChannelKey)
     self:DebugLog("PopulateChatBufferForCommand armedRestore=" .. tostring(armedRestore))
 
     if armedRestore then
@@ -2794,6 +3099,8 @@ local function OnAddonLoaded(event, addonName)
     else
         SmartChatMsg.logger = nil
     end
+
+    SmartChatMsg:RegisterChatMessageWatchers()
 
     SLASH_COMMANDS["/scm"] = function(paramText)
         local normalized = zo_strlower(SmartChatMsg:Trim(paramText or ""))
