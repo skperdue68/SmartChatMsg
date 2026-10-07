@@ -4,6 +4,42 @@ SmartChatMsg is an Elder Scrolls Online addon for players who regularly post reu
 
 It lets you create your own slash commands, store multiple message variants for each command, organize those messages by guild, and then populate the correct message into chat with the proper channel selected.
 
+## Incoming duplicate-message coordination
+
+SmartChatMsg now watches other players' Zone, Guild, and Officer chat. When an
+incoming message matches a saved template for that channel, it records usage for
+the entire **Command + Guild** combination and adds a random **30–90 seconds**
+to its cooldown. An already-running Repeat timer restarts with the same extra
+delay. Receiving a match does not start automation that is inactive.
+
+- Your own account/character and customer-service messages are excluded.
+- Guild and Officer chat are matched only against the receiving guild and the
+  corresponding saved output channel. Guild slot order is resolved locally.
+- Zone chat searches all combinations configured for Zone output. If several
+  combinations match, each is updated once. All variants share that combination's
+  cooldown; the matched saved entry also updates its message-rotation usage.
+- `%guild%`, literal guild names, and guild-link IDs remain required. Greetings
+  (`%time%`, `%timeofday%`, `%greeting%`) and `%zone%` can vary.
+- The existing embedded-time parser/formatter identifies where it inserts a
+  countdown. Only recognized countdowns and automatically added AM/PM/timezone
+  text can vary there. Original event dates, times, explicit timezones, and other
+  parenthesized text stay required. Unannotated originals also match.
+- Matching ignores case, whitespace differences, color codes, and link display
+  style numbers. It requires the complete fixed wording, without fuzzy substring
+  matching. Variable-only templates do not establish a message identity; zone
+  substitutions must be recognized zone names, and repeated substitutions must
+  agree within a message.
+- Zone observations reset the cooldown in your current zone, preserving the
+  existing per-zone behavior. Guild/Officer observations apply across zones.
+  The added delay survives `/reloadui` and appears in the existing status timers.
+- If a matching command/guild message is already waiting in your chat input,
+  its unchanged text is withdrawn and its timeout is canceled. Edited text is
+  preserved. A canceled startup item releases the startup queue.
+
+See [the testing guide](docs/incoming-chat-testing.md) for installation and
+two-player checks. Scheduling is a separate proposal and is not implemented by
+this change.
+
 ## What's New in 1.5.3
 - Added **Populate Sound** at the **Command + Guild** level
 - Added a **Preview** button for the selected populate sound

@@ -8,4 +8,5 @@
 
 SCM_SavedVars.lua
 SCM_Settings.lua
+SCM_IncomingChat.lua
 SmartChatMsg.lua
