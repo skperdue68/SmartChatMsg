@@ -234,9 +234,25 @@ Example setup for a recruitment command:
 
 ## Included Commands
 - `/scm` opens SmartChatMsg settings
+- `/scm schedule` opens settings for the Event Scheduling submenu
+- `/scm status` toggles the live cooldown and scheduling status panel
 - `/scmdebug` toggles or controls debug logging
 
 ## Files
 - `SCM_SavedVars.lua`
 - `SCM_Settings.lua`
 - `SmartChatMsg.lua`
+
+## Event Scheduling
+
+Select a command/guild in Messages Settings, then configure **Event Scheduling
+(Eastern Time)**. Save an enabled start/event/end window with Repeat or Zone
+delivery, optional phase intervals, and message assignments. Schedules activate
+and stop automatically while the game is running. Messages fill the chat box;
+press Enter to send. Use `%eventdate%`, `%eventtime%`, and `%eventwhen%` for event
+details. `off` pauses a schedule until Resume in settings.
+
+Install all files from the addon manifest, including `SCM_Calendar.lua`,
+`SCM_Schedules.lua`, `SCM_Scheduler.lua`, and `SCM_ScheduleSettings.lua`.
+See [the scheduling trial instructions](docs/scheduling-testing.md) for setup,
+daylight saving behavior, and a short two-player test.

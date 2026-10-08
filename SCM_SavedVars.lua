@@ -140,6 +140,7 @@ function SmartChatMsg:InitializeSavedVars()
                         lastUsedGuildIndex = (type(settings.lastUsedGuildIndex) == "number" and settings.lastUsedGuildIndex >= 1 and settings.lastUsedGuildIndex <= 5 and settings.lastUsedGuildIndex == math.floor(settings.lastUsedGuildIndex)) and settings.lastUsedGuildIndex or nil,
                         lastAutoPopulateSentAtByZone = cleanedZoneTimestamps,
                         observedChatCooldowns = self:NormalizeObservedChatCooldowns(settings.observedChatCooldowns),
+                        schedule = self:NormalizeSchedule(settings.schedule),
                     }
 
                     if cleanedByGuild[normalizedGuildKey].lastUsedParamText == "" then
@@ -492,6 +493,7 @@ function SmartChatMsg:BuildExportString()
         }, "|"))
     end
 
+    for _, record in ipairs(self:ExportScheduleRecords()) do table.insert(lines, record) end
     table.insert(lines, "END")
     return table.concat(lines, string.char(10))
 end
@@ -552,6 +554,7 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
 
     local commandIds = {}
     local messageIds = {}
+    local scheduleRecords = {}
 
     for index = 2, #lines do
         local line = lines[index]
@@ -566,7 +569,10 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
 
         local recordType = table.remove(parts, 1)
 
-        if recordType == "DEFAULT" then
+        if recordType == "SCHEDULE_V1" or recordType == "SCHEDULEMESSAGE_V1" then
+            table.insert(parts, 1, recordType)
+            scheduleRecords[#scheduleRecords + 1] = parts
+        elseif recordType == "DEFAULT" then
             local guildIndex = tonumber(self:UnescapeImportExportField(parts[1] or ""))
             if guildIndex and guildIndex >= 1 and guildIndex <= 5 and guildIndex == math.floor(guildIndex) then
                 imported.defaultGuildIndex = guildIndex
@@ -751,6 +757,8 @@ elseif recordType == "GUILDSETTING" then
         end
     end
 
+    local schedulesOk, schedulesError = self:ImportScheduleRecords(scheduleRecords, imported)
+    if not schedulesOk then return false, schedulesError end
     return self:ApplyImportedSettings(imported)
 end
 
@@ -823,6 +831,10 @@ function SmartChatMsg:GetCommandGuildSettings(commandId, guildName, createIfMiss
 end
 
 function SmartChatMsg:GetGuildReminderMinutes(commandId, guildName)
+    if self:GetGuildRunAt(commandId, guildName) == "SCHEDULED" then
+        local schedule = self:GetGuildSchedule(commandId, guildName)
+        return schedule and schedule.delivery == "REPEAT" and self:GetScheduleIntervalMinutes(commandId, guildName) or nil
+    end
     local settings = self:GetCommandGuildSettings(commandId, guildName, false)
     if settings and settings.reminderMinutes ~= nil then
         return self:NormalizeReminderMinutes(settings.reminderMinutes)
@@ -837,6 +849,10 @@ function SmartChatMsg:GetGuildReminderMinutes(commandId, guildName)
 end
 
 function SmartChatMsg:GetGuildAutoPopulateOnZone(commandId, guildName)
+    if self:GetGuildRunAt(commandId, guildName) == "SCHEDULED" then
+        local schedule = self:GetGuildSchedule(commandId, guildName)
+        return schedule and schedule.delivery == "ZONE" or false
+    end
     local settings = self:GetCommandGuildSettings(commandId, guildName, false)
     if settings and settings.autoPopulateOnZone ~= nil then
         return self:NormalizeAutoPopulateOnZone(settings.autoPopulateOnZone)
@@ -873,6 +889,9 @@ function SmartChatMsg:GetGuildEffectiveReminderRetryMinutes(commandId, guildName
 end
 
 function SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName)
+    if self:GetGuildRunAt(commandId, guildName) == "SCHEDULED" and self:GetGuildSchedule(commandId, guildName) then
+        return self:GetScheduleIntervalMinutes(commandId, guildName)
+    end
     local settings = self:GetCommandGuildSettings(commandId, guildName, false)
     if settings and settings.autoPopulateCooldownMinutes ~= nil then
         return self:NormalizeAutoPopulateCooldownMinutes(settings.autoPopulateCooldownMinutes)
