@@ -29,6 +29,12 @@ find(controls,"Start minute").setFunc("35")
 find(controls,"Start AM / PM").setFunc("PM")
 eq(scm:GetScheduleEditorDraft().startTime,"08:35 PM")
 kind.setFunc("Promote an event")
+eq(find(controls,"Starting soon").disabled(),true)
+find(controls,"Enable Starting soon phase").setFunc(true)
+find(controls,"Starting soon begins (minutes before event)").setFunc("120")
+eq(find(controls,"Starting soon").disabled(),false)
+eq(scm:GetScheduleEditorDraft().startingSoonMinutes,"120")
+find(find(controls,"Starting soon").controls,"Message interval override (optional)").setFunc("5")
 find(controls,"Repeat schedule").setFunc("Every other week")
 eq(scm:GetScheduleEditorDraft().recurrence,"BIWEEKLY")
 find(controls,"Sunday").setFunc(true)
@@ -64,17 +70,26 @@ local function nativeControl()
     function c:GetWidth() return self.width end
     function c:SetWidth(v) self.width=v end
     function c:SetHeight(v) self.height=v end
+    function c:SetResizeToFitDescendents(v) self.resizeToFit=v end
+    function c:GetNamedChild(name)
+        self.children=self.children or {}
+        self.children[name]=self.children[name] or nativeControl()
+        return self.children[name]
+    end
     function c:SetHidden(v) self.hidden=v end
     function c:SetText(v) self.text=v end
-    function c:GetTextHeight() return 20 end
+    function c:GetTextHeight() return 20*math.max(1,math.ceil(#(self.text or "")/math.max(1,math.floor(self.width/8)))) end
     function c:SetHandler(name,fn) self[name]=fn end
-    function c:SetAnchor() end
+    function c:SetAnchor(_,parent,_,x,y) self.anchorParent=parent; self.anchorY=y end
     function c:ClearAnchors() end
     function c:SetFont() end
     function c:SetMouseEnabled() end
     return c
 end
-WINDOW_MANAGER={CreateControl=function() return nativeControl() end,CreateControlFromVirtual=function() return nativeControl() end}
+WINDOW_MANAGER={CreateControl=function(_,_,parent) local c=nativeControl(); c.parent=parent; return c end,CreateControlFromVirtual=function(_,_,parent) local c=nativeControl(); c.parent=parent; return c end}
+function ZO_Scroll_ResetToTop(c) c.offset=0 end
+function ZO_Scroll_UpdateScrollBar(c) c.updated=true end
+function ZO_Scroll_OnMouseWheel(c,delta) c.offset=(c.offset or 0)-delta*40 end
 function ZO_CheckButton_SetCheckState(c,v) c.checked=v end
 function ZO_CheckButton_IsChecked(c) return c.checked end
 function ZO_CheckButton_SetToggleFunction(c,fn) c.toggle=fn end
@@ -91,6 +106,9 @@ f.entry("c","ad","Amber Traders","Added after settings opened")
 pool.refreshFunc(holder)
 eq(#holder.scheduleRows,3)
 eq(holder.scheduleRows[3].label.text,"Added after settings opened")
+eq(holder.height,230)
+eq(pool.minHeight,230); eq(pool.maxHeight,230)
+eq(holder.scheduleRows[1].parent,holder.scheduleContent)
 -- Save through the UI validates all current fields and persists checklists.
 now=1792080000
 find(controls,"Sunday").setFunc(false)
@@ -111,6 +129,7 @@ find(controls,"Save and activate").func()
 local saved=assert(scm:GetGuildSchedule("ad","Amber Traders"))
 eq(saved.messagePhases.a.BEFORE,true); eq(saved.messagePhases.b.BEFORE,true)
 eq(saved.phaseOnce.LIVE,true)
+eq(saved.startingSoonEnabled,true);eq(saved.startingSoonMinutes,120);eq(saved.phaseIntervals.SOON,5)
 scm:GetScheduleEditorDraft().eventTime="invalid"
 find(controls,"Save and activate").func()
 eq(scm:GetGuildSchedule("ad","Amber Traders"),saved)
@@ -157,3 +176,26 @@ scm:SetGuildRunAt("ad","Amber Traders","STARTUP");eq(nested.disabled(),true)
 scm:SetGuildRunAt("ad","Amber Traders","SCHEDULED");eq(nested.disabled(),false)
 scm.IsMessagesSelectionComplete=function() return false end;eq(nested.disabled(),true)
 print("PASS scheduling is nested under messages and enabled only for Scheduled selections")
+
+-- Long lists remain inside a bounded viewport, with room for wrapped labels.
+scm.RefreshSettingsUI=function() end
+for i=1,12 do f.entry("long"..i,"ad","Amber Traders",string.rep("A long message preview with spaces. ",8)) end
+pool.refreshFunc(holder)
+eq(holder.height,230)
+assert(holder.scheduleContent.height>holder.height)
+for i,row in ipairs(holder.scheduleRows) do
+    if not row.hidden then
+        assert(row.height>=row.label:GetTextHeight()+12)
+        if i>1 then assert(row.anchorY>=holder.scheduleRows[i-1].anchorY+holder.scheduleRows[i-1].height) end
+    end
+end
+holder.scheduleRows[#holder.scheduleRows].label.OnMouseWheel(nil,-1)
+eq(holder.scheduleScroll.offset,40)
+pool.refreshFunc(holder); eq(holder.scheduleScroll.offset,40)
+holder.scheduleRows[#holder.scheduleRows].label.OnMouseUp()
+eq(scm:GetScheduleEditorDraft().messagePhases.long12.BEFORE,false)
+holder.width=320; holder.OnRectWidthChanged()
+eq(holder.scheduleScroll.width,320)
+assert(holder.scheduleRows[1].label.width<320)
+assert(holder.scheduleContent.height>holder.height)
+print("PASS bounded scrollable message pools, wrapped rows, wheel input and selection refresh")

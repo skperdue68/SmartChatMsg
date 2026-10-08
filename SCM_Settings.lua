@@ -2070,6 +2070,7 @@ function SmartChatMsg:CreateSettingsPanel()
                 {
                     type = "custom",
                     reference = "SCM_MessagesBehaviorSettingsHolder",
+                    minHeight = 0, maxHeight = 335,
                     createFunc = function(control)
                         control:SetHeight(335)
                         messagesBehaviorSettingsHolder = BuildMessagesBehaviorSettings(control)
@@ -2086,6 +2087,7 @@ function SmartChatMsg:CreateSettingsPanel()
                 {
                     type = "custom",
                     reference = "SCM_MessagesEditorHolder",
+                    minHeight = 0, maxHeight = 20000,
                     createFunc = function(control)
                         control:SetHeight(0)
                         messagesEditorHolder = BuildMessagesEditor(control)

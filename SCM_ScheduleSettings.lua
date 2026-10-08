@@ -28,6 +28,7 @@ function SmartChatMsg:GetScheduleEditorDraft()
         local date=string.format("%04d-%02d-%02d",p.year,p.month,p.day)
         local d=source and copy(source) or {enabled=false,paused=false,delivery="REPEAT",intervalMinutes=15,
             startDate=date,startTime="08:00 PM",eventDate=date,eventTime="08:00 PM",endDate=date,endTime="09:00 PM"}
+        d.startingSoonMinutes=d.startingSoonMinutes or 120
         d.mode=d.mode or (source and "EVENT" or "WINDOW"); d.recurrence=d.recurrence or "NONE"
         d.messagePhases=d.messagePhases or {}; d.phaseIntervals=d.phaseIntervals or {}; d.phaseOnce=d.phaseOnce or {}; d.weekdays=d.weekdays or {}
         for _,field in ipairs({"start","event","end"}) do
@@ -61,7 +62,7 @@ function SmartChatMsg:GetScheduleMessageChecklist(phase)
                 local d=self:GetScheduleEditorDraft(); local a=d.messagePhases[messageId]
                 if phase=="ANY" then a=a or {}; a.ANY=v
                 else
-                    if not a or a.ANY then a={BEFORE=true,DAY=true,LIVE=true} end
+                    if not a or a.ANY then a={BEFORE=true,DAY=true,LIVE=true,SOON=true} end
                     a[phase]=v
                 end
                 d.messagePhases[messageId]=a
@@ -74,27 +75,55 @@ end
 
 -- Native LAM custom rows update with selection and newly added/deleted messages.
 function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
-    control.scheduleRows=control.scheduleRows or {}
+    if control.scheduleRefreshing then return end
+    control.scheduleRefreshing=true
+    local viewportHeight=230
+    local width=control:GetWidth()
+    -- Collapsed submenus can initially report no width; remeasure when shown.
+    if not width or width<100 then width=520 end
+    if not control.scheduleScroll then
+        self.schedulePoolControlSerial=(self.schedulePoolControlSerial or 0)+1
+        local name="SCM_ScheduleMessagePool"..self.schedulePoolControlSerial
+        local scroll=WINDOW_MANAGER:CreateControlFromVirtual(name,control,"ZO_ScrollContainer")
+        scroll:SetAnchor(TOPLEFT,control,TOPLEFT,0,0)
+        scroll:SetHeight(viewportHeight)
+        control.scheduleScroll=scroll
+        control.scheduleContent=scroll:GetNamedChild("Scroll"):GetNamedChild("Child")
+        control.scheduleContent:SetResizeToFitDescendents(false)
+        control.scheduleRows={}
+        control:SetHandler("OnEffectivelyShown",function() self:RefreshScheduleMessagePool(control,phase) end)
+        control:SetHandler("OnRectWidthChanged",function() self:RefreshScheduleMessagePool(control,phase) end)
+    end
+    local scroll,content=control.scheduleScroll,control.scheduleContent
+    scroll:SetWidth(width)
+    local contentWidth=math.max(80,width-(ZO_SCROLL_BAR_WIDTH or 16)-8)
+    content:SetWidth(contentWidth)
     local choices=self:GetScheduleMessageChecklist(phase)
     for _,row in ipairs(control.scheduleRows) do row:SetHidden(true) end
     local y=0
     for i,choice in ipairs(choices) do
         local row=control.scheduleRows[i]
         if not row then
-            row=WINDOW_MANAGER:CreateControl(nil,control,CT_CONTROL)
-            row:SetWidth(control:GetWidth())
+            row=WINDOW_MANAGER:CreateControl(nil,content,CT_CONTROL)
             row.check=WINDOW_MANAGER:CreateControlFromVirtual(nil,row,"ZO_CheckButton")
             row.check:SetAnchor(TOPLEFT,row,TOPLEFT,0,0)
             row.label=WINDOW_MANAGER:CreateControl(nil,row,CT_LABEL)
             row.label:SetFont("ZoFontGame")
             row.label:SetAnchor(TOPLEFT,row,TOPLEFT,35,0)
-            row.label:SetWidth(math.max(100,control:GetWidth()-45))
             row.label:SetMouseEnabled(true)
+            local function wheel(_,delta) ZO_Scroll_OnMouseWheel(scroll,delta) end
+            row:SetMouseEnabled(true)
+            row:SetHandler("OnMouseWheel",wheel)
+            row.check:SetHandler("OnMouseWheel",wheel)
+            row.label:SetHandler("OnMouseWheel",wheel)
             control.scheduleRows[i]=row
         end
-        row:SetHidden(false); row:ClearAnchors(); row:SetAnchor(TOPLEFT,control,TOPLEFT,0,y)
+        row:SetWidth(contentWidth)
+        row.label:SetWidth(math.max(40,contentWidth-45))
+        row:SetHidden(false); row:ClearAnchors(); row:SetAnchor(TOPLEFT,content,TOPLEFT,0,y)
         row.label:SetText(choice.name or "")
-        local height=math.max(28,row.label:GetTextHeight()+8)
+        local height=math.max(32,row.label:GetTextHeight()+12)
+        row.label:SetHeight(height-12)
         row:SetHeight(height); y=y+height
         ZO_CheckButton_SetCheckState(row.check,choice.getFunc())
         ZO_CheckButton_SetToggleFunction(row.check,function(button) choice.setFunc(ZO_CheckButton_IsChecked(button)) end)
@@ -102,7 +131,16 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
             local value=not choice.getFunc(); choice.setFunc(value); ZO_CheckButton_SetCheckState(row.check,value)
         end)
     end
-    control:SetHeight(math.max(28,y))
+    content:SetHeight(math.max(1,y))
+    control:SetHeight(viewportHeight)
+    local _,id,guild=self:GetScheduleEditorDraft()
+    local key=tostring(id)..":"..tostring(guild)..":"..phase
+    if control.scheduleSelectionKey~=key then
+        ZO_Scroll_ResetToTop(scroll)
+        control.scheduleSelectionKey=key
+    end
+    ZO_Scroll_UpdateScrollBar(scroll)
+    control.scheduleRefreshing=false
 end
 
 function SmartChatMsg:BuildScheduleOptionControls()
@@ -165,6 +203,10 @@ function SmartChatMsg:BuildScheduleOptionControls()
     local event=dateTime("event","Event")
     event[#event+1]=number("Start promoting (days before event)","promotionDays")
     event[#event+1]=number("Stop promoting (minutes after event)","endDelayMinutes")
+    event[#event+1]={type="checkbox",name="Enable Starting soon phase",tooltip="Use a separate message pool and interval during the final minutes before the event.",getFunc=function() return draft().startingSoonEnabled==true end,setFunc=function(v) draft().startingSoonEnabled=v;refresh() end}
+    local soonLead=number("Starting soon begins (minutes before event)","startingSoonMinutes","120 means two hours before the event. This phase ends at the event start and stays within the promotion window.")
+    soonLead.disabled=function() return not draft().startingSoonEnabled end
+    event[#event+1]=soonLead
     for _,entry in ipairs({{"WINDOW",window},{"REMINDER",reminder},{"EVENT",event}}) do
         local mode=entry[1]
         controls[#controls+1]={type="submenu",name=({WINDOW="Window dates and times",REMINDER="First reminder date and time",EVENT="Event and promotion timing"})[mode],controls=entry[2],disabled=function() return draft().mode~=mode end}
@@ -187,11 +229,11 @@ function SmartChatMsg:BuildScheduleOptionControls()
         if draft().mode~="EVENT" then return "Choose several messages to select one at random." end
         return "Choose messages for each part of promotion. One eligible message is selected at random. Event-day promotion starts at Eastern midnight; live promotion starts at the event time. %eventdate%, %eventtime%, and %eventwhen% use each occurrence."
     end}
-    local phaseLabels={ANY="Messages",BEFORE="Before event day",DAY="On event day",LIVE="From event start until promotion ends"}
-    local onceLabels={BEFORE="Prepare only once before event day",DAY="Prepare only once on event day",LIVE="Prepare only once when event starts"}
-    for _,name in ipairs({"ANY","BEFORE","DAY","LIVE"}) do
+    local phaseLabels={ANY="Messages",BEFORE="Before event day",DAY="On event day",SOON="Starting soon",LIVE="From event start until promotion ends"}
+    local onceLabels={BEFORE="Prepare only once before event day",DAY="Prepare only once on event day",SOON="Prepare only once during Starting soon",LIVE="Prepare only once when event starts"}
+    for _,name in ipairs({"ANY","BEFORE","DAY","SOON","LIVE"}) do
         local phase=name
-        local pool={{type="custom",createFunc=function(control) self:RefreshScheduleMessagePool(control,phase) end,refreshFunc=function(control) self:RefreshScheduleMessagePool(control,phase) end}}
+        local pool={{type="custom",minHeight=230,maxHeight=230,createFunc=function(control) self:RefreshScheduleMessagePool(control,phase) end,refreshFunc=function(control) self:RefreshScheduleMessagePool(control,phase) end}}
         pool[#pool+1]={type="description",text=function()
             local count=0; for _,choice in ipairs(self:GetScheduleMessageChecklist(phase)) do if choice.getFunc() then count=count+1 end end
             local d=draft(); local interval=d.phaseIntervals[phase] or d.intervalMinutes
@@ -201,7 +243,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
             pool[#pool+1]={type="editbox",name="Message interval override (optional)",getFunc=function() return tostring(draft().phaseIntervals[phase] or "") end,setFunc=function(v) draft().phaseIntervals[phase]=v; refresh() end}
             pool[#pool+1]={type="checkbox",name=onceLabels[phase],getFunc=function() return draft().phaseOnce[phase]==true end,setFunc=function(v) draft().phaseOnce[phase]=v; refresh() end}
         end
-        controls[#controls+1]={type="submenu",name=phaseLabels[phase],controls=pool,disabled=function() return (phase=="ANY")==(draft().mode=="EVENT") end}
+        controls[#controls+1]={type="submenu",name=phaseLabels[phase],controls=pool,disabled=function() return (phase=="ANY")==(draft().mode=="EVENT") or (phase=="SOON" and not draft().startingSoonEnabled) end}
     end
     controls[#controls+1]={type="description",text=function()
         local normalized,reason=self:NormalizeSchedule(draft())
@@ -213,7 +255,10 @@ function SmartChatMsg:BuildScheduleOptionControls()
         if occurrence then
             lines[#lines+1]="Starts: "..self:FormatEasternDateTime(occurrence.startsAtUtc)
             lines[#lines+1]="Stops: "..self:FormatEasternDateTime(occurrence.endsAtUtc)
-            if normalized.mode=="EVENT" then lines[#lines+1]="Event: "..self:FormatEasternDateTime(occurrence.eventAtUtc) end
+            if normalized.mode=="EVENT" then
+                lines[#lines+1]="Event: "..self:FormatEasternDateTime(occurrence.eventAtUtc)
+                if normalized.startingSoonEnabled then lines[#lines+1]="Starting soon: "..self:FormatEasternDateTime(math.max(occurrence.startsAtUtc,occurrence.eventAtUtc-normalized.startingSoonMinutes*60)) end
+            end
         end
         lines[#lines+1]="Upcoming occurrences (ET):"
         for _,s in ipairs(upcoming or {}) do

@@ -61,3 +61,20 @@ without running it. Save and activate must activate it. Invalid saves must keep
 the previous saved schedule. Edits must show Unsaved changes until saved.
 A prepared message must say Message ready — press Enter; typed or edited chat
 must say Waiting for your chat, without overwriting the text.
+
+## Test Starting soon and longer message lists
+
+In Promote an event, expand Event and promotion timing and enable Starting soon.
+Set the lead time to five minutes for a quick test and the event time a little
+over five minutes ahead. Open Starting soon, select its messages and set its
+Message interval override to one minute. Save and activate. It should change
+from On event day to Starting soon exactly five minutes before the event, then
+to From event start at the event time. An untouched pending message from the
+earlier phase is replaced; edits remain protected. Default lead time is 120
+minutes, and existing schedules leave this optional phase disabled.
+
+Add at least ten message variations, including messages that wrap over several
+lines. Every phase checklist should remain inside its scroll area. Use the wheel
+over text or a checkbox, or drag the scrollbar, to reach and select the last row.
+Changing a selection must preserve the scroll position. Check that the interval
+and once-only controls below the list remain visible and do not overlap it.

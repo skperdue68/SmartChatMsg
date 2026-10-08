@@ -343,6 +343,60 @@ test("manual delivery outranks an ordinary repeat queued earlier", function()
     CHAT_SYSTEM.textEntry.editControl.text=""; scm:ProcessChatPopulationQueue()
     eq(scm.pendingRestoreState.metadata.commandId,"other")
 end)
+test("optional Starting soon phase has precise boundaries, pool and interval",function()
+    local d=draft();d.startingSoonEnabled=true;d.startingSoonMinutes=120
+    d.messagePhases.b={SOON=true};d.phaseIntervals.SOON=2
+    assert(scm:SaveGuildSchedule("ad","Amber Traders",d))
+    local s=scm:GetGuildSchedule("ad","Amber Traders")
+    eq(scm:GetSchedulePhase(s,s.eventAtUtc-7201),"DAY")
+    eq(scm:GetSchedulePhase(s,s.eventAtUtc-7200),"SOON")
+    eq(scm:GetSchedulePhase(s,s.eventAtUtc-1),"SOON")
+    eq(scm:GetSchedulePhase(s,s.eventAtUtc),"LIVE")
+    now=s.eventAtUtc-3600;eq(scm:GetScheduleIntervalMinutes("ad","Amber Traders"),2)
+    eq(scm:GetScheduledMessageEntries("ad","Amber Traders")[1].id,"b")
+    s.startingSoonEnabled=false;eq(scm:GetSchedulePhase(s,now),"DAY")
+end)
+
+test("Starting soon settings and assignments survive full export import",function()
+    local d=draft();d.startingSoonEnabled=true;d.startingSoonMinutes=90
+    d.messagePhases.b={SOON=true};d.phaseIntervals.SOON=3;d.phaseOnce={SOON=true}
+    assert(scm:SaveGuildSchedule("ad","Amber Traders",d))
+    local exported=scm:BuildExportString();local ok,reason=scm:ImportSettingsFromString(exported);assert(ok,reason)
+    local s=scm:GetGuildSchedule("ad","Amber Traders")
+    eq(s.startingSoonEnabled,true);eq(s.startingSoonMinutes,90)
+    eq(s.phaseIntervals.SOON,3);eq(s.phaseOnce.SOON,true);eq(s.messagePhases.b.SOON,true)
+    eq(s.messagePhases.c.LIVE,true)
+end)
+
+test("Starting soon validates lead time and follows recurring events across midnight",function()
+    local d=draft();d.startingSoonEnabled=true;d.startingSoonMinutes=0
+    local ok,reason=scm:SaveGuildSchedule("ad","Amber Traders",d);eq(ok,false);assert(reason)
+    d.startingSoonMinutes=120;d.eventTime="01:00 AM";d.endTime="02:00 AM";d.recurrence="WEEKLY"
+    assert(scm:SaveGuildSchedule("ad","Amber Traders",d))
+    local s=scm:GetGuildSchedule("ad","Amber Traders")
+    eq(scm:GetSchedulePhase(s,s.eventAtUtc-7200),"SOON")
+    eq(scm:GetSchedulePhase(s,s.eventAtUtc+7*86400-7200),"SOON")
+end)
+
+test("scheduler switches to Starting soon, repeats at its interval and protects edits",function()
+    f.entry("soon","ad","Amber Traders","Amber Traders trial starts very soon!")
+    local d=draft();d.startingSoonEnabled=true;d.startingSoonMinutes=120
+    d.messagePhases.soon={SOON=true};d.phaseIntervals.SOON=2
+    assert(scm:SaveGuildSchedule("ad","Amber Traders",d))
+    local s=scm:GetGuildSchedule("ad","Amber Traders")
+    now=s.eventAtUtc-7201;scm:TickSchedules();eq(scm.pendingRestoreState.metadata.scheduledPhase,"DAY")
+    now=now+1;scm:TickSchedules();eq(scm.pendingRestoreState.metadata.scheduledPhase,"SOON")
+    assert(CHAT_SYSTEM.textEntry.editControl.text:find("very soon",1,true))
+    assert(scm:GetScheduleStatusText("ad","Amber Traders"):find("Starting soon",1,true))
+    sent();eq(s.nextDueAt,now+120)
+    now=now+119;scm:TickSchedules();eq(scm.pendingRestoreState,nil)
+    now=now+1;scm:TickSchedules();eq(scm.pendingRestoreState.metadata.scheduledPhase,"SOON")
+    CHAT_SYSTEM.textEntry.editControl.text="My edited chat"
+    now=s.eventAtUtc;scm:TickSchedules();eq(CHAT_SYSTEM.textEntry.editControl.text,"My edited chat")
+    CHAT_SYSTEM.textEntry.editControl.text="";scm:TickSchedules()
+    eq(scm.pendingRestoreState.metadata.scheduledPhase,"LIVE")
+end)
+
 local failures=0
 for _,case in ipairs(tests) do
     local ok,reason=pcall(function() setup(); case[2]() end)

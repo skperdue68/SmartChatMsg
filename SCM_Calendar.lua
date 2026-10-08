@@ -66,9 +66,11 @@ end
 
 function SmartChatMsg:GetSchedulePhase(schedule, utc)
     if schedule.mode=="WINDOW" or schedule.mode=="REMINDER" then return "ANY" end
+    local soonMinutes=schedule.startingSoonEnabled and tonumber(schedule.startingSoonMinutes)
     local occurrence=self.GetScheduleOccurrence and self:GetScheduleOccurrence(schedule,utc)
     schedule=occurrence or schedule
     if utc >= schedule.eventAtUtc then return "LIVE" end
+    if soonMinutes and utc>=schedule.eventAtUtc-soonMinutes*60 then return "SOON" end
     local event = self:GetEasternParts(schedule.eventAtUtc)
     local midnight = self:ParseEasternDateTime(string.format("%04d-%02d-%02d", event.year, event.month, event.day), "12:00 AM")
     return utc < midnight and "BEFORE" or "DAY"

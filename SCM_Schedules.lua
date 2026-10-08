@@ -1,5 +1,5 @@
 SmartChatMsg = SmartChatMsg or {}
-local phases = {"ANY", "BEFORE", "DAY", "LIVE"}
+local phases = {"ANY", "BEFORE", "DAY", "LIVE", "SOON"}
 local function positiveInteger(value)
     value = tonumber(value)
     return value and value > 0 and value < math.huge and value == math.floor(value) and value or nil
@@ -11,6 +11,10 @@ function SmartChatMsg:NormalizeSchedule(data)
         delivery=data.delivery or "REPEAT", intervalMinutes=positiveInteger(data.intervalMinutes or 5), messagePhases={}, phaseIntervals={},
         mode=data.mode or "EVENT", recurrence=data.recurrence or "NONE", recurrenceInterval=positiveInteger(data.recurrenceInterval or 1), weekdays={}, phaseOnce={}}
     if result.mode~="EVENT" and result.mode~="WINDOW" and result.mode~="REMINDER" then return nil,"Choose a schedule kind." end
+    result.startingSoonEnabled=result.mode=="EVENT" and data.startingSoonEnabled==true
+    result.startingSoonMinutes=positiveInteger(data.startingSoonMinutes or 120)
+    if result.startingSoonEnabled and not result.startingSoonMinutes then return nil,"Starting soon: enter a positive whole number of minutes before the event." end
+    if not result.startingSoonMinutes then result.startingSoonMinutes=120 end
     local validRecurrence={NONE=true,DAILY=true,WEEKLY=true,BIWEEKLY=true,MONTHLY_DATE=true,MONTHLY_WEEKDAY=true}
     if not validRecurrence[result.recurrence] or not result.recurrenceInterval then return nil,"Choose a valid recurrence and positive interval." end
     for day=1,7 do if type(data.weekdays)=="table" and data.weekdays[day] then result.weekdays[day]=true end end
@@ -55,8 +59,9 @@ function SmartChatMsg:NormalizeSchedule(data)
             for _, phase in ipairs(phases) do result.messagePhases[id][phase]=assignments[phase] == true end
         end
     end
-    for _, phase in ipairs({"BEFORE","DAY","LIVE"}) do
+    for _, phase in ipairs({"BEFORE","DAY","LIVE","SOON"}) do
         local raw = type(data.phaseIntervals) == "table" and data.phaseIntervals[phase] or nil
+        if phase=="SOON" and raw==nil then raw=data.startingSoonIntervalMinutes end
         if raw ~= nil and raw ~= "" then
             local interval=positiveInteger(raw)
             if not interval then return nil,phase..": interval must be a positive whole number or blank." end
@@ -151,7 +156,7 @@ function SmartChatMsg:ExportScheduleRecords()
                 lines[#lines+1]=encode(fields)
                 local days={};for day=1,7 do days[day]=s.weekdays and s.weekdays[day] and "1" or "0" end
                 local once={};for _,phase in ipairs(phases) do once[#once+1]=s.phaseOnce and s.phaseOnce[phase] and "1" or "0" end
-                lines[#lines+1]=encode({"SCHEDULEOPTIONS_V1",id,guild,s.mode or "EVENT",s.recurrence or "NONE",tostring(s.recurrenceInterval or 1),table.concat(days),tostring(s.promotionDays or ""),tostring(s.endDelayMinutes or ""),table.concat(once)})
+                lines[#lines+1]=encode({"SCHEDULEOPTIONS_V1",id,guild,s.mode or "EVENT",s.recurrence or "NONE",tostring(s.recurrenceInterval or 1),table.concat(days),tostring(s.promotionDays or ""),tostring(s.endDelayMinutes or ""),table.concat(once),s.startingSoonEnabled and "1" or "0",tostring(s.startingSoonMinutes or 120),tostring(s.phaseIntervals.SOON or "")})
                 for messageId,assigned in pairs(s.messagePhases) do
                     local row={"SCHEDULEMESSAGE_V1",id,guild,messageId}
                     for _,phase in ipairs(phases) do row[#row+1]=assigned[phase] and "1" or "0" end
@@ -184,10 +189,11 @@ function SmartChatMsg:ImportScheduleRecords(records,imported)
                 d.mode,d.recurrence,d.recurrenceInterval=row[4],row[5],row[6]
                 d.weekdays={};for day=1,7 do if (row[7] or ""):sub(day,day)=="1" then d.weekdays[day]=true end end
                 d.promotionDays=row[8]~="" and row[8] or nil;d.endDelayMinutes=row[9]~="" and row[9] or nil
+                d.startingSoonEnabled=row[11]=="1";d.startingSoonMinutes=row[12] or 120;d.startingSoonIntervalMinutes=row[13]
                 d.phaseOnce={};for index,phase in ipairs(phases) do d.phaseOnce[phase]=(row[10] or ""):sub(index,index)=="1" end
             else
                 if not row[4] or row[4]=="" then return false,"Imported schedule message is missing its ID." end
-                d.messagePhases[row[4]]={ANY=row[5]=="1",BEFORE=row[6]=="1",DAY=row[7]=="1",LIVE=row[8]=="1"}
+                d.messagePhases[row[4]]={ANY=row[5]=="1",BEFORE=row[6]=="1",DAY=row[7]=="1",LIVE=row[8]=="1",SOON=row[9]=="1"}
             end
         end
     end

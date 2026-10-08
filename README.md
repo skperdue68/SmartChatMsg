@@ -91,19 +91,34 @@ are skipped. Preview the next occurrences to check your choice.
 
 ### Choose several messages for each event phase
 
-Expand the message choices and check the variations you want. You can assign
+Expand the message choices and check the variations you want. Each checklist
+has a bounded scroll area; use its scrollbar or mouse wheel to see all messages.
+Long messages wrap within their own rows. You can assign
 several messages to each phase and assign one message to several phases:
 
 - **Before event day:** promotion start until midnight on the Eastern event day.
 - **On event day:** midnight until the event starts.
+- **Starting soon (optional):** enable this in Event and promotion timing and
+  enter the lead time in minutes (120 means two hours). It takes over from the
+  earlier phase at that threshold and runs until the event starts, within the
+  promotion window. Select its messages and a Message interval override, such
+  as five minutes. It can begin the previous evening for an early-morning event.
 - **From event start until promotion ends:** event start until promotion ends.
 
 SmartChatMsg randomly selects from the messages eligible in the current phase,
 using its existing message rotation. Each phase can use its own interval; a
 phase can also prepare a message once. Missing phase choices do not fall back to
 an unrelated phase. Simple windows and timed reminders use one message pool.
+With Starting soon enabled, Before event day and On event day end when that
+phase begins. Leave it disabled to retain the original three event phases.
+Full settings export/import includes its lead time, messages, interval and
+once-only option. Existing schedules leave it disabled.
 
 Event templates can include `%eventdate%`, `%eventtime%`, and `%eventwhen%`.
+`%eventwhen%` describes the Eastern calendar day: weekday/date when further away,
+tomorrow the day before, and today throughout the event day (including after
+the start). It does not change to hours/minutes or "already started". Countdown
+annotations and phase-specific message wording provide those details.
 They refer to the current occurrence of a recurring event. Example:
 `%guild% trial %eventwhen%, %eventdate% at %eventtime%.`
 
