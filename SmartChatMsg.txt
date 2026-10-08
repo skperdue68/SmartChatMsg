@@ -6,6 +6,7 @@
 ## DependsOn: LibAddonMenu-2.0
 ## OptionalDependsOn: LibDebugLogger
 
+SCM_MessageSharing.lua
 SCM_SavedVars.lua
 SCM_Settings.lua
 SCM_IncomingChat.lua

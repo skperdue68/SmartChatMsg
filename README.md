@@ -232,6 +232,23 @@ Example setup for a recruitment command:
 - Use Auto Populate on Zone for travel-based reminders.
 - Use `off` to clearly stop automation for a specific command/guild.
 
+## Sharing message templates
+
+In Messages Settings, select a command, guild and output channel. Open **Share
+Messages**, click **Export Messages**, and copy the generated text to another
+player. They select their destination command and the same guild/channel, paste
+the text, and click **Import Messages (merge)**. The command names can differ.
+
+Import adds new templates, skips exact duplicates, and preserves existing
+messages, IDs, usage, schedules, channels and other settings. It does not activate
+automation. Shared guilds use names rather than guild-slot numbers. Imported
+templates immediately participate in incoming-message cooldown coordination.
+
+The share format is separate from full backup/restore. Full settings import
+still replaces all settings. For event tokens, recipients must configure the
+matching event separately. New scheduled templates use ANY phase until assigned.
+Install `SCM_MessageSharing.lua` along with the updated manifest and settings file.
+
 ## Included Commands
 - `/scm` opens SmartChatMsg settings
 - `/scmdebug` toggles or controls debug logging

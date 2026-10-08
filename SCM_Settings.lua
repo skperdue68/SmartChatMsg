@@ -1918,6 +1918,7 @@ function SmartChatMsg:CreateSettingsPanel()
     local importExportHolder
 
     local optionsTable = {
+        {type="submenu",name="Share Messages",controls=self:BuildMessageSharingOptionControls()},
         {
             type = "description",
             text = "Allows you to create custom command(s) that can be filtered by guild and used to output one of several random messages to the appropriate chat type.",
