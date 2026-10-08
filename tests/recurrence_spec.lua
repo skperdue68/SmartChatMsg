@@ -48,10 +48,10 @@ assert(s:ImportScheduleRecords(rows,imported))
 local copy=imported.commandGuildSettings.ad['amber traders'].schedule
 assert(copy.mode=='REMINDER' and copy.recurrence=='DAILY')
 print('PASS reminder once, reload, skipped backlog, next occurrence and exports')
-assert(s:GetScheduleStatusText('ad','Amber Traders'):find('Engaged',1,true))
+assert(s:GetScheduleStatusText('ad','Amber Traders'):find('Active',1,true))
 now=now+180
 local status=s:GetScheduleStatusText('ad','Amber Traders')
-assert(status:find('Waiting',1,true))
+assert(status:find('Scheduled — waiting',1,true))
 assert(status:find('2026-10-10',1,true),'status projects next occurrence')
 print('PASS current and future occurrence status')
 local zoneReminder=normalize({mode='REMINDER',delivery='ZONE',startDate='2026-10-08',startTime='08:00 PM',recurrence='DAILY'})

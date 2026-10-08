@@ -54,3 +54,14 @@ assert(s:IsChatPopulationBusy(),"whitespace is still a user edit")
 CHAT_SYSTEM.textEntry.editControl:SetText("")
 assert(not s:IsChatPopulationBusy())
 print("PASS native ESO GetEditControl and lowercase editControl preserve input safety")
+
+local scm=SmartChatMsg
+local edit=scm:GetChatEditControl()
+edit.text="Prepared test"
+scm.pendingRestoreState={rawExpectedText="Prepared test",metadata={commandId="ad",guildName="Amber Traders"}}
+assert(scm:GetScheduleChatWaitText("ad","Amber Traders")=="Message ready — press Enter")
+edit.text="Edited by me"
+assert(scm:GetScheduleChatWaitText("ad","Amber Traders"):find("your edits are protected",1,true))
+scm.pendingRestoreState=nil
+assert(scm:GetScheduleChatWaitText("ad","Amber Traders"):find("your text is protected",1,true))
+print("PASS status distinguishes prepared messages from protected user input")

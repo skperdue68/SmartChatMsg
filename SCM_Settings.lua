@@ -1166,7 +1166,7 @@ local function BuildMessagesBehaviorSettings(parent)
 
             local entry = runAtComboBox:CreateItemEntry(option.label, function()
                 SmartChatMsg.settings.pendingGuildRunAt = option.value
-                if option.value=="SCHEDULED" then SmartChatMsg:ShowStatusMessage("Configure and Save this command/guild in Event Scheduling (Eastern Time).") end
+                if option.value=="SCHEDULED" then SmartChatMsg:ShowStatusMessage("Open Scheduling below to configure and activate this command and guild.") end
 
                 local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
                 if not ok and err then
@@ -2129,7 +2129,21 @@ function SmartChatMsg:CreateSettingsPanel()
         },
     }
 
-    table.insert(optionsTable, #optionsTable, {type="submenu",name="Event Scheduling (Eastern Time)",controls=self:BuildScheduleOptionControls()})
+    for _,section in ipairs(optionsTable) do
+        if section.name=="Create / Edit / Delete Messages" then
+            table.insert(section.controls, #section.controls, {
+                type="submenu", name="Scheduling (Eastern Time)",
+                tooltip="Select Scheduled in Run At above to configure automatic reminders.",
+                disabled=function()
+                    local id=SmartChatMsg.savedVars.selectedMessagesCommand
+                    local guild=SmartChatMsg:GetSelectedGuildNameForMessages()
+                    return not SmartChatMsg:IsMessagesSelectionComplete() or SmartChatMsg:GetGuildRunAt(id,guild)~="SCHEDULED"
+                end,
+                controls=self:BuildScheduleOptionControls(),
+            })
+            break
+        end
+    end
     LAM2:RegisterOptionControls("SmartChatMsgOptionsPanel", optionsTable)
 end
 

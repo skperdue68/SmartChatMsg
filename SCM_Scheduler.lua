@@ -348,11 +348,25 @@ function SmartChatMsg:GetScheduleSummaryText()
     return table.concat(lines,"\n")
 end
 
+-- Describe who owns the chat text without treating our prepared message as user input.
+function SmartChatMsg:GetScheduleChatWaitText(commandId,guildName)
+    local pending=self.pendingRestoreState
+    local metadata=pending and pending.metadata
+    local edit=self:GetChatEditControl()
+    if not edit or not edit.GetText then return "Chat input unavailable" end
+    if metadata and metadata.commandId==commandId and self:StringsEqualIgnoreCase(metadata.guildName or "",guildName) then
+        if edit:GetText()==pending.rawExpectedText then return "Message ready — press Enter" end
+        return "Waiting for your chat — your edits are protected"
+    end
+    if edit:GetText()~="" then return "Waiting for your chat — your text is protected" end
+    if self:IsExecutionBusy() then return "Waiting for another command" end
+end
+
 function SmartChatMsg:GetScheduleStatusText(commandId,guildName)
     local state,phase=self:GetGuildScheduleState(commandId,guildName)
     local schedule=self:GetGuildSchedule(commandId,guildName)
-    local labels={RUNNING="Engaged",WAITING="Waiting",PAUSED="Paused",FINISHED="Finished",DISABLED="Disabled",UNCONFIGURED="Not configured",ON_DEMAND="On demand"}
-    local phaseNames={BEFORE="Before event",DAY="Event day",LIVE="Event live"}
+    local labels={RUNNING="Active",WAITING="Scheduled — waiting",PAUSED="Paused",FINISHED="Finished",DISABLED="Disabled",UNCONFIGURED="Not configured",ON_DEMAND="On demand"}
+    local phaseNames={BEFORE="Before event day",DAY="On event day",LIVE="From event start until promotion ends"}
     local text=(labels[state] or state)..(phaseNames[phase] and " / "..phaseNames[phase] or "")
     local runtime=self.scheduleRuntime and self.scheduleRuntime[self:GetReminderStateKey(commandId,guildName)]
     if runtime and runtime.reason then text=text.." — "..runtime.reason end

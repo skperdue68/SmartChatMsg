@@ -16,8 +16,8 @@ local controls=scm:BuildScheduleOptionControls()
 local kind=assert(find(controls,"Schedule type"),"simple schedule type missing")
 kind.setFunc("Run during a window")
 eq(scm:GetScheduleEditorDraft().mode,"WINDOW")
-eq(find(controls,"Promote an event").disabled(),true)
-eq(find(controls,"Run during a window").disabled(),false)
+eq(find(controls,"Event and promotion timing").disabled(),true)
+eq(find(controls,"Window dates and times").disabled(),false)
 local date=assert(find(controls,"Start date (ET)"))
 eq(date.type,"datepicker")
 local carrier=scm:ScheduleDateToPicker("2026-10-16")
@@ -107,12 +107,12 @@ for _,c in ipairs(controls) do
     end
 end
 assert(preview and preview:find("2026%-10%-16") and preview:find("EDT"))
-find(controls,"Save schedule").func()
+find(controls,"Save and activate").func()
 local saved=assert(scm:GetGuildSchedule("ad","Amber Traders"))
 eq(saved.messagePhases.a.BEFORE,true); eq(saved.messagePhases.b.BEFORE,true)
 eq(saved.phaseOnce.LIVE,true)
 scm:GetScheduleEditorDraft().eventTime="invalid"
-find(controls,"Save schedule").func()
+find(controls,"Save and activate").func()
 eq(scm:GetGuildSchedule("ad","Amber Traders"),saved)
 -- Editing the loaded draft never changes the saved schedule before Save.
 local loaded=scm:GetScheduleEditorDraft()
@@ -125,6 +125,33 @@ scm.scheduleEditor=nil
 local legacyDraft=scm:GetScheduleEditorDraft()
 eq(legacyDraft.mode,"EVENT")
 eq(legacyDraft.promotionDays,nil)
-find(controls,"Save schedule").func()
+find(controls,"Save and activate").func()
 eq(scm:GetGuildSchedule("ad","Amber Traders").startTime,"12:00 PM")
 print("PASS simple schedule UI callbacks, native checklists, preview, transactional save and date carrier roundtrip")
+
+-- Activation and disabled saves are distinct and validation remains transactional.
+find(controls,"Save disabled").func()
+eq(scm:GetGuildSchedule("ad","Amber Traders").enabled,false)
+find(controls,"Save and activate").func()
+eq(scm:GetGuildSchedule("ad","Amber Traders").enabled,true)
+assert(not find(controls,"Enable schedule"))
+assert(find(controls,"From event start until promotion ends"))
+assert(find(controls,"More repeat options"))
+print("PASS explicit activation and disabled save actions")
+
+-- Capture actual panel registration to verify placement and its Run At gate.
+local options
+LibAddonMenu2={RegisterAddonPanel=function() return {} end,RegisterOptionControls=function(_,_,list) options=list end}
+ZO_Dialogs_RegisterCustomDialog=function() end
+dofile("SCM_Settings.lua")
+scm.settings.InitializeState=function() end
+scm:CreateSettingsPanel()
+local messages=assert(find(options,"Create / Edit / Delete Messages"))
+local nested=assert(find(messages.controls,"Scheduling (Eastern Time)"))
+for _,section in ipairs(options) do assert(section.name~="Scheduling (Eastern Time)" and section.name~="Event Scheduling (Eastern Time)") end
+scm.IsMessagesSelectionComplete=function() return true end
+scm:SetGuildRunAt("ad","Amber Traders","ON_DEMAND");eq(nested.disabled(),true)
+scm:SetGuildRunAt("ad","Amber Traders","STARTUP");eq(nested.disabled(),true)
+scm:SetGuildRunAt("ad","Amber Traders","SCHEDULED");eq(nested.disabled(),false)
+scm.IsMessagesSelectionComplete=function() return false end;eq(nested.disabled(),true)
+print("PASS scheduling is nested under messages and enabled only for Scheduled selections")

@@ -43,7 +43,7 @@ The runtime files are `SCM_MessageSharing.lua`, `SCM_SavedVars.lua`,
 | Command | Purpose |
 | --- | --- |
 | `/scm` | Open settings. |
-| `/scm schedule` | Open settings; expand Event Scheduling (Eastern Time). |
+| `/scm schedule` | Open settings; expand Create / Edit / Delete Messages, then Scheduling (Eastern Time). |
 | `/scm status` | Toggle the live status window. |
 | `/scmdebug on`, `/scmdebug off`, `/scmdebug status` | Control debugging; `/scmdebug` toggles it. |
 | `/recruit 1` | Run your custom command for local guild slot 1. |
@@ -57,13 +57,13 @@ Guild to run without a guild parameter. Select the saved output channel in setti
 
 - **On Demand:** run the command to populate a message/start its configured automation.
 - **Startup:** the combination enters the startup queue after login/player activation.
-- **Scheduled:** save an enabled window in Event Scheduling. No command is needed
+- **Scheduled:** save an enabled window in Scheduling. No command is needed
   at its start time. Selecting Scheduled without a valid saved window does nothing.
 
 ## Set up a schedule
 
-Select a command, guild, and output channel in Messages Settings, then open
-**Event Scheduling (Eastern Time)**. Choose what you want to do:
+Select a command, guild, and output channel in Messages Settings, set **Run At** to **Scheduled**, then open
+**Scheduling (Eastern Time)** inside **Create / Edit / Delete Messages**. Choose what you want to do:
 
 - **Run during a window:** pick a start date/time and stop date/time, choose
   messages, and set how often to prepare one. No event date is required.
@@ -74,15 +74,14 @@ Select a command, guild, and output channel in Messages Settings, then open
 
 Dates use a calendar picker; times use Eastern Time (ET). Saved schedules reopen
 with readable date/time values. Internal timestamps never appear as settings.
-The preview shows upcoming occurrences before you save. Enable the schedule and
-click **Save schedule** to activate it; changes remain a draft until saved.
+The review shows the start, stop, event time (when applicable), and upcoming occurrences. **Save and activate** starts automatically at the scheduled time while you are online; **Save disabled** keeps your setup without running it. Changes remain a draft until saved. The Scheduling section is disabled unless Run At is Scheduled for the selected command and guild.
 
 ### Repeat a schedule
 
 Choose once, daily, weekly, every two weeks, monthly on the selected date, or
 monthly on the selected weekday (for example, the third Friday). The selected
 initial date anchors recurring weeks and months. Weekday selections and the
-custom interval refine repeated reminders. Timed reminders have a two-minute
+custom interval under **More repeat options** refine repeated reminders. Timed reminders have a two-minute
 eligibility window; overdue offline reminders are skipped. Schedule recurrence is separate from
 how often a message is prepared during an active window.
 
@@ -97,7 +96,7 @@ several messages to each phase and assign one message to several phases:
 
 - **Before event day:** promotion start until midnight on the Eastern event day.
 - **On event day:** midnight until the event starts.
-- **When the event starts:** event start until promotion ends.
+- **From event start until promotion ends:** event start until promotion ends.
 
 SmartChatMsg randomly selects from the messages eligible in the current phase,
 using its existing message rotation. Each phase can use its own interval; a
@@ -221,7 +220,7 @@ the recipient assigns their phases.
 
 Full settings export includes event dates/times and message-phase assignments.
 After import, select the command/guild, edit its window and intervals in Event
-Scheduling, change phase checkboxes, and **Save schedule**. Edits affect only your
+Scheduling, change phase checkboxes, and **Save and activate**. Edits affect only your
 own copy. For example, keep Friday's event start but begin your reminders later.
 
 Full import replaces all settings and may import enabled schedules; review them

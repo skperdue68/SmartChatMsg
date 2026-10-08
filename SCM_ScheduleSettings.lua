@@ -65,6 +65,8 @@ function SmartChatMsg:GetScheduleMessageChecklist(phase)
                     a[phase]=v
                 end
                 d.messagePhases[messageId]=a
+                if self.scheduleEditor then self.scheduleEditor.dirty=true end
+                self:RefreshSettingsUI()
             end}
     end
     return result
@@ -105,7 +107,7 @@ end
 
 function SmartChatMsg:BuildScheduleOptionControls()
     local function draft() return self:GetScheduleEditorDraft() end
-    local function refresh() self:RefreshSettingsUI() end
+    local function refresh() if self.scheduleEditor then self.scheduleEditor.dirty=true end; self:RefreshSettingsUI() end
     local function selected() local _,id,guild=draft(); return self:GetCommandById(id) and self:GetGuildSlotByName(guild) end
     local function number(name,key,tooltip)
         return {type="editbox",name=name,tooltip=tooltip,getFunc=function()
@@ -151,10 +153,9 @@ function SmartChatMsg:BuildScheduleOptionControls()
     end
     local function append(target,source) for _,v in ipairs(source) do target[#target+1]=v end end
     local controls={
-        {type="description",text="Choose a command and guild in Messages Settings first. Dates and times use Eastern Time (ET), including daylight saving time. Save applies changes. Prepared messages require Enter to send."},
-        {type="description",text=function() local _,id,guild=draft(); local command=self:GetCommandById(id); local channel=self.GetSelectedMessagesChannel and self:GetSelectedMessagesChannel() or ""; return (command and command.name or "No command").." / "..tostring(guild or "No guild").." / "..tostring(channel).."\n"..self:GetScheduleStatusText(id,guild) end},
+        {type="description",text="Uses the command, guild and output channel selected above. All times are Eastern Time (ET). Save and activate starts automatically while you are online. Press Enter to send each prepared message."},
+        {type="description",text=function() local _,id,guild=draft(); local command=self:GetCommandById(id); local channel=self.GetSelectedMessagesChannel and self:GetSelectedMessagesChannel() or ""; return (command and command.name or "No command").." / "..tostring(guild or "No guild").." / "..tostring(channel).."\n"..self:GetScheduleStatusText(id,guild)..(self.scheduleEditor and self.scheduleEditor.dirty and "\nUnsaved changes — review and save below." or "") end},
         dropdown("Schedule type",modeLabels,modeValues,"mode"),
-        {type="checkbox",name="Enable schedule",getFunc=function() return draft().enabled end,setFunc=function(v) draft().enabled=v; refresh() end},
     }
     -- LAM has no hidden callback. Its supported disabled callback automatically
     -- closes submenus, keeping irrelevant fields out of the expanded form.
@@ -166,11 +167,12 @@ function SmartChatMsg:BuildScheduleOptionControls()
     event[#event+1]=number("Stop promoting (minutes after event)","endDelayMinutes")
     for _,entry in ipairs({{"WINDOW",window},{"REMINDER",reminder},{"EVENT",event}}) do
         local mode=entry[1]
-        controls[#controls+1]={type="submenu",name=label(modeValues,modeLabels,mode),controls=entry[2],disabled=function() return draft().mode~=mode end}
+        controls[#controls+1]={type="submenu",name=({WINDOW="Window dates and times",REMINDER="First reminder date and time",EVENT="Event and promotion timing"})[mode],controls=entry[2],disabled=function() return draft().mode~=mode end}
     end
-    local repeats={dropdown("Repeat schedule",repeatLabels,repeatValues,"recurrence"),number("Custom repeat interval (optional)","recurrenceInterval",
+    controls[#controls+1]=dropdown("Repeat schedule",repeatLabels,repeatValues,"recurrence")
+    local repeats={number("Custom repeat interval (optional)","recurrenceInterval",
         "Blank uses the selected repeat. Otherwise enter days, weeks, or months between occurrences (every other week uses two-week units).")}
-    repeats[2].disabled=function() return draft().recurrence=="NONE" end
+    repeats[1].disabled=function() return draft().recurrence=="NONE" end
     local weekdays={}
     for i,name in ipairs({"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"}) do
         local day=i
@@ -179,17 +181,22 @@ function SmartChatMsg:BuildScheduleOptionControls()
     repeats[#repeats+1]={type="submenu",name="Repeat on weekdays (optional)",controls=weekdays,disabled=function()
         local r=draft().recurrence; return r~="DAILY" and r~="WEEKLY" and r~="BIWEEKLY"
     end}
-    controls[#controls+1]={type="submenu",name="Schedule repetition",controls=repeats}
+    controls[#controls+1]={type="submenu",name="More repeat options",controls=repeats}
     controls[#controls+1]={type="submenu",name="Message delivery",controls={dropdown("Delivery",{"Repeat while active","On zone arrival"},{"REPEAT","ZONE"},"delivery"),number("Message interval (minutes)","intervalMinutes")},disabled=function() return draft().mode=="REMINDER" end}
     controls[#controls+1]={type="description",text=function()
         if draft().mode~="EVENT" then return "Choose several messages to select one at random." end
         return "Choose messages for each part of promotion. One eligible message is selected at random. Event-day promotion starts at Eastern midnight; live promotion starts at the event time. %eventdate%, %eventtime%, and %eventwhen% use each occurrence."
     end}
-    local phaseLabels={ANY="Messages",BEFORE="Before event day",DAY="On event day",LIVE="When event starts"}
+    local phaseLabels={ANY="Messages",BEFORE="Before event day",DAY="On event day",LIVE="From event start until promotion ends"}
     local onceLabels={BEFORE="Prepare only once before event day",DAY="Prepare only once on event day",LIVE="Prepare only once when event starts"}
     for _,name in ipairs({"ANY","BEFORE","DAY","LIVE"}) do
         local phase=name
         local pool={{type="custom",createFunc=function(control) self:RefreshScheduleMessagePool(control,phase) end,refreshFunc=function(control) self:RefreshScheduleMessagePool(control,phase) end}}
+        pool[#pool+1]={type="description",text=function()
+            local count=0; for _,choice in ipairs(self:GetScheduleMessageChecklist(phase)) do if choice.getFunc() then count=count+1 end end
+            local d=draft(); local interval=d.phaseIntervals[phase] or d.intervalMinutes
+            return tostring(count).." messages selected · "..((d.mode=="REMINDER" or d.phaseOnce[phase]) and "Prepare once" or d.delivery=="ZONE" and "On zone arrival" or "Every "..tostring(interval).." minutes")
+        end}
         if phase~="ANY" then
             pool[#pool+1]={type="editbox",name="Message interval override (optional)",getFunc=function() return tostring(draft().phaseIntervals[phase] or "") end,setFunc=function(v) draft().phaseIntervals[phase]=v; refresh() end}
             pool[#pool+1]={type="checkbox",name=onceLabels[phase],getFunc=function() return draft().phaseOnce[phase]==true end,setFunc=function(v) draft().phaseOnce[phase]=v; refresh() end}
@@ -201,19 +208,33 @@ function SmartChatMsg:BuildScheduleOptionControls()
         if not normalized then return "Preview: "..tostring(reason) end
         if not self.GetUpcomingScheduleOccurrences then return "Preview unavailable." end
         local upcoming=self:GetUpcomingScheduleOccurrences(normalized,GetTimeStamp(),3)
-        local lines={"Upcoming occurrences (ET):"}
+        local lines={"Review your schedule (ET):"}
+        local occurrence=upcoming and upcoming[1]
+        if occurrence then
+            lines[#lines+1]="Starts: "..self:FormatEasternDateTime(occurrence.startsAtUtc)
+            lines[#lines+1]="Stops: "..self:FormatEasternDateTime(occurrence.endsAtUtc)
+            if normalized.mode=="EVENT" then lines[#lines+1]="Event: "..self:FormatEasternDateTime(occurrence.eventAtUtc) end
+        end
+        lines[#lines+1]="Upcoming occurrences (ET):"
         for _,s in ipairs(upcoming or {}) do
             local utc=normalized.mode=="EVENT" and s.eventAtUtc or s.startsAtUtc
             if utc then lines[#lines+1]=self:FormatEasternDateTime(utc) end
         end
-        if #lines==1 then lines[#lines+1]="No future occurrences." end
+        if not upcoming or #upcoming==0 then lines[#lines+1]="No future occurrences." end
         return table.concat(lines,"\n")
     end}
-    controls[#controls+1]={type="button",name="Save schedule",disabled=function() return not selected() end,func=function()
-        local d,id,guild=draft(); d.nextDueAt,d.nextDuePhase=nil,nil
-        local ok,reason=self:SaveGuildSchedule(id,guild,d)
-        self:ShowStatusMessage(ok and "Schedule saved." or reason); if ok then self.scheduleEditor=nil end; refresh()
-    end}
+    for _,action in ipairs({{"Save and activate",true},{"Save disabled",false}}) do
+        local enabled=action[2]
+        controls[#controls+1]={type="button",name=action[1],disabled=function() return not selected() end,func=function()
+            local d,id,guild=draft(); local candidate=copy(d)
+            candidate.enabled,candidate.paused=enabled,false
+            candidate.nextDueAt,candidate.nextDuePhase=nil,nil
+            local ok,reason=self:SaveGuildSchedule(id,guild,candidate)
+            self:ShowStatusMessage(ok and (enabled and "Schedule saved and activated." or "Schedule saved disabled.") or reason)
+            if ok then self.scheduleEditor=nil end
+            self:RefreshSettingsUI()
+        end}
+    end
     for _,entry in ipairs({{"Pause saved schedule","PauseGuildSchedule"},{"Resume saved schedule","ResumeGuildSchedule"}}) do
         local method=entry[2]
         controls[#controls+1]={type="button",name=entry[1],disabled=function() return not selected() end,func=function()

@@ -153,10 +153,10 @@ end
 function SmartChatMsg:FormatStatusTimeOfDay(timestamp)
     local when = tonumber(timestamp)
     if not when or when <= 0 then
-        return "TZ?"
+        return "Never"
     end
 
-    local formatted = os.date("%I:%M:%S %p", when) or "TZ?"
+    local formatted = os.date("%I:%M:%S %p", when) or "Unknown time"
     formatted = formatted:gsub("^0", "")
     return formatted
 end
@@ -186,7 +186,7 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                         local isActive = self:IsReminderAutomationActive(command.id, guildName)
                         local nextTriggerAt = self:GetReminderNextTriggerAt(command.id, guildName)
                         local lastUsedAt = self:GetGuildLastUsedAt(command.id, guildName)
-                        local nextSendText = "TZ?"
+                        local nextSendText = "—"
                         local nextSendSeconds = nil
 
                         if isActive then
@@ -194,8 +194,19 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                                 nextSendSeconds = math.max(0, nextTriggerAt - now)
                                 nextSendText = self:FormatStatusDuration(nextSendSeconds)
                             else
-                                nextSendText = "Awaiting send"
+                                nextSendText = "Ready for next message"
                             end
+                        end
+
+                        if self:GetGuildRunAt(command.id,guildName)=="SCHEDULED" then
+                            local state,phase=self:GetGuildScheduleState(command.id,guildName)
+                            if state=="RUNNING" then
+                                local wait=self:GetScheduleChatWaitText(command.id,guildName)
+                                local due=phase and self:GetScheduledDueAt(command.id,guildName,phase)
+                                local schedule=self:GetGuildSchedule(command.id,guildName)
+                                nextSendText=wait or (schedule.delivery=="ZONE" and "On zone arrival") or (due and due>now and self:FormatStatusDuration(due-now)) or "Ready for next message"
+                            elseif state=="WAITING" then nextSendText="Scheduled — waiting"
+                            else nextSendText=state=="PAUSED" and "Paused" or state=="FINISHED" and "Finished" or "Disabled" end
                         end
 
                         table.insert(rows, {
