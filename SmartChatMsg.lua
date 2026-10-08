@@ -25,6 +25,12 @@ SmartChatMsg.autoPopulateTestHouseZoneId = SmartChatMsg.autoPopulateTestHouseZon
 SmartChatMsg.infiniteArchiveZoneId = SmartChatMsg.infiniteArchiveZoneId or 1463
 
 
+function SmartChatMsg:AddLocalChatMessage(message)
+    if CHAT_SYSTEM and CHAT_SYSTEM.AddMessage then
+        CHAT_SYSTEM:AddMessage(tostring(message or ""))
+    end
+end
+
 function SmartChatMsg:DebugLog(message)
     if not self.debugEnabled then
         return
@@ -36,7 +42,7 @@ function SmartChatMsg:DebugLog(message)
         self.logger:Debug(text)
     end
 
-    d("[SmartChatMsg] " .. text)
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] " .. text)
 end
 
 function SmartChatMsg:FormatQueueEntry(entry)
@@ -1353,7 +1359,7 @@ end
 function SmartChatMsg:ShowCommandTestNotification(commandName, parameterValue)
     local message = string.format("SmartChatMsg test: command %s called with parameter %s", tostring(commandName), tostring(parameterValue))
 
-    d(message)
+    SmartChatMsg:AddLocalChatMessage(message)
 
     if CENTER_SCREEN_ANNOUNCE then
         CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
@@ -1361,10 +1367,9 @@ function SmartChatMsg:ShowCommandTestNotification(commandName, parameterValue)
 end
 
 function SmartChatMsg:ShowStatusMessage(message)
+    self:AddLocalChatMessage(message)
     if CENTER_SCREEN_ANNOUNCE then
         CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, tostring(message or ""))
-    else
-        d(tostring(message or ""))
     end
 end
 
@@ -2457,6 +2462,8 @@ function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fr
             end
         end
 
+        self:HandleScheduledSendConfirmed(metadata)
+
         if metadata.startupQueue == true or (type(metadata.queueItemId) == "string" and metadata.queueItemId ~= "") then
             self:HandleStartupQueuePopulateSuccess(metadata)
         end
@@ -2863,11 +2870,7 @@ function SmartChatMsg:HandleZoneAutoPopulate()
         local commandName = self:BuildSlashCommandName(command.name or "") or "command"
         local zoneName = self:GetAutoPopulateZoneDisplayName(trackedZoneId)
         local message = string.format("Auto populated %s for %s. Run the command again to turn it off.", commandName, zoneName)
-        if CENTER_SCREEN_ANNOUNCE then
-            CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
-        else
-            d(message)
-        end
+        self:ShowStatusMessage(message)
     end
 end
 
@@ -2880,6 +2883,10 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
     local isScheduled = self:GetGuildRunAt(commandId, guildName) == "SCHEDULED"
     if isScheduled and self:GetGuildScheduleState(commandId, guildName) ~= "RUNNING" then
         return false, "Schedule is outside its active window or paused."
+    end
+    if isScheduled then
+        local pacingEndsAt,pacingReason=self:GetSchedulePacingDelay(commandId,guildName)
+        if pacingEndsAt then return false,pacingReason end
     end
     local outputChannel=channelOverride or self:GetSavedChatChannel(commandId,guildName)
     local observedDue=self:GetObservedCommandCooldownEndsAt(commandId,guildName,outputChannel)
@@ -3542,7 +3549,7 @@ local function OnAddonLoaded(event, addonName)
             SmartChatMsg:OpenSettings()
             return
         elseif normalized ~= "" then
-            d("[SmartChatMsg] Usage: /scm, /scm schedule, or /scm status")
+            SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Usage: /scm, /scm schedule, or /scm status")
             return
         end
 
@@ -4638,45 +4645,45 @@ end
 
 function SmartChatMsg:EmitCountdownDebugResult(label, input, best, all)
     if not self.debugEnabled then return end
-    d("[SmartChatMsg] --------------------------------------------------")
-    if label and label ~= "" then d("[SmartChatMsg] " .. tostring(label)) end
-    d("[SmartChatMsg] Input: " .. tostring(input))
-    d("[SmartChatMsg] Time String: " .. tostring(best and best.timeString or "nil"))
-    d("[SmartChatMsg] Output: " .. tostring(best and best.outputText or input))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] --------------------------------------------------")
+    if label and label ~= "" then SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] " .. tostring(label)) end
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Input: " .. tostring(input))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Time String: " .. tostring(best and best.timeString or "nil"))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Output: " .. tostring(best and best.outputText or input))
     if not best then
-        d("[SmartChatMsg] No time found")
+        SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] No time found")
         return
     end
-    d("[SmartChatMsg] Detected Date Raw: " .. tostring(best.detectedDateRaw))
-    d("[SmartChatMsg] Detected Date Value: " .. tostring(best.detectedDateValue))
-    d("[SmartChatMsg] Detected Date Normalized: " .. tostring(best.detectedDateNormalized))
-    d("[SmartChatMsg] Detected Date Day Delta: " .. tostring(best.detectedDateDayDelta))
-    d("[SmartChatMsg] Detected Date Assumed Next Year: " .. tostring(best.detectedDateAssumedNextYear))
-    d("[SmartChatMsg] Detected Date Explicit Past: " .. tostring(best.detectedDateExplicitPast))
-    d("[SmartChatMsg] Detected Date Weekday Abbr: " .. tostring(best.detectedDateWeekdayAbbr))
-    d("[SmartChatMsg] Date Used For Countdown: " .. tostring(best.dateUsedForCountdown))
-    d("[SmartChatMsg] Tomorrow Raw: " .. tostring(best.tomorrowRaw))
-    d("[SmartChatMsg] Weekday Raw: " .. tostring(best.weekdayRaw))
-    d("[SmartChatMsg] Weekday Abbr: " .. tostring(best.weekdayAbbr))
-    d("[SmartChatMsg] Countdown Suppressed: " .. tostring(best.suppressCountdown))
-    d("[SmartChatMsg] About String: " .. tostring(best.aboutString))
-    d("[SmartChatMsg] Replacement: " .. tostring(best.replacementString))
-    d("[SmartChatMsg] Raw core: " .. tostring(best.rawCore))
-    d("[SmartChatMsg] Source kind: " .. tostring(best.sourceKind))
-    d("[SmartChatMsg] Detected AM/PM: " .. tostring(best.detectedAmpm))
-    d("[SmartChatMsg] Timezone: " .. tostring(best.timezone))
-    d("[SmartChatMsg] Current Timestamp: " .. tostring(best.nowTimestamp))
-    d("[SmartChatMsg] Event Timestamp: " .. tostring(best.eventTimestamp))
-    d("[SmartChatMsg] Diff Seconds: " .. tostring(best.diffSeconds))
-    d("[SmartChatMsg] Source UTC Offset Hours: " .. tostring(best.sourceUtcOffsetHours))
-    d("[SmartChatMsg] Source UTC Offset Seconds: " .. tostring(best.sourceUtcOffsetSeconds))
-    d("[SmartChatMsg] Ambiguous: " .. tostring(best.ambiguous))
-    d("[SmartChatMsg] Inferred meridiem: " .. tostring(best.inferredMeridiem))
-    d("[SmartChatMsg] Resolved AM/PM: " .. tostring(best.resolvedAmpm))
-    d("[SmartChatMsg] Resolved 24-hour: " .. string.format("%02d:%02d", best.resolvedHour24, best.resolvedMinute24))
-    d("[SmartChatMsg] Minutes until: " .. tostring(best.minutesUntil))
-    d("[SmartChatMsg] Core candidates found: " .. tostring(all and #all or best.coreCandidatesFound or 0))
-    d("[SmartChatMsg] Protected ESO Links: " .. tostring(best.protectedEsoLinks or 0))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Detected Date Raw: " .. tostring(best.detectedDateRaw))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Detected Date Value: " .. tostring(best.detectedDateValue))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Detected Date Normalized: " .. tostring(best.detectedDateNormalized))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Detected Date Day Delta: " .. tostring(best.detectedDateDayDelta))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Detected Date Assumed Next Year: " .. tostring(best.detectedDateAssumedNextYear))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Detected Date Explicit Past: " .. tostring(best.detectedDateExplicitPast))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Detected Date Weekday Abbr: " .. tostring(best.detectedDateWeekdayAbbr))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Date Used For Countdown: " .. tostring(best.dateUsedForCountdown))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Tomorrow Raw: " .. tostring(best.tomorrowRaw))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Weekday Raw: " .. tostring(best.weekdayRaw))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Weekday Abbr: " .. tostring(best.weekdayAbbr))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Countdown Suppressed: " .. tostring(best.suppressCountdown))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] About String: " .. tostring(best.aboutString))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Replacement: " .. tostring(best.replacementString))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Raw core: " .. tostring(best.rawCore))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Source kind: " .. tostring(best.sourceKind))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Detected AM/PM: " .. tostring(best.detectedAmpm))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Timezone: " .. tostring(best.timezone))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Current Timestamp: " .. tostring(best.nowTimestamp))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Event Timestamp: " .. tostring(best.eventTimestamp))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Diff Seconds: " .. tostring(best.diffSeconds))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Source UTC Offset Hours: " .. tostring(best.sourceUtcOffsetHours))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Source UTC Offset Seconds: " .. tostring(best.sourceUtcOffsetSeconds))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Ambiguous: " .. tostring(best.ambiguous))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Inferred meridiem: " .. tostring(best.inferredMeridiem))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Resolved AM/PM: " .. tostring(best.resolvedAmpm))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Resolved 24-hour: " .. string.format("%02d:%02d", best.resolvedHour24, best.resolvedMinute24))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Minutes until: " .. tostring(best.minutesUntil))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Core candidates found: " .. tostring(all and #all or best.coreCandidatesFound or 0))
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Protected ESO Links: " .. tostring(best.protectedEsoLinks or 0))
 end
 
 function SmartChatMsg:FindEmbeddedTimeDetails(text)
@@ -4772,7 +4779,7 @@ function SmartChatMsg:ShowQueuedExecutionNotification(commandDisplayName, guildN
     local message = string.format("%s queued for execution for %s.", tostring(commandDisplayName or "/command"), tostring(guildName or "unknown guild"))
 
     if self.debugEnabled then
-        d("[SmartChatMsg] " .. message)
+        SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] " .. message)
         return
     end
 
@@ -4902,11 +4909,11 @@ function SmartChatMsg:DumpQueueSummaryToChat()
     count = count + #queue
 
     if count <= 0 then
-        d("[SmartChatMsg] There are no pending queued commands.")
+        SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] There are no pending queued commands.")
         return
     end
 
-    d("[SmartChatMsg] Pending queued commands:")
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Pending queued commands:")
 
     local order = 0
     if type(current) == "table" then
@@ -4916,7 +4923,7 @@ function SmartChatMsg:DumpQueueSummaryToChat()
         local sourceText = self:GetQueueEntryDisplaySource(current)
         local nextAttemptSeconds = self:GetActiveQueueItemNextAttemptSeconds(current)
         local nextAttemptText = nextAttemptSeconds ~= nil and string.format(" | Next Attempt In: %ss", tostring(nextAttemptSeconds)) or ""
-        d(string.format("[SmartChatMsg] %d) [ACTIVE] %s -> %s | Source: %s%s", order, guildName, commandName, sourceText, nextAttemptText))
+        SmartChatMsg:AddLocalChatMessage(string.format("[SmartChatMsg] %d) [ACTIVE] %s -> %s | Source: %s%s", order, guildName, commandName, sourceText, nextAttemptText))
     end
 
     for _, entry in ipairs(queue) do
@@ -4924,10 +4931,10 @@ function SmartChatMsg:DumpQueueSummaryToChat()
         local guildName = self:GetQueueEntryDisplayGuildName(entry)
         local commandName = self:GetQueueEntryDisplayCommandName(entry)
         local sourceText = self:GetQueueEntryDisplaySource(entry)
-        d(string.format("[SmartChatMsg] %d) %s -> %s | Source: %s", order, guildName, commandName, sourceText))
+        SmartChatMsg:AddLocalChatMessage(string.format("[SmartChatMsg] %d) %s -> %s | Source: %s", order, guildName, commandName, sourceText))
     end
 
-    d(string.format("[SmartChatMsg] Total queued items: %d", count))
+    SmartChatMsg:AddLocalChatMessage(string.format("[SmartChatMsg] Total queued items: %d", count))
 end
 
 function SmartChatMsg:HandleScmDebugCommand(paramText)
@@ -4938,18 +4945,18 @@ function SmartChatMsg:HandleScmDebugCommand(paramText)
     local subCommand = args[1] and zo_strlower(args[1]) or ""
     if normalized == "" then
         self.debugEnabled = not self.debugEnabled
-        d("[SmartChatMsg] Debug is now " .. (self.debugEnabled and "ON" or "OFF"))
+        SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Debug is now " .. (self.debugEnabled and "ON" or "OFF"))
         return
     elseif normalized == "on" or normalized == "1" or normalized == "true" then
         self.debugEnabled = true
-        d("[SmartChatMsg] Debug is now ON")
+        SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Debug is now ON")
         return
     elseif normalized == "off" or normalized == "0" or normalized == "false" then
         self.debugEnabled = false
-        d("[SmartChatMsg] Debug is now OFF")
+        SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Debug is now OFF")
         return
     elseif normalized == "status" then
-        d("[SmartChatMsg] Debug is " .. (self.debugEnabled and "ON" or "OFF"))
+        SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Debug is " .. (self.debugEnabled and "ON" or "OFF"))
         return
     elseif subCommand == "queue" then
         self:DumpQueueSummaryToChat()
@@ -4958,12 +4965,12 @@ function SmartChatMsg:HandleScmDebugCommand(paramText)
     elseif subCommand == "countdown" then
         local testText = rawText:match("^%S+%s+(.+)$")
         if not testText or self:Trim(testText) == "" then
-            d("[SmartChatMsg] Usage: /scmdebug countdown <text>")
+            SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Usage: /scmdebug countdown <text>")
             return
         end
         local best, all = self:AnalyzeEmbeddedTime(testText)
         self:EmitCountdownDebugResult("Countdown Debug", testText, best, all)
         return
     end
-    d("[SmartChatMsg] Usage: /scmdebug, /scmdebug on, /scmdebug off, /scmdebug status, /scmdebug queue, /scmdebug countdown <text>")
+    SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Usage: /scmdebug, /scmdebug on, /scmdebug off, /scmdebug status, /scmdebug queue, /scmdebug countdown <text>")
 end

@@ -3,6 +3,15 @@
 Install the complete addon and LibAddonMenu-2.0 release 34 or newer plus
 LibAddonMenuDatePicker. Reload the UI. Export existing settings first.
 
+Version 1.11.1: expect a local "SmartChatMsg is running" notice and a three-minute
+hold on scheduled delivery after login/reload. Start ordinary scheduling tests
+after that hold expires. With two active schedules, confirm that sending one
+defers the other for five minutes, but does not alter either saved interval.
+An unsent preparation timing out must not begin that shared pause. Confirm local
+notices at schedule start/end and at Before event day -> Event day -> Starting
+soon -> Event started, naming the new frequency. All notices should appear in
+chat, even when center-screen announcements are enabled.
+
 1. In Messages Settings select a command, guild, and output channel. Add at least
    three message variants. Set Run At to Scheduled and open Scheduling (Eastern Time) inside Create / Edit / Delete Messages.
 2. Choose Run during a window. Use the calendar for today and set start a few

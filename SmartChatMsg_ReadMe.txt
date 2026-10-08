@@ -1,7 +1,18 @@
-SmartChatMsg 1.10.0 — quick user guide
+SmartChatMsg 1.11.1 — quick user guide
 
 Store reusable recruitment, trial, auction and other announcements. SmartChatMsg
 fills your chat box; you still press Enter to send. See README.md for the full guide.
+
+SCHEDULE STARTUP AND SPACING
+At login/UI reload, a local chat message confirms SmartChatMsg is running.
+Scheduled messages wait 3 minutes before preparing chat. After you send one,
+other Command + Guild schedules wait 5 minutes; its own repeat interval is kept.
+Unsent messages timing out do not start this shared pause. Ordinary On Demand
+commands and the separate Startup queue keep their existing behavior.
+Starts, ends, phase changes and cooldown notices appear locally in chat.
+Phase changes explain the new period and frequency; times are shown in ET.
+The status window distinguishes a message ready for Enter from protected player
+text, startup delay and the shared pause. Full current settings help: README.md.
 
 SETUP AND COMMANDS
 Open /scm. Create a command, select it and a guild in Messages settings, choose

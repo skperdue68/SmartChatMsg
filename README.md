@@ -1,4 +1,4 @@
-# SmartChatMsg (v1.11.0)
+# SmartChatMsg (v1.11.1)
 
 SmartChatMsg is an Elder Scrolls Online addon for reusable chat messages: guild
 recruitment, trial reminders, auctions, officer notices, and other announcements.
@@ -7,6 +7,23 @@ Guild, or Officer output.
 
 **SmartChatMsg fills the chat box; you still press Enter to send.** Automation
 runs while ESO and the addon are running. It does not silently send messages.
+
+On each addon load or UI reload, SmartChatMsg announces that it is running and
+holds **scheduled** messages for **3 minutes**. Ordinary On Demand commands and
+the separate Startup queue keep their existing behavior. After you send a
+scheduled message, every other Command + Guild schedule waits **5 minutes**;
+the sender keeps its own configured repeat interval. These pauses apply to
+Repeat and On zone arrival schedules, including manual requests for scheduled
+commands. They do not change event dates or saved intervals, and an unsent
+message timing out does not start the shared pause.
+
+Startup, schedule starts/ends, phase changes, and cooldown notices appear locally
+in chat through `CHAT_SYSTEM:AddMessage`; they are never sent to your guild.
+Phase notices name the new period (Before event day, Event day, Starting soon,
+or Event started), its frequency, and the Eastern end time. The status window
+shows startup/shared pauses and distinguishes a prepared message awaiting Enter
+from protected player text. More than one schedule may be active, but they share
+one chat input and only eligible current-phase messages are prepared.
 
 ## Current features
 
