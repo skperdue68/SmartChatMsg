@@ -1,4 +1,4 @@
-SmartChatMsg 1.11.1 — quick user guide
+SmartChatMsg 1.11.2 — quick user guide
 
 Store reusable recruitment, trial, auction and other announcements. SmartChatMsg
 fills your chat box; you still press Enter to send. See README.md for the full guide.
@@ -13,6 +13,16 @@ Starts, ends, phase changes and cooldown notices appear locally in chat.
 Phase changes explain the new period and frequency; times are shown in ET.
 The status window distinguishes a message ready for Enter from protected player
 text, startup delay and the shared pause. Full current settings help: README.md.
+
+STATUS CONTROLS AND TESTING
+Cards show scheduled commands only within their current window. Buttons cycle
+Off -> Paused -> On -> Paused -> Off and show the next action. Paused/Off stops
+delivery without losing templates or dates, and protects edited chat. All four
+card lines fit within the border.
+/scm resetcooldowns clears existing cooldowns and retry/once markers for testing.
+Dates, intervals, paused/off states and the 3-minute startup wait are preserved.
+An enabled current schedule may prepare a message immediately. Prepared messages
+and unsent timeouts now announce themselves in local chat.
 
 SETUP AND COMMANDS
 Open /scm. Create a command, select it and a guild in Messages settings, choose

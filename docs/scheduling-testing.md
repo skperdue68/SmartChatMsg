@@ -1,5 +1,16 @@
 # Try simple scheduling in ESO
 
+Version 1.11.2 status checks: after the startup wait, run `/scm resetcooldowns`.
+An enabled current schedule should prepare chat and announce Press Enter locally.
+Leave one unsent and confirm the timeout notice explains the next attempt time.
+Cycle a current card Off -> Paused -> On -> Paused -> Off, checking both button
+text and actual delivery. Pausing must retain player edits and stop delivery.
+Confirm future/expired schedules are absent from the actionable cards, and all
+four text lines stay inside each enlarged box. Reset cooldowns while a schedule
+is paused/off: its state and dates must stay unchanged. Reset during startup:
+the three-minute wait must still apply. The reset also clears once markers so
+current one-shot reminders can be tested again; it does not replay old events.
+
 Install the complete addon and LibAddonMenu-2.0 release 34 or newer plus
 LibAddonMenuDatePicker. Reload the UI. Export existing settings first.
 

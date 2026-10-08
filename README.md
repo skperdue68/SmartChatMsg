@@ -1,4 +1,4 @@
-# SmartChatMsg (v1.11.1)
+# SmartChatMsg (v1.11.2)
 
 SmartChatMsg is an Elder Scrolls Online addon for reusable chat messages: guild
 recruitment, trial reminders, auctions, officer notices, and other announcements.
@@ -24,6 +24,28 @@ or Event started), its frequency, and the Eastern end time. The status window
 shows startup/shared pauses and distinguishes a prepared message awaiting Enter
 from protected player text. More than one schedule may be active, but they share
 one chat input and only eligible current-phase messages are prepared.
+
+The actionable status cards show scheduled commands **only during their current
+window**. Their button cycles **Off -> Paused -> On -> Paused -> Off**, displaying
+the next action: Pause, Turn On, or Turn Off. On/Paused/Off uses the saved schedule
+state, so a paused schedule cannot be accidentally reactivated by the next tick.
+While On, the status includes the current wait: startup, cooldown, shared pause,
+zone arrival, or a message ready for Enter. Pausing or switching Off withdraws
+untouched generated text while preserving player edits. Larger cards keep all
+four lines inside their border. Ordinary repeat cards use the same toggle cycle;
+their pause state lasts for the current session, like their ordinary automation.
+
+For testing, **`/scm resetcooldowns`** clears command/guild usage cooldowns, observed
+peer cooldowns, per-zone cooldowns, retry deadlines, once-per-occurrence markers,
+and the shared five-minute pause. Enabled schedules in their current window can
+prepare another message. It keeps templates, message rotation counts, event
+dates, intervals, and On/Paused/Off state. It does **not** bypass the three-minute
+startup wait or run schedules outside their window. This deliberately forgets
+cooldown usage history, so Last Sent can read Never afterward.
+
+Every scheduled preparation now announces **Press Enter to send** and its chat
+timeout. If it is not sent before that timeout, a local notice explains the next
+attempt time; this interval is a retry wait, not evidence of a successful send.
 
 ## Current features
 
@@ -62,6 +84,7 @@ The runtime files are `SCM_MessageSharing.lua`, `SCM_SavedVars.lua`,
 | `/scm` | Open settings. |
 | `/scm schedule` | Open settings; expand Create / Edit / Delete Messages, then Scheduling (Eastern Time). |
 | `/scm status` | Toggle the live status window. |
+| `/scm resetcooldowns` | Clear existing cooldowns for testing; preserve schedule dates and paused/off states. |
 | `/scmdebug on`, `/scmdebug off`, `/scmdebug status` | Control debugging; `/scmdebug` toggles it. |
 | `/recruit 1` | Run your custom command for local guild slot 1. |
 | `/recruit 1 off` | Stop ordinary automation, or persistently pause a schedule. |

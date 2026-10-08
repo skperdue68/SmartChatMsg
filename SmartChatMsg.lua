@@ -3130,6 +3130,7 @@ function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, raw
     ))
 
     local commandDisplayName = self:GetSlashCommandDisplayName(commandId, slashCommandName)
+    if self.repeatPanelPaused then self.repeatPanelPaused[self:GetReminderStateKey(commandId,guildName)]=nil end
 
     if self:GetGuildRunAt(commandId, guildName) == "SCHEDULED" then
         if stopAutomation then
@@ -3548,8 +3549,11 @@ local function OnAddonLoaded(event, addonName)
         elseif normalized == "schedule" then
             SmartChatMsg:OpenSettings()
             return
+        elseif normalized == "resetcooldowns" then
+            SmartChatMsg:ResetAllCooldowns()
+            return
         elseif normalized ~= "" then
-            SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Usage: /scm, /scm schedule, or /scm status")
+            SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Usage: /scm, /scm schedule, /scm status, or /scm resetcooldowns")
             return
         end
 
