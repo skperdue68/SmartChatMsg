@@ -1,8 +1,9 @@
 # Proposal: event scheduling in Eastern Time
 
-Status: design proposal only. This PR changes no addon behavior. It is independent
-of the incoming-message coordination implementation PR and uses the same
-`Add-Countdown-Substitution` base.
+Status: the first event-window implementation is included in SmartChatMsg 1.10.0.
+This document records the original design proposal. Use [the current user
+guide](../README.md) for actual settings, supported behavior and limitations.
+Message-only sharing was added separately and does not transfer schedules.
 
 ## Intended behavior
 

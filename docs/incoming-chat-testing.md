@@ -3,17 +3,24 @@
 This feature is built on `Add-Countdown-Substitution`, including that branch's
 existing countdown formatting, status panel, and startup behavior.
 
-## Install the PR version
+## Install the current version
 
 1. Back up your installed SmartChatMsg addon and its SavedVariables file.
-2. Download the PR's head branch using GitHub's **Code → Download ZIP**.
-3. Copy `SCM_SavedVars.lua`, `SCM_Settings.lua`, `SCM_IncomingChat.lua`,
-   `SmartChatMsg.lua`, and `SmartChatMsg.txt` into your SmartChatMsg addon folder.
-   Keep LibAddonMenu-2.0 installed. The manifest must include the new module.
+2. Download the current feature release/branch using GitHub's **Code → Download ZIP**.
+3. Install the complete addon, including every Lua file in `SmartChatMsg.txt`.
+   The current version also includes scheduling and message-sharing modules;
+   copying only the original incoming-chat files is insufficient. Keep
+   LibAddonMenu-2.0 installed.
 4. Run `/reloadui`. Optionally enable `/scmdebug on` to see matching command,
    guild, channel, and selected random delay in chat/debug logs.
 
 ## Two-player checks
+
+Channel/guild routing is mandatory before text matching: Guild output for your
+guild slot 1 only matches that guild's incoming Guild chat; slot 2 requires its
+own guild. Officer output requires Officer chat for the same guild. Zone output
+requires Zone chat. Identical text on the wrong channel/guild must not reset usage.
+Guild names are resolved from each player's local slots, which can differ.
 
 Use another player/account; your own messages are intentionally excluded. The
 other player does not have to run SmartChatMsg.

@@ -1,6 +1,6 @@
 # Trying event scheduling
 
-Install the complete addon from this branch, including the updated manifest and
+Install the complete current addon, including the updated manifest and
 all `SCM_*.lua` files. Keep your existing LibAddonMenu2 dependency. Export current
 settings before trying a new window so you can restore your configuration.
 
@@ -64,6 +64,11 @@ requires you to send. Automated tests use mocked ESO APIs; real ESO UI and
 two-player trials remain necessary.
 
 ## Automated checks
+
+For the full setup and editable import/export choices, see [the user guide](../README.md).
+Message-only sharing does not copy schedule times or phase assignments; full
+settings export does. Recipients can edit imported schedules and save their own
+times and message-phase choices. Full import replaces existing settings.
 
 From the repository root with Lua 5.1:
 
