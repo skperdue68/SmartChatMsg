@@ -1,275 +1,253 @@
-# SmartChatMsg (v1.5.3.1)
+# SmartChatMsg (v1.10.0)
 
-SmartChatMsg is an Elder Scrolls Online addon for players who regularly post reusable chat messages such as guild recruitment ads, trial announcements, officer notices, and other repeated chat content.
+SmartChatMsg is an Elder Scrolls Online addon for reusable chat messages: guild
+recruitment, trial reminders, auctions, officer notices, and other announcements.
+Create a slash command, save message variations for a guild, and choose Zone,
+Guild, or Officer output.
 
-It lets you create your own slash commands, store multiple message variants for each command, organize those messages by guild, and then populate the correct message into chat with the proper channel selected.
+**SmartChatMsg fills the chat box; you still press Enter to send.** Automation
+runs while ESO and the addon are running. It does not silently send messages.
 
-## Incoming duplicate-message coordination
+## Current features
 
-SmartChatMsg now watches other players' Zone, Guild, and Officer chat. When an
-incoming message matches a saved template for that channel, it records usage for
-the entire **Command + Guild** combination and adds a random **30–90 seconds**
-to its cooldown. An already-running Repeat timer restarts with the same extra
-delay. Receiving a match does not start automation that is inactive.
+- Custom commands with separate settings/cooldowns for each **Command + Guild**.
+- Multiple message variants; rotation favors less recently/frequently used messages.
+- On Demand, Startup, and Scheduled operation; Repeat and Zone-based delivery.
+- Eastern Time event windows, automatic activation/stopping, and message phases.
+- Coordination with other players' matching messages to avoid duplicate announcements.
+- Message-only sharing that merges templates without replacing personal settings.
+- Full settings backup/restore, including schedule configuration.
+- Optional live status window, populate sounds, and chat channel restoration.
 
-- Your own account/character and customer-service messages are excluded.
-- Guild and Officer chat are matched only against the receiving guild and the
-  corresponding saved output channel. Guild slot order is resolved locally.
-- Zone chat searches all combinations configured for Zone output. If several
-  combinations match, each is updated once. All variants share that combination's
-  cooldown; the matched saved entry also updates its message-rotation usage.
-- `%guild%`, literal guild names, and guild-link IDs remain required. Greetings
-  (`%time%`, `%timeofday%`, `%greeting%`) and `%zone%` can vary.
-- The existing embedded-time parser/formatter identifies where it inserts a
-  countdown. Only recognized countdowns and automatically added AM/PM/timezone
-  text can vary there. Original event dates, times, explicit timezones, and other
-  parenthesized text stay required. Unannotated originals also match.
-- Matching ignores case, whitespace differences, color codes, and link display
-  style numbers. It requires the complete fixed wording, without fuzzy substring
-  matching. Variable-only templates do not establish a message identity; zone
-  substitutions must be recognized zone names, and repeated substitutions must
-  agree within a message.
-- Zone observations reset the cooldown in your current zone, preserving the
-  existing per-zone behavior. Guild/Officer observations apply across zones.
-  The added delay survives `/reloadui` and appears in the existing status timers.
-- If a matching command/guild message is already waiting in your chat input,
-  its unchanged text is withdrawn and its timeout is canceled. Edited text is
-  preserved. A canceled startup item releases the startup queue.
+## Install or update
 
-See [the testing guide](docs/incoming-chat-testing.md) for installation and
-two-player checks. Scheduling is a separate proposal and is not implemented by
-this change.
+Keep **LibAddonMenu-2.0** installed. Copy the complete addon release/branch into
+your SmartChatMsg addon folder, including every file listed in `SmartChatMsg.txt`.
+Copying only the main Lua file misses the scheduling and sharing modules.
+Reload the UI after updating. Export your settings before trying a new setup.
 
-## What's New in 1.5.3
-- Added **Populate Sound** at the **Command + Guild** level
-- Added a **Preview** button for the selected populate sound
-- Limited the sound dropdown to a curated set of useful ESO sounds
-- Included **DUEL_START** by default and **None** for silent operation
-- Populate sound now plays whenever SmartChatMsg successfully populates a message into chat, including manual slash command starts, Auto Populate Chat on Zone, and Repeat Every
-- Auto Populate Chat on Zone now evaluates the current zone on startup and shows a top-right cooldown alert if that zone is still cooling down
-- Zone auto populate no longer requires the current zone id to differ from the last seen zone id before it evaluates whether it should fire automation
+The runtime files are `SCM_MessageSharing.lua`, `SCM_SavedVars.lua`,
+`SCM_Calendar.lua`, `SCM_Schedules.lua`, `SCM_Scheduler.lua`,
+`SCM_ScheduleSettings.lua`, `SCM_Settings.lua`, `SCM_IncomingChat.lua`, and
+`SmartChatMsg.lua`, loaded by `SmartChatMsg.txt`.
 
-## Core Features
-- Dynamic custom slash commands
-- Command names are sanitized and registered as slash commands
-- Supports parameters `1`-`5`, `g1`-`g5`, and `o1`-`o5`
-- `g#` and `o#` resolve to the same guild slot as the matching number
-- Optional default guild for commands used without a guild parameter
-- Multiple saved messages per command and guild
-- Saved output channel selection for **Zone**, **Guild**, or **Officer** chat
-- Automatic chat channel restore after message send
-- Timeout restore also clears the pending chat buffer
-- **Repeat Every (mins)** stored per **Command + Guild**
-- **Retry Delay (mins)** stored per **Command + Guild**
-- **Auto Populate Chat on Zone** stored per **Command + Guild**
-- **Cooldown (mins)** stored per **Command + Guild**
-- **Populate Sound** stored per **Command + Guild**
-- Import/export support for current settings
-- Built-in substitutions for `%time%`, `%guild%`, and `%zone%`
-- `/scm` opens the settings panel
-- `/scmdebug` toggles debug logging, or accepts `on`, `off`, and `status`
+## First setup and commands
 
-## How SmartChatMsg Works
-1. Create a command in the settings panel.
-2. Pick a command and a guild in the Messages section.
-3. Choose the output channel for that command/guild combination.
-4. Add one or more saved messages.
-5. Optionally configure Repeat, Retry, Auto Populate on Zone, Cooldown, and Populate Sound.
-6. Run the slash command in chat when you want SmartChatMsg to populate a message.
+1. Open `/scm` and create a command, such as `recruit`; it becomes `/recruit`.
+2. In Messages settings, select that command and your guild.
+3. Select Zone, Guild, or Officer output and save your message templates.
+4. Choose the desired behavior. For a manual message, use `/recruit 1`, where
+   `1` is that guild's slot in your own guild list.
 
-The addon places a message into the chat input instead of silently posting it. That gives you a chance to review the text before actually sending it.
+| Command | Purpose |
+| --- | --- |
+| `/scm` | Open settings. |
+| `/scm schedule` | Open settings; expand Event Scheduling (Eastern Time). |
+| `/scm status` | Toggle the live status window. |
+| `/scmdebug on`, `/scmdebug off`, `/scmdebug status` | Control debugging; `/scmdebug` toggles it. |
+| `/recruit 1` | Run your custom command for local guild slot 1. |
+| `/recruit 1 off` | Stop ordinary automation, or persistently pause a schedule. |
 
-## Slash Command Usage
-If your command name is `recruit`, SmartChatMsg registers `/recruit`.
+Guild parameters `1`–`5`, `g1`–`g5`, and `o1`–`o5` resolve the corresponding local
+guild slots. For example, `2`, `g2`, and `o2` select the same guild. Set Default
+Guild to run without a guild parameter. Select the saved output channel in settings.
 
-Typical usage:
-- `/recruit`
-- `/recruit 1`
-- `/recruit g1`
-- `/recruit o1`
+**Run At** chooses how a combination starts:
 
-Behavior:
-- Using the command normally starts or restarts that command for the resolved guild.
-- Adding `off` turns off repeat and/or zone auto populate for that command and guild.
-- `1`, `g1`, and `o1` all resolve to guild slot 1. The same pattern applies for 2 through 5.
-- If no guild parameter is supplied, SmartChatMsg uses the configured default guild when one is set.
+- **On Demand:** run the command to populate a message/start its configured automation.
+- **Startup:** the combination enters the startup queue after login/player activation.
+- **Scheduled:** save an enabled window in Event Scheduling. No command is needed
+  at its start time. Selecting Scheduled without a valid saved window does nothing.
 
-Examples:
-- `/recruit` uses the default guild
-- `/recruit 2` targets guild slot 2
-- `/recruit g3` targets guild slot 3
-- `/recruit o4` still targets guild slot 4
-- `/recruit off` turns off automation for the default guild
-- `/recruit 2 off` turns off automation for guild slot 2
+## Schedule an event
 
-## Messages and Message Selection
-Each command can have multiple saved messages for the same guild.
+You need **one command and one schedule per event**, rather than separate commands
+for the day before, event day, and event start.
 
-When SmartChatMsg needs to populate a message, it selects from the saved entries using a weighted system that favors messages that were used less recently and less often. This helps rotate your saved messages instead of always picking the same one.
+1. Create `/trial`, select its guild/channel, and save its message variations.
+2. Open **Event Scheduling (Eastern Time)**. Check the displayed command/guild.
+3. Check **Enable scheduled window** and choose **REPEAT** or **ZONE** delivery.
+4. Enter three dates/times: **start** for reminders, **event** for the event itself,
+   and **end** for when reminders stop.
+5. Set the default interval in whole minutes. Optional BEFORE, DAY, and LIVE
+   overrides use their own interval; blank overrides inherit the default.
+6. Assign messages to phases, then click **Save schedule**.
 
-Substitutions are applied when the message is populated:
-- `%time%` becomes `morning`, `afternoon`, or `evening`
-- `%guild%` becomes the resolved guild name
-- `%zone%` becomes your current zone name
+Dates use `YYYY-MM-DD`; times use `HH:MM AM/PM`. Start must be at or before the
+event, and end must be after it. Invalid drafts do not replace saved schedules.
+Start is inclusive; end is exclusive.
 
-Substitutions are case-insensitive, so `%TIME%`, `%Guild%`, and `%Zone%` also work.
+### Message phases
 
-## Output Channel Behavior
-Output channel is saved per **Command + Guild**.
+Use **Message number to assign** to select a message from the displayed numbered
+list, then check its allowed phases. Save the schedule to apply your edits.
 
-Available options:
-- **Zone**
-- **Guild (/g#)**
-- **Officer (/o#)**
+| Phase | When eligible | Friday 8 PM trial example |
+| --- | --- | --- |
+| ANY | Anywhere inside the reminder window | “Ask an officer about joining our trial.” |
+| BEFORE | Before midnight on the event's Eastern calendar day | “Our Friday trial is coming up!” |
+| DAY | Event-day midnight until event start | “Our trial is tonight at 8 PM!” |
+| LIVE | Event start until reminder end | “Our trial is underway!” |
 
-When SmartChatMsg populates a message, it switches the chat input to the selected destination, fills in the message, and then restores your previous chat channel after the message is sent. If the message is not sent in time, the addon restores the previous channel after the global timeout and clears the pending chat text.
+Unassigned messages default to ANY. Uncheck ANY to restrict a message to other
+phases. Multiple boxes may be checked; unchecking every box excludes the message.
+Several messages can share a phase; the addon rotates among currently eligible
+messages. An empty phase waits instead of borrowing messages from another phase.
 
-## Repeat Every (mins)
-Repeat Every creates a repeat cycle for the selected command and guild.
+BEFORE means before the event day, not specifically the preceding 24 hours. DAY
+covers the whole event day before the start. There is no separate “30 minutes
+before start” phase or arbitrary per-message time window in this implementation.
 
-How it works:
-- Run the command once to start it.
-- SmartChatMsg records the last-used state.
-- After the configured number of minutes, it repopulates a message into the chat input.
-- Once that populated message is confirmed as sent, the next repeat cycle is scheduled.
+### Example and simultaneous events
 
-Notes:
-- Repeat is configured per **Command + Guild**.
-- Setting a valid Repeat value turns off **Auto Populate Chat on Zone** for that same command/guild.
-- Running the command again restarts the cycle.
-- Using the command with `off` stops the automation.
+For a Friday 8 PM trial, start reminders Thursday at noon and stop Friday at
+9 PM. Set the default interval to 60 minutes, DAY to 30, and LIVE to 10. The addon
+automatically changes phase as those boundaries pass.
 
-## Retry Delay (mins)
-Retry Delay is only relevant when **Repeat Every** is active.
+To promote a Saturday auction at the same time, create `/auction` with its own
+window for the same guild. Both REPEAT schedules can run together with independent
+cooldowns. Each command/guild has one event window. Only one enabled scheduled
+ZONE combination is supported; it waits for an existing manual Zone owner to
+stop before taking ownership. Weekly recurrence is not included.
 
-How it works:
-- If the repeated message is populated but not actually sent, SmartChatMsg can try again after the retry delay.
-- If Retry Delay is `0`, blank, or invalid, SmartChatMsg skips retry and resumes the normal repeat schedule after the populate attempt times out.
-- Retry Delay is automatically capped so it cannot exceed **Repeat Every**.
+### Automatic start, stop, and pause
 
-## Auto Populate Chat on Zone
-Auto Populate Chat on Zone is the alternative automation mode.
+- Log in before start: it waits, then engages at start.
+- Log in inside the window: it engages using the current phase, without replaying
+  missed offline reminders.
+- At end: it stops creating reminders and withdraws untouched scheduled text
+  still pending in chat. Player-edited text is preserved.
+- Log in after end: it stays finished.
+- `/trial 1 off` or **Pause saved schedule** persists a pause through UI reloads.
+  Use **Resume saved schedule** to resume within the window.
 
-How it works:
-- Run the slash command once to activate it for the selected command and guild.
-- When the watcher evaluates a parent zone, including on startup and after travel, SmartChatMsg can populate a message for that zone.
-- The message is placed into chat input and can then be sent by you.
-- Running the command again, or using `off`, turns it off.
+REPEAT starts its next interval after a confirmed send. An unsubmitted reminder
+uses the restore timeout, then the effective Retry Delay or schedule interval.
+ZONE uses eligible zone arrivals and the interval as its per-zone cooldown;
+existing zone exclusions remain in effect.
 
-Important behavior:
-- Auto Populate is stored per **Command + Guild**.
-- Turning it on clears **Repeat Every** for that same command/guild.
-- Only one active auto-populate command can run at a time.
-- The first player activation after login is ignored.
-- Zone auto populate evaluates the current parent zone whenever the watcher runs, including on startup.
-- On startup, if the current zone is still in cooldown, SmartChatMsg shows a top-right alert telling you when that cooldown ends instead of populating immediately.
-- It only fires for parent zones.
+Busy chat input waits rather than being replaced. Manual requests take priority
+over Startup requests, then scheduled requests. Queued scheduled work is checked
+again against its window, phase, guild, and Zone eligibility before delivery.
 
-## Cooldown (mins)
-Cooldown applies to **Auto Populate Chat on Zone** and is stored per **Command + Guild**.
+### Eastern Time
 
-The cooldown is tracked by zone, so the addon can avoid repeatedly populating the same message again too soon for the same zone.
+**All schedule times use ET, independently of your computer timezone.** The addon
+converts dates to fixed timestamps using US Eastern daylight saving rules:
+EST is UTC−5 and EDT is UTC−4. Supported dates are 2007–2099. Correct clock time
+is still needed; conversion does not require identifying your computer timezone.
 
-Defaults and validation:
-- Default is `60` minutes
-- Invalid, blank, or non-positive values normalize back to `60`
+Missing spring clock-change times are rejected. During the repeated November
+hour, choose EDT for the first occurrence or EST for the second using that
+timestamp's **repeated-hour choice**. Leave Automatic for ordinary times.
 
-## Populate Sound
-Populate Sound is stored per **Command + Guild**.
+## Message substitutions and countdowns
 
-Behavior:
-- Default sound is **DUEL_START**
-- **None** disables populate sound completely
-- The selected sound plays whenever SmartChatMsg populates a message into chat, including manual slash command starts, **Repeat**, and **Auto Populate Chat on Zone**
-- The **Preview** button lets you test the currently selected sound from the settings panel
+| Token | Result |
+| --- | --- |
+| `%guild%` | Resolved guild name. |
+| `%zone%` | Your current zone name. |
+| `%time%`, `%timeofday%`, `%greeting%` | Morning, afternoon, or evening. |
+| `%eventdate%` | Configured event's Eastern date, e.g. `10/16/2026`. |
+| `%eventtime%` | Eastern time with EDT/EST, e.g. `08:00 PM EDT`. |
+| `%eventwhen%` | Today, tomorrow, or weekday/date, using the event's Eastern date. |
 
-## Global Settings
-### Default Guild
-Default Guild is used when you run a command without specifying a guild slot.
+Tokens are case-insensitive and resolved when chat is populated. Event tokens
+require a configured event. Example:
 
-### Auto-Remove Pending Chat Timeout
-This is the global revert timer.
+```
+%guild% trial %eventwhen%, %eventdate% at %eventtime%. Ask an officer to join!
+```
 
-Behavior:
-- Applies to all commands
-- Restores the previous chat channel if the pending populated message is not sent in time
-- Clears the pending chat buffer at timeout
-- Minimum valid value is 30 seconds
-- Default is 60 seconds
+The embedded-time formatter can recognize ordinary event date/time text and add
+a countdown. Countdown formatting changes message text; the saved scheduling
+window controls when the command can run. Include event dates/times to help
+distinguish your announcements from different events.
 
-## Import and Export
-SmartChatMsg includes import/export support for settings.
+## Incoming duplicate coordination
 
-Export includes:
-- Commands
-- Messages
-- Saved output channels
-- Per-command/per-guild behavior settings
-- Default guild
-- Global revert timeout
-- Active auto-populate state
+The other player does not need SmartChatMsg. Their matching Zone, Guild, or
+Officer message records usage for your entire **Command + Guild** combination
+and adds a random **30–90 seconds** to its cooldown. An active Repeat cycle is
+deferred. Your own messages and customer-service messages are excluded.
 
-Import behavior:
-- Import replaces existing SmartChatMsg settings
-- Import requires confirmation before applying
-- Success and error feedback are shown in-game
+Guild/Officer matching uses the actual receiving guild and configured channel,
+independently of local slot order. Zone chat checks all Zone combinations and
+updates each match once. Zone observations apply to the current zone;
+Guild/Officer observations apply across zones.
 
-## Basic Setup Example
-Example setup for a recruitment command:
-1. Open settings with `/scm`.
-2. Add a command named `recruit`.
-3. In the Messages section, select `recruit`.
-4. Select the guild you want it associated with.
-5. Set Output Channel to `Zone`.
-6. Add several recruitment messages.
-7. Optionally enable either Repeat Every or Auto Populate Chat on Zone.
-8. Use `/recruit` or `/recruit 1` in chat.
+The complete fixed wording and guild identity must match. Greetings, known zone
+substitutions, and recognized generated countdown additions may differ. Original
+event dates/times and explicit timezones remain required; schedule event tokens
+retain the configured event identity. Case, spacing, colors, and link display
+style are normalized. Similar wording/substrings and variable-only templates
+do not establish message identity.
 
-## Tips
-- Save more than one message per command/guild to improve rotation variety.
-- Use `%guild%` and `%zone%` to reduce how many separate message variants you need.
-- Use Repeat for timed reposting.
-- Use Auto Populate on Zone for travel-based reminders.
-- Use `off` to clearly stop automation for a specific command/guild.
+Untouched pending duplicates withdraw; edited text remains. Peer matches cannot
+activate stopped automation, unpause schedules, or extend their end time.
+The extra cooldown delay survives UI reloads.
 
-## Sharing message templates
+## Status and ordinary automation
 
-In Messages Settings, select a command, guild and output channel. Open **Share
-Messages**, click **Export Messages**, and copy the generated text to another
-player. They select their destination command and the same guild/channel, paste
-the text, and click **Import Messages (merge)**. The command names can differ.
+Open `/scm status` for Zone cooldowns and scheduled commands. Schedules show
+WAITING, RUNNING, PAUSED, or FINISHED (or disabled/configuration states), current
+phase, Eastern window boundaries, and next eligible Repeat delivery. Blocking
+reasons include busy input, cooldown, an empty phase, or another Zone owner.
 
-Import adds new templates, skips exact duplicates, and preserves existing
-messages, IDs, usage, schedules, channels and other settings. It does not activate
-automation. Shared guilds use names rather than guild-slot numbers. Imported
-templates immediately participate in incoming-message cooldown coordination.
+For ordinary On Demand/Startup combinations:
 
-The share format is separate from full backup/restore. Full settings import
-still replaces all settings. For event tokens, recipients must configure the
-matching event separately. New scheduled templates use ANY phase until assigned.
-Install `SCM_MessageSharing.lua` along with the updated manifest and settings file.
+- **Repeat Every:** repopulates after the configured minutes following a confirmed send.
+- **Retry Delay:** retries an unsubmitted repeated message after timeout; zero/blank
+  resumes the normal repeat interval. Effective retry is capped to Repeat.
+- **Auto Populate Chat on Zone:** uses eligible parent-zone evaluations instead
+  of Repeat. Only one Zone owner can be active; per-zone cooldown defaults to 60 minutes.
+- **Populate Sound:** defaults to DUEL_START; None is silent. Preview tests the sound.
 
-## Included Commands
-- `/scm` opens SmartChatMsg settings
-- `/scm schedule` opens settings for the Event Scheduling submenu
-- `/scm status` toggles the live cooldown and scheduling status panel
-- `/scmdebug` toggles or controls debug logging
+Repeat and ordinary Zone auto populate are alternatives for a combination.
+Scheduled combinations use the schedule's delivery mode and intervals instead.
+The global pending-chat timeout defaults to 60 seconds, with a minimum of 30.
+The prior channel is restored after a confirmed send. At timeout, restoration
+and clearing occur only while pending text is unchanged; player edits survive.
 
-## Files
-- `SCM_SavedVars.lua`
-- `SCM_Settings.lua`
-- `SmartChatMsg.lua`
+## Export/import and sharing
 
-## Event Scheduling
+| Option | Includes | Effect of import |
+| --- | --- | --- |
+| Import / Export Settings | Commands, messages, channels, behavior, schedule dates/times, intervals, phase assignments, pauses, and general settings | Replaces addon settings after confirmation. |
+| Share Messages | Raw templates for the selected command/guild/channel | Adds missing templates, skips exact duplicates, and preserves existing messages/settings/usage. |
 
-Select a command/guild in Messages Settings, then configure **Event Scheduling
-(Eastern Time)**. Save an enabled start/event/end window with Repeat or Zone
-delivery, optional phase intervals, and message assignments. Schedules activate
-and stop automatically while the game is running. Messages fill the chat box;
-press Enter to send. Use `%eventdate%`, `%eventtime%`, and `%eventwhen%` for event
-details. `off` pauses a schedule until Resume in settings.
+### Share templates with another player
 
-Install all files from the addon manifest, including `SCM_Calendar.lua`,
-`SCM_Schedules.lua`, `SCM_Scheduler.lua`, and `SCM_ScheduleSettings.lua`.
-See [the scheduling trial instructions](docs/scheduling-testing.md) for setup,
-daylight saving behavior, and a short two-player test.
+1. Select your command, guild, and output channel in Messages settings.
+2. Open **Share Messages**, click **Export Messages**, and copy the generated text.
+3. The recipient selects their destination command and the same guild/channel.
+   Command names can differ; the guild can occupy a different local slot.
+4. They paste into **Shared message text** and click **Import Messages (merge)**.
+
+The complete payload is validated before messages are added. Sharing does not
+copy/activate schedules, change channels, or reset personal cooldowns. Imported
+templates immediately participate in incoming matching. Event-token users must
+configure the matching event separately. New scheduled templates use ANY until
+the recipient assigns their phases.
+
+### Customize an imported schedule
+
+Full settings export includes event dates/times and message-phase assignments.
+After import, select the command/guild, edit its window and intervals in Event
+Scheduling, change phase checkboxes, and **Save schedule**. Edits affect only your
+own copy. For example, keep Friday's event start but begin your reminders later.
+
+Full import replaces all settings and may import enabled schedules; review them
+before copying another player's setup. Message-only sharing uses a separate
+format and cannot be mistaken for a full settings backup by full import.
+
+## Testing and limitations
+
+- [Short-window scheduling and two-player trial](docs/scheduling-testing.md).
+- [Incoming-message coordination checks](docs/incoming-chat-testing.md).
+- [Message-sharing checks](docs/message-sharing-testing.md).
+
+Automated checks cover calendar/DST rules, boundaries, queues, edited input,
+coordination, persistence, sharing, and settings callbacks. Actual ESO UI layout,
+loading screens, channel restoration, and two-player operation still need in-game
+verification. There is no recurring event scheduler or offline posting.
