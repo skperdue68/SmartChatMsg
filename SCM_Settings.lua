@@ -1166,6 +1166,7 @@ local function BuildMessagesBehaviorSettings(parent)
 
             local entry = runAtComboBox:CreateItemEntry(option.label, function()
                 SmartChatMsg.settings.pendingGuildRunAt = option.value
+                if option.value=="SCHEDULED" then SmartChatMsg:ShowStatusMessage("Configure and Save this command/guild in Event Scheduling (Eastern Time).") end
 
                 local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
                 if not ok and err then
@@ -1899,7 +1900,7 @@ function SmartChatMsg:CreateSettingsPanel()
         name = "SmartChatMsg",
         displayName = "SmartChatMsg",
         author = "evainefaye",
-        version = "1.9.1",
+        version = "1.10.0",
         registerForRefresh = true,
         registerForDefaults = false,
     }
@@ -1918,6 +1919,7 @@ function SmartChatMsg:CreateSettingsPanel()
     local importExportHolder
 
     local optionsTable = {
+        {type="submenu",name="Share Messages",controls=self:BuildMessageSharingOptionControls()},
         {
             type = "description",
             text = "Allows you to create custom command(s) that can be filtered by guild and used to output one of several random messages to the appropriate chat type.",
@@ -2127,6 +2129,7 @@ function SmartChatMsg:CreateSettingsPanel()
         },
     }
 
+    table.insert(optionsTable, #optionsTable, {type="submenu",name="Event Scheduling (Eastern Time)",controls=self:BuildScheduleOptionControls()})
     LAM2:RegisterOptionControls("SmartChatMsgOptionsPanel", optionsTable)
 end
 

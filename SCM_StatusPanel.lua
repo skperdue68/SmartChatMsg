@@ -1329,6 +1329,8 @@ function SmartChatMsg:RefreshStatusPanel()
         panel.footerLabel:SetText(string.format("Tracked Zones: %d | Other Zones %d-%d%s", totalTracked, showingFrom, showingTo, moreText))
     end
 
+    local schedules=self:GetScheduleSummaryText()
+    if schedules~="" then panel.footerLabel:SetText(panel.footerLabel:GetText().."\n"..schedules) end
     local repeatRows = self:GetRepeatStatusPanelRows()
     panel.repeatDataRows = repeatRows
     panel.repeatDivider:SetHidden(false)

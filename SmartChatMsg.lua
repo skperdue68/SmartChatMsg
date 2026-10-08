@@ -645,6 +645,711 @@ function SmartChatMsg:TryReturnDetectedTime(source, fullMatch, hour, minute, tim
 end
 
 
+function SmartChatMsg:FindEmbeddedTimeDetails(text)
+    local source = tostring(text or "")
+    local lowerSource, sourceIndexMap = self:BuildLowercaseSourceIndexMap(source)
+    self:DebugLog("Countdown debug: scanning for embedded time in text=" .. tostring(source))
+
+    local function tryPattern(pattern, patternName, timezoneToken, hourTransform)
+        local searchStart = 1
+        while searchStart <= #lowerSource do
+            local startPos, endPos, a, b, c = lowerSource:find(pattern, searchStart)
+            if not startPos then
+                break
+            end
+
+            local hour, minute = hourTransform(a, b, c)
+            if hour ~= nil and minute ~= nil then
+                local originalMatch = self:SliceOriginalByLowerPositions(source, sourceIndexMap, startPos, endPos)
+                local detectedMatch, detectedHour, detectedMinute, detectedTimezone = self:TryReturnDetectedTime(source, originalMatch, hour, minute, timezoneToken, patternName)
+                if detectedMatch then
+                    return detectedMatch, detectedHour, detectedMinute, detectedTimezone
+                end
+            end
+
+            searchStart = startPos + 1
+        end
+
+        return nil, nil, nil, nil
+    end
+
+    local function isTokenBoundary(startPos, endPos)
+        local beforeChar = (startPos and startPos > 1) and lowerSource:sub(startPos - 1, startPos - 1) or ""
+        local afterChar = (endPos and endPos < #lowerSource) and lowerSource:sub(endPos + 1, endPos + 1) or ""
+        local beforeOk = beforeChar == "" or not beforeChar:match("[%a%d]")
+        local afterOk = afterChar == "" or not afterChar:match("[%a%d]")
+        return beforeOk and afterOk
+    end
+
+    local snippetPatterns = {
+        {
+            pattern = "(%d%d?)%s*:%s*(%d%d)%s*([ap])%.?%s*[m]%.?",
+            name = "12h_with_minutes",
+            transform = function(h, m, ap)
+                local meridiem = (ap == "a") and "AM" or "PM"
+                local hour = self:NormalizeExtractedHour(h, meridiem)
+                local minute = tonumber(m)
+                if hour and minute and minute >= 0 and minute <= 59 then return hour, minute end
+            end,
+        },
+        {
+            pattern = "(%d%d?)%s*([ap])%.?%s*[m]%.?",
+            name = "12h_hour_only",
+            transform = function(h, ap)
+                local meridiem = (ap == "a") and "AM" or "PM"
+                local hour = self:NormalizeExtractedHour(h, meridiem)
+                if hour then return hour, 0 end
+            end,
+        },
+        {
+            pattern = "(%d)(%d%d)%s*([ap])%.?%s*[m]%.?",
+            name = "12h_compact_3digit",
+            transform = function(h, m, ap)
+                local meridiem = (ap == "a") and "AM" or "PM"
+                local hour = self:NormalizeExtractedHour(h, meridiem)
+                local minute = tonumber(m)
+                if hour and minute and minute >= 0 and minute <= 59 then return hour, minute end
+            end,
+        },
+        {
+            pattern = "(%d%d)(%d%d)%s*([ap])%.?%s*[m]%.?",
+            name = "12h_compact_4digit",
+            transform = function(h, m, ap)
+                local meridiem = (ap == "a") and "AM" or "PM"
+                local hour = self:NormalizeExtractedHour(h, meridiem)
+                local minute = tonumber(m)
+                if hour and minute and minute >= 0 and minute <= 59 then return hour, minute end
+            end,
+        },
+        {
+            pattern = "(%d%d?)%s*:%s*(%d%d)",
+            name = "24h_with_minutes",
+            transform = function(h, m, snippetText, relStartPos, relEndPos)
+                local tail = tostring(snippetText or ""):sub((relEndPos or 0) + 1)
+                if tail:match("^%s*[ap]%.?%s*m%f[%A]") then
+                    return nil, nil
+                end
+
+                local hour = tonumber(h)
+                local minute = tonumber(m)
+                if hour and minute and hour >= 0 and hour <= 23 and minute >= 0 and minute <= 59 then return hour, minute end
+            end,
+        },
+    }
+
+    local function parseSnippet(snippet, snippetStart, matchEndLimit, timezoneToken, labelPrefix)
+        for _, entry in ipairs(snippetPatterns) do
+            local searchStart = 1
+            while searchStart <= #snippet do
+                local relStart, relEnd, a, b, c = snippet:find(entry.pattern, searchStart)
+                if not relStart then
+                    break
+                end
+
+                local absStart = snippetStart + relStart - 1
+                local absEnd = snippetStart + relEnd - 1
+                if (not matchEndLimit or absEnd <= matchEndLimit) then
+                    if isTokenBoundary(absStart, absEnd) then
+                        local hour, minute = entry.transform(a, b, c, snippet, relStart, relEnd)
+                        if hour ~= nil and minute ~= nil then
+                            local originalMatch = self:SliceOriginalByLowerPositions(source, sourceIndexMap, absStart, absEnd)
+                            local detectedMatch, detectedHour, detectedMinute, detectedTimezone =
+                                self:TryReturnDetectedTime(source, originalMatch, hour, minute, timezoneToken, labelPrefix .. entry.name)
+                            if detectedMatch then
+                                return detectedMatch, detectedHour, detectedMinute, detectedTimezone
+                            end
+                        end
+                    end
+                end
+
+                searchStart = relStart + 1
+            end
+        end
+
+        return nil, nil, nil, nil
+    end
+
+    local function trySnippetBeforeTimezone(token, tokenStart, tokenEnd)
+        local snippetStart = math.max(1, tokenStart - 32)
+        local snippet = lowerSource:sub(snippetStart, tokenStart - 1)
+        return parseSnippet(snippet, snippetStart, tokenStart - 1, token, "tz_near_token_")
+    end
+
+    for _, token in ipairs(self:GetSupportedTimezoneTokens()) do
+        local normalizedToken = zo_strlower(token)
+        local searchStart = 1
+        while searchStart <= #lowerSource do
+            local tokenStart, tokenEnd = lowerSource:find(normalizedToken, searchStart, true)
+            if not tokenStart then break end
+            if isTokenBoundary(tokenStart, tokenEnd) then
+                local detectedMatch, detectedHour, detectedMinute, detectedTimezone = trySnippetBeforeTimezone(token, tokenStart, tokenEnd)
+                if detectedMatch then return detectedMatch, detectedHour, detectedMinute, detectedTimezone end
+            end
+            searchStart = tokenStart + 1
+        end
+    end
+
+    self:DebugLog("Countdown debug: timezone-aware patterns produced no match; trying local fallback patterns")
+
+    do
+        local detectedMatch, detectedHour, detectedMinute, detectedTimezone =
+            parseSnippet(lowerSource, 1, nil, nil, "local_scan_")
+        if detectedMatch then
+            return detectedMatch, detectedHour, detectedMinute, detectedTimezone
+        end
+    end
+
+    local noonStart, noonEnd = lowerSource:find("%f[%a]noon%f[%A]")
+    if noonStart then
+        local originalMatch = self:SliceOriginalByLowerPositions(source, sourceIndexMap, noonStart, noonEnd)
+        local m, h, mi = self:TryReturnDetectedTime(source, originalMatch, 12, 0, nil, "keyword_noon")
+        if m then return m, h, mi, nil end
+    end
+
+    local midnightStart, midnightEnd = lowerSource:find("%f[%a]midnight%f[%A]")
+    if midnightStart then
+        local originalMatch = self:SliceOriginalByLowerPositions(source, sourceIndexMap, midnightStart, midnightEnd)
+        local m, h, mi = self:TryReturnDetectedTime(source, originalMatch, 0, 0, nil, "keyword_midnight")
+        if m then return m, h, mi, nil end
+    end
+
+    self:DebugLog("Countdown debug: no embedded time detected")
+    return nil, nil, nil, nil
+end
+function SmartChatMsg:ExtractEmbeddedTimeParts(text)
+    local _, hour, minute, timezoneToken = self:FindEmbeddedTimeDetails(text)
+    return hour, minute, timezoneToken
+end
+
+function SmartChatMsg:FindEmbeddedTimeSubstring(text)
+    local fullMatch = self:FindEmbeddedTimeDetails(text)
+    return fullMatch
+end
+
+function SmartChatMsg:GetWeekdayIndexByName(dayName)
+    local normalized = zo_strlower(self:Trim(tostring(dayName or "")))
+    normalized = normalized:gsub("%.", "")
+
+    local weekdayMap = {
+        sunday = 1,
+        sun = 1,
+        monday = 2,
+        mon = 2,
+        tuesday = 3,
+        tue = 3,
+        tues = 3,
+        wednesday = 4,
+        wed = 4,
+        thursday = 5,
+        thu = 5,
+        thur = 5,
+        thurs = 5,
+        friday = 6,
+        fri = 6,
+        saturday = 7,
+        sat = 7,
+    }
+
+    return weekdayMap[normalized]
+end
+
+function SmartChatMsg:GetEmbeddedDayOffset(text, nowEpoch, timeMatch)
+    if not timeMatch or timeMatch == "" then
+        self:DebugLog("Countdown debug: day detection skipped because no time was detected")
+        return nil
+    end
+
+    local source = zo_strlower(tostring(text or ""))
+    local nowEpochSafe = tonumber(nowEpoch) or os.time()
+    local now = os.date("*t", nowEpochSafe)
+    local beforeScope = source
+    local afterScope = ""
+
+    local lowerMatch = zo_strlower(tostring(timeMatch))
+    local matchStart, matchEnd = source:find(lowerMatch, 1, true)
+    if matchStart then
+        beforeScope = source:sub(1, matchStart - 1)
+        afterScope = source:sub(matchEnd + 1)
+        self:DebugLog(string.format(
+            "Countdown debug: day scan scopes prepared timeMatch=%s beforeScope=%s afterScope=%s",
+            tostring(timeMatch),
+            tostring(beforeScope),
+            tostring(afterScope)
+        ))
+    else
+        self:DebugLog("Countdown debug: day scan could not locate detected time in source; using full text as before-scope")
+    end
+
+    local function tryExtractDateOffset(scope, anchor)
+        local scopeText = tostring(scope or "")
+        if scopeText == "" then
+            self:DebugLog("Countdown debug: no date token seen anchor=" .. tostring(anchor) .. " scope=empty")
+            return nil
+        end
+
+        local dateToken = nil
+        local m, d, y = nil, nil, nil
+
+        local function isDateBoundary(startPos, endPos)
+            local beforeChar = (startPos and startPos > 1) and scopeText:sub(startPos - 1, startPos - 1) or ""
+            local afterChar = (endPos and endPos < #scopeText) and scopeText:sub(endPos + 1, endPos + 1) or ""
+            local beforeOk = beforeChar == "" or not beforeChar:match("[%d]")
+            local afterOk = afterChar == "" or not afterChar:match("[%d]")
+            return beforeOk and afterOk
+        end
+
+        local s1, e1, m1, d1, y1 = scopeText:find("(%d?%d)%s*/%s*(%d?%d)%s*/%s*(%d%d%d%d)")
+        if s1 and isDateBoundary(s1, e1) then
+            m, d, y = m1, d1, y1
+            dateToken = string.format("%s/%s/%s", m, d, y)
+        else
+            local s2, e2, m2, d2 = scopeText:find("(%d?%d)%s*/%s*(%d?%d)")
+            if s2 and isDateBoundary(s2, e2) then
+                m, d = m2, d2
+                dateToken = string.format("%s/%s", m, d)
+            end
+        end
+
+        if not m then
+            self:DebugLog("Countdown debug: no date token seen anchor=" .. tostring(anchor) .. " scope=" .. tostring(scopeText))
+            return nil
+        end
+
+        local month = tonumber(m)
+        local day = tonumber(d)
+        local year = tonumber(y)
+        if not month or not day or month < 1 or month > 12 or day < 1 or day > 31 then
+            self:DebugLog("Countdown debug: date token ignored anchor=" .. tostring(anchor) .. " token=" .. tostring(dateToken) .. " reason=invalid_month_or_day")
+            return nil
+        end
+
+        if not year then
+            year = now.year
+        elseif year < 100 then
+            year = 2000 + year
+        end
+
+        local candidateEpoch = os.time({year = year, month = month, day = day, hour = 12, min = 0, sec = 0})
+        if not candidateEpoch then
+            self:DebugLog("Countdown debug: date token ignored anchor=" .. tostring(anchor) .. " token=" .. tostring(dateToken) .. " reason=os_time_failed")
+            return nil
+        end
+
+        local candidateDate = os.date("*t", candidateEpoch)
+        if candidateDate.year ~= year or candidateDate.month ~= month or candidateDate.day ~= day then
+            self:DebugLog("Countdown debug: date token ignored anchor=" .. tostring(anchor) .. " token=" .. tostring(dateToken) .. " reason=normalized_to_different_date")
+            return nil
+        end
+
+        local nowStartOfDay = os.time({year = now.year, month = now.month, day = now.day, hour = 0, min = 0, sec = 0})
+        local candidateStartOfDay = os.time({year = year, month = month, day = day, hour = 0, min = 0, sec = 0})
+        local dayOffset = math.floor((candidateStartOfDay - nowStartOfDay) / (24 * 60 * 60))
+
+        if dayOffset < 0 then
+            self:DebugLog("Countdown debug: date detected but ignored anchor=" .. tostring(anchor) .. " token=" .. tostring(dateToken) .. " dayOffset=" .. tostring(dayOffset) .. " reason=past_date")
+            return nil
+        end
+
+        self:DebugLog("Countdown debug: date detected anchor=" .. tostring(anchor) .. " token=" .. tostring(dateToken) .. " resolvedYear=" .. tostring(year) .. " resolvedMonth=" .. tostring(month) .. " resolvedDay=" .. tostring(day) .. " dayOffset=" .. tostring(dayOffset))
+        return dayOffset
+    end
+
+    local beforeDateOffset = tryExtractDateOffset(beforeScope, "before_time")
+    if beforeDateOffset ~= nil then
+        self:DebugLog("Countdown debug: day detection selected date_before_time dayOffset=" .. tostring(beforeDateOffset))
+        return beforeDateOffset
+    end
+
+    local afterDateWindow = afterScope
+    if #afterDateWindow > 64 then
+        afterDateWindow = afterDateWindow:sub(1, 64)
+    end
+    local afterDateOffset = tryExtractDateOffset(afterDateWindow, "after_time")
+    if afterDateOffset ~= nil then
+        self:DebugLog("Countdown debug: day detection selected date_after_time dayOffset=" .. tostring(afterDateOffset))
+        return afterDateOffset
+    end
+
+    -- Do not let a broad full-text date scan suppress relative-day words like tomorrow.
+    -- Prefer scoped dates near the detected time first; only use full-text date fallback
+    -- after scoped relative-day / weekday parsing has had a chance to win.
+
+    local function normalizeScope(scope)
+        local normalizedScope = zo_strlower(tostring(scope or ""))
+        normalizedScope = normalizedScope:gsub("[^%a%s]", " ")
+        normalizedScope = normalizedScope:gsub("%s+", " ")
+        normalizedScope = self:Trim(normalizedScope)
+        return normalizedScope
+    end
+
+    local function extractDayToken(scope, anchor)
+        if not scope or scope == "" then
+            self:DebugLog("Countdown debug: no day token seen anchor=" .. tostring(anchor) .. " scope=empty")
+            return nil
+        end
+
+        local normalizedScope = normalizeScope(scope)
+        self:DebugLog("Countdown debug: normalized day scope anchor=" .. tostring(anchor) .. " scope=" .. tostring(normalizedScope))
+        if normalizedScope == "" then
+            self:DebugLog("Countdown debug: no day token seen anchor=" .. tostring(anchor) .. " scope=empty_after_normalize")
+            return nil
+        end
+
+        local words = {}
+        for word in normalizedScope:gmatch("%a+") do
+            table.insert(words, word)
+        end
+        self:DebugLog("Countdown debug: day scan tokens anchor=" .. tostring(anchor) .. " tokens=" .. table.concat(words, "|"))
+
+        for _, word in ipairs(words) do
+            if word == "tomorrow" then
+                self:DebugLog("Countdown debug: relative day detected=tomorrow anchor=" .. tostring(anchor) .. " dayOffset=1")
+                return 1
+            end
+            if word == "today" or word == "tonight" then
+                self:DebugLog("Countdown debug: relative day detected=today_or_tonight anchor=" .. tostring(anchor) .. " dayOffset=0")
+                return 0
+            end
+        end
+
+        for _, word in ipairs(words) do
+            local targetWday = self:GetWeekdayIndexByName(word)
+            if targetWday then
+                local delta = (targetWday - now.wday) % 7
+                self:DebugLog(string.format(
+                    "Countdown debug: weekday detected=%s anchor=%s dayOffset=%s currentWday=%s targetWday=%s",
+                    tostring(word),
+                    tostring(anchor),
+                    tostring(delta),
+                    tostring(now.wday),
+                    tostring(targetWday)
+                ))
+                return delta
+            end
+        end
+
+        self:DebugLog("Countdown debug: no day token seen anchor=" .. tostring(anchor) .. " scope=" .. tostring(normalizedScope))
+        return nil
+    end
+
+    local beforeOffset = extractDayToken(beforeScope, "before_time")
+    if beforeOffset ~= nil then
+        self:DebugLog("Countdown debug: day detection selected before_time dayOffset=" .. tostring(beforeOffset))
+        return beforeOffset
+    end
+
+    local afterWindow = afterScope
+    if #afterWindow > 48 then
+        afterWindow = afterWindow:sub(1, 48)
+    end
+    local afterOffset = extractDayToken(afterWindow, "after_time")
+    if afterOffset ~= nil then
+        self:DebugLog("Countdown debug: day detection selected after_time dayOffset=" .. tostring(afterOffset))
+        return afterOffset
+    end
+
+    local fullOffset = extractDayToken(source, "full_text_fallback")
+    if fullOffset ~= nil then
+        self:DebugLog("Countdown debug: day detection selected full_text_fallback dayOffset=" .. tostring(fullOffset))
+        return fullOffset
+    end
+
+    local fullDateOffset = tryExtractDateOffset(source, "full_text_fallback")
+    if fullDateOffset ~= nil then
+        self:DebugLog("Countdown debug: day detection selected date_full_text_fallback dayOffset=" .. tostring(fullDateOffset))
+        return fullDateOffset
+    end
+
+    self:DebugLog("Countdown debug: no day detected for matched time; defaulting dayOffset=nil")
+    return nil
+end
+
+function SmartChatMsg:GetCountdownUntilEmbeddedTimeText(text)
+    local timeMatch, hour, minute, sourceTz = self:FindEmbeddedTimeDetails(text)
+    if not hour then
+        self:DebugLog("Countdown debug: countdown not computed because no time was detected")
+        return nil
+    end
+
+    local nowEpoch = os.time()
+    local nowLocal = os.date("*t", nowEpoch)
+    local localOffset = self:GetLocalUtcOffsetHours(nowEpoch)
+    local sourceOffset = localOffset
+
+    if sourceTz and self:Trim(sourceTz) ~= "" then
+        local resolvedOffset = self:GetResolvedTimezoneOffsetHours(sourceTz)
+        if resolvedOffset == nil then
+            self:DebugLog("Countdown debug: countdown not computed because timezone could not be resolved for " .. tostring(sourceTz))
+            return nil
+        end
+        sourceOffset = resolvedOffset
+    end
+
+    local dayOffset = self:GetEmbeddedDayOffset(text, nowEpoch, timeMatch)
+    if dayOffset == nil then
+        dayOffset = 0
+    end
+
+    local detectedText = zo_strlower(tostring(timeMatch or ""))
+    local hasExplicitMeridiem = detectedText:find("%f[%a][ap]%.?%s*[m]%.?%f[%A]") ~= nil
+    local shouldUseNearestFuture12Hour = (not hasExplicitMeridiem) and hour >= 1 and hour <= 12
+
+    local function buildTargetEpoch(candidateHour)
+        local candidateEpoch = os.time({
+            year = nowLocal.year,
+            month = nowLocal.month,
+            day = nowLocal.day + dayOffset,
+            hour = candidateHour,
+            min = minute,
+            sec = 0,
+        }) + ((localOffset - sourceOffset) * 3600)
+
+        if dayOffset == 0 then
+            while candidateEpoch <= nowEpoch do
+                candidateEpoch = candidateEpoch + (24 * 60 * 60)
+            end
+        elseif candidateEpoch <= nowEpoch then
+            candidateEpoch = candidateEpoch + (7 * 24 * 60 * 60)
+        end
+
+        return candidateEpoch
+    end
+
+    local targetEpoch = nil
+    local resolvedHour = hour
+    if shouldUseNearestFuture12Hour then
+        local candidateHours = { hour }
+        local pmHour = hour % 12 + 12
+        if pmHour ~= hour then
+            table.insert(candidateHours, pmHour)
+        end
+
+        for _, candidateHour in ipairs(candidateHours) do
+            local candidateEpoch = buildTargetEpoch(candidateHour)
+            if not targetEpoch or candidateEpoch < targetEpoch then
+                targetEpoch = candidateEpoch
+                resolvedHour = candidateHour
+            end
+        end
+
+        self:DebugLog(string.format(
+            "Countdown debug: ambiguous 12-hour time without meridiem resolved to next future occurrence match=%s baseHour=%s chosenHour=%s chosenTargetEpoch=%s dayOffset=%s",
+            tostring(timeMatch),
+            tostring(hour),
+            tostring(resolvedHour),
+            tostring(targetEpoch),
+            tostring(dayOffset)
+        ))
+    else
+        targetEpoch = buildTargetEpoch(hour)
+        resolvedHour = hour
+    end
+
+    local countdownText = self:GetApproximateCountdownTextFromSeconds(targetEpoch - nowEpoch, text, self:FindEmbeddedTimeSubstring(text))
+    self:DebugLog(string.format(
+        "Countdown debug: countdown computed=%s nowEpoch=%s targetEpoch=%s localOffset=%s sourceOffset=%s dayOffset=%s explicitMeridiem=%s resolvedHour=%s",
+        tostring(countdownText),
+        tostring(nowEpoch),
+        tostring(targetEpoch),
+        tostring(localOffset),
+        tostring(sourceOffset),
+        tostring(dayOffset),
+        tostring(hasExplicitMeridiem),
+        tostring(resolvedHour)
+    ))
+
+    local metadata = {
+        timeMatch = timeMatch,
+        sourceTz = sourceTz,
+        hasExplicitMeridiem = hasExplicitMeridiem,
+        shouldUseNearestFuture12Hour = shouldUseNearestFuture12Hour,
+        assumedMeridiem = nil,
+        resolvedHour24 = resolvedHour,
+    }
+
+    if shouldUseNearestFuture12Hour then
+        metadata.assumedMeridiem = (resolvedHour >= 12) and "PM" or "AM"
+    end
+
+    return countdownText, metadata
+end
+
+function SmartChatMsg:InsertCountdownPreservingTemplate(text)
+    local source = tostring(text or "")
+    local timeMatch, _, _, sourceTz = self:FindEmbeddedTimeDetails(source)
+    if not timeMatch or timeMatch == "" then
+        self:DebugLog("Countdown debug: message text left unchanged because no time was detected")
+        return source
+    end
+
+    local countdownText, countdownMeta = self:GetCountdownUntilEmbeddedTimeText(source)
+    if not countdownText or countdownText == "" then
+        self:DebugLog("Countdown debug: message text left unchanged because countdown text could not be computed")
+        return source
+    end
+
+    local matchStart, matchEnd = source:find(self:EscapeLuaPattern(timeMatch), 1)
+    if not matchStart then
+        self:DebugLog("Countdown debug: message text left unchanged because detected time could not be located in source")
+        return source
+    end
+
+    local function consumeLeadingPattern(segment, pattern)
+        local matched = segment:match(pattern)
+        if not matched or matched == "" then
+            return "", segment
+        end
+
+        return matched, segment:sub(#matched + 1)
+    end
+
+    local function consumeLeadingSupportedTimezone(segment)
+        local tokens = self:GetSupportedTimezoneTokens() or {}
+        local working = segment
+        local leadingWhitespace = working:match("^(%s*)") or ""
+        local afterWhitespace = working:sub(#leadingWhitespace + 1)
+        local lowerAfterWhitespace = zo_strlower(afterWhitespace)
+
+        local bestToken = nil
+        for _, token in ipairs(tokens) do
+            local trimmedToken = self:Trim(token)
+            if trimmedToken ~= "" then
+                local lowerToken = zo_strlower(trimmedToken)
+                if lowerAfterWhitespace:sub(1, #lowerToken) == lowerToken then
+                    local nextChar = afterWhitespace:sub(#trimmedToken + 1, #trimmedToken + 1)
+                    if nextChar == "" or not nextChar:match("[%a]") then
+                        if not bestToken or #trimmedToken > #bestToken then
+                            bestToken = trimmedToken
+                        end
+                    end
+                end
+            end
+        end
+
+        if not bestToken then
+            return "", segment
+        end
+
+        local consumed = leadingWhitespace .. afterWhitespace:sub(1, #bestToken)
+        return consumed, segment:sub(#consumed + 1)
+    end
+
+    local fullDisplayStart = matchStart
+    local fullDisplayEnd = matchEnd
+    local fullDisplayMatch = source:sub(fullDisplayStart, fullDisplayEnd)
+    local trailing = source:sub(matchEnd + 1)
+
+    local consumedMeridiem = ""
+    consumedMeridiem, trailing = consumeLeadingPattern(trailing, "^%s*[AaPp]%.?%s*[Mm]%.?")
+    if consumedMeridiem ~= "" then
+        fullDisplayEnd = fullDisplayEnd + #consumedMeridiem
+        fullDisplayMatch = source:sub(fullDisplayStart, fullDisplayEnd)
+    end
+
+    local consumedTimezone = ""
+    consumedTimezone, trailing = consumeLeadingSupportedTimezone(trailing)
+    if consumedTimezone ~= "" then
+        fullDisplayEnd = fullDisplayEnd + #consumedTimezone
+        fullDisplayMatch = source:sub(fullDisplayStart, fullDisplayEnd)
+    end
+
+    local explicitMeridiemMatch = fullDisplayMatch:match("(%s*[AaPp]%.?%s*[Mm]%.?)")
+    local assumedMeridiemSuffix = ""
+    if countdownMeta and countdownMeta.assumedMeridiem and not explicitMeridiemMatch then
+        assumedMeridiemSuffix = " " .. countdownMeta.assumedMeridiem
+    end
+
+    local existingTimezoneInDisplay = ""
+    do
+        local tokens = self:GetSupportedTimezoneTokens() or {}
+        local bestToken = nil
+        local lowerDisplay = zo_strlower(fullDisplayMatch)
+        for _, token in ipairs(tokens) do
+            local trimmedToken = self:Trim(token)
+            if trimmedToken ~= "" then
+                local pattern = "(%s+" .. self:EscapeLuaPattern(trimmedToken) .. ")%s*$"
+                local match = fullDisplayMatch:match(pattern)
+                if match and (not bestToken or #trimmedToken > #bestToken) then
+                    bestToken = trimmedToken
+                    existingTimezoneInDisplay = match
+                end
+            end
+        end
+    end
+
+    local timezoneSuffix = ""
+    if existingTimezoneInDisplay ~= "" and self:Trim(existingTimezoneInDisplay) ~= "" then
+        timezoneSuffix = existingTimezoneInDisplay
+    elseif consumedTimezone ~= "" and self:Trim(consumedTimezone) ~= "" then
+        timezoneSuffix = consumedTimezone
+    elseif sourceTz and self:Trim(sourceTz) ~= "" then
+        timezoneSuffix = " " .. self:Trim(sourceTz)
+    else
+        timezoneSuffix = " " .. self:GetLocalTimezoneDisplayName()
+    end
+
+    local insertionText = fullDisplayMatch .. assumedMeridiemSuffix
+    if existingTimezoneInDisplay == "" and consumedTimezone == "" then
+        insertionText = insertionText .. timezoneSuffix
+    end
+    insertionText = insertionText .. " (" .. countdownText .. ")"
+
+    local remainder = source:sub(fullDisplayEnd + 1)
+    local normalizedTimezoneSuffix = self:Trim(timezoneSuffix)
+    if normalizedTimezoneSuffix ~= "" then
+        local leadingWhitespace = remainder:match("^(%s*)") or ""
+        local afterWhitespace = remainder:sub(#leadingWhitespace + 1)
+        local lowerAfterWhitespace = zo_strlower(afterWhitespace)
+        local lowerTimezoneSuffix = zo_strlower(normalizedTimezoneSuffix)
+        if lowerAfterWhitespace:sub(1, #lowerTimezoneSuffix) == lowerTimezoneSuffix then
+            local nextChar = afterWhitespace:sub(#normalizedTimezoneSuffix + 1, #normalizedTimezoneSuffix + 1)
+            if nextChar == "" or not nextChar:match("[%a]") then
+                remainder = leadingWhitespace .. afterWhitespace:sub(#normalizedTimezoneSuffix + 1)
+                self:DebugLog("Countdown debug: removed duplicate trailing timezone token from remainder token=" .. tostring(normalizedTimezoneSuffix))
+            end
+        end
+    end
+
+    local updatedText = source:sub(1, fullDisplayStart - 1) .. insertionText .. remainder
+    self:DebugLog("Countdown debug: updated message text=" .. tostring(updatedText))
+    -- Expose the exact insertion boundary to incoming-template matching. The
+    -- original date/time stays literal; only the formatter's additions vary.
+    return updatedText, {
+        prefix = source:sub(1, fullDisplayStart - 1),
+        timeText = fullDisplayMatch,
+        suffix = remainder,
+        allowMeridiem = countdownMeta and countdownMeta.shouldUseNearestFuture12Hour == true and not explicitMeridiemMatch,
+        allowTimezone = existingTimezoneInDisplay == "" and consumedTimezone == "",
+        soonText = self:HasEndingPhraseBeforeTime(source, timeMatch) and "ending soon" or "starting soon",
+    }
+end
+
+function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName)
+    local result = self:ResolveScheduledEventTokens(text, commandId, guildName)
+    local timeOfDay = self:GetCurrentTimeTokenValue()
+
+    local substitutions = {
+        ["timeofday"] = timeOfDay,
+        ["greeting"] = timeOfDay,
+        ["time"] = timeOfDay,
+        ["guild"] = self:Trim(guildName or ""),
+        ["zone"] = self:GetCurrentZoneName() or "",
+    }
+
+    result = result:gsub("%%([%a]+)%%", function(tokenName)
+        local normalizedToken = zo_strlower(tokenName or "")
+        local replacement = substitutions[normalizedToken]
+        if replacement ~= nil and replacement ~= "" then
+            return replacement
+        end
+
+        return "%" .. tostring(tokenName or "") .. "%"
+    end)
+
+    result = self:InsertCountdownIntoMessageText(result)
+    return result
+end
+
 function SmartChatMsg:ShowCommandTestNotification(commandName, parameterValue)
     local message = string.format("SmartChatMsg test: command %s called with parameter %s", tostring(commandName), tostring(parameterValue))
 
@@ -1074,22 +1779,6 @@ function SmartChatMsg:TriggerReminderPopulate(commandId, guildName, expectedLast
         reason = reason or "initial",
     }
 
-    if self:IsExecutionBusy() then
-        local guildIndex = metadata.guildIndex or self:GetGuildSlotByName(guildName)
-        local rawParam = metadata.paramText
-        if self:Trim(rawParam or "") == "" and type(guildIndex) == "number" then
-            rawParam = tostring(guildIndex)
-        end
-
-        self:QueueCommandExecution(commandId, self:GetSlashCommandDisplayName(commandId), rawParam, "busy repeat", metadata)
-        self:DebugLog(string.format(
-            "Reminder debug: queued because execution is busy commandId=%s guildName=%s",
-            tostring(commandId),
-            tostring(guildName)
-        ))
-        return
-    end
-
     local ok, err = self:PopulateChatBufferForCommand(commandId, guildName, nil, metadata)
     if not ok then
         self:DebugLog(string.format(
@@ -1109,7 +1798,11 @@ function SmartChatMsg:TriggerReminderPopulate(commandId, guildName, expectedLast
     ))
 end
 
-function SmartChatMsg:ScheduleCommandReminder(commandId, guildName)
+function SmartChatMsg:ScheduleCommandReminder(commandId, guildName, extraDelaySeconds)
+    if self:GetGuildRunAt(commandId, guildName) == "SCHEDULED" then
+        self:ScheduleNextScheduledDelivery(commandId, guildName, extraDelaySeconds)
+        return
+    end
     local command = self:GetCommandById(commandId)
     if not command then
         self:DebugLog("Reminder debug: schedule aborted, command not found for commandId=" .. tostring(commandId))
@@ -1151,8 +1844,8 @@ function SmartChatMsg:ScheduleCommandReminder(commandId, guildName)
         return
     end
 
-    local delayMs = reminderMinutes * 60 * 1000
-    local nextTriggerAt = GetTimeStamp() + (reminderMinutes * 60)
+    local delayMs = (reminderMinutes * 60 + (extraDelaySeconds or 0)) * 1000
+    local nextTriggerAt = GetTimeStamp() + delayMs / 1000
     self:SetReminderAutomationActive(commandId, guildName, true, nextTriggerAt)
     self:DebugLog(string.format(
         "Reminder debug: scheduling repeat-after timer timerName=%s commandId=%s commandName=%s guildName=%s repeatAfterMinutes=%s delayMs=%s lastUsedAt=%s",
@@ -1693,10 +2386,14 @@ function SmartChatMsg:RemoveQueuedEntryById(entryId)
     return false
 end
 
-function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fromName, text, isCustomerService)
+function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fromName, text, isCustomerService, fromDisplayName)
     local state = self.pendingRestoreState
     if not state then
         self:DebugLog("HandleRestoreWatcherChatMessage called without pending state")
+        return
+    end
+
+    if isCustomerService or not self:IsOwnChatSender(fromName, fromDisplayName) then
         return
     end
 
@@ -1760,7 +2457,7 @@ function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fr
             end
         end
 
-        if type(metadata.queueItemId) == "string" and metadata.queueItemId ~= "" then
+        if metadata.startupQueue == true or (type(metadata.queueItemId) == "string" and metadata.queueItemId ~= "") then
             self:HandleStartupQueuePopulateSuccess(metadata)
         end
     end
@@ -1794,6 +2491,7 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
     self.pendingRestoreState = {
         previousChannel = previousChannelInfo,
         expectedText = normalizedExpected,
+        rawExpectedText = expectedText,
         metadata = type(metadata) == "table" and metadata or nil,
         timeoutSeconds = timeoutSeconds,
         armedAt = GetFrameTimeMilliseconds and GetFrameTimeMilliseconds() or nil,
@@ -1811,24 +2509,31 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
         end
     )
 
+    local armedState=self.pendingRestoreState
     EVENT_MANAGER:RegisterForUpdate(self.restoreWatcherTimeoutName, timeoutSeconds * 1000, function()
         local pendingState = SmartChatMsg.pendingRestoreState
+        if pendingState~=armedState then return end
         local pendingTimeoutSeconds = pendingState and pendingState.timeoutSeconds or timeoutSeconds
         SmartChatMsg:DebugLog("Restore watcher timed out after " .. tostring(pendingTimeoutSeconds) .. " seconds")
-        if pendingState and pendingState.previousChannel then
+        local edit=CHAT_SYSTEM and CHAT_SYSTEM.textEntry and CHAT_SYSTEM.textEntry.EditControl
+        local untouched=edit and edit.GetText and edit:GetText()==pendingState.rawExpectedText
+        if untouched and pendingState.previousChannel then
             SmartChatMsg:DebugLog("Timeout restore attempting previous channel: " .. SmartChatMsg:FormatChatChannelInfo(pendingState.previousChannel))
             local restored = SmartChatMsg:RestoreChatChannel(pendingState.previousChannel)
             SmartChatMsg:DebugLog("Timeout restore result=" .. tostring(restored))
         end
 
-        local cleared = SmartChatMsg:ClearPendingChatBuffer()
+        local cleared = untouched and SmartChatMsg:ClearPendingChatBuffer()
         SmartChatMsg:DebugLog("Timeout clear pending chat result=" .. tostring(cleared))
 
         if pendingState and type(pendingState.metadata) == "table" and pendingState.metadata.reminderRepeat == true then
             SmartChatMsg:HandleReminderPopulateTimeout(pendingState.metadata)
         end
+        if pendingState and type(pendingState.metadata) == "table" and pendingState.metadata.scheduledDelivery then
+            SmartChatMsg:HandleScheduledPopulateTimeout(pendingState.metadata)
+        end
 
-        if pendingState and type(pendingState.metadata) == "table" and type(pendingState.metadata.queueItemId) == "string" and pendingState.metadata.queueItemId ~= "" then
+        if pendingState and type(pendingState.metadata) == "table" and (pendingState.metadata.startupQueue == true or (type(pendingState.metadata.queueItemId) == "string" and pendingState.metadata.queueItemId ~= "")) then
             SmartChatMsg:HandleStartupQueuePopulateTimeout(pendingState.metadata)
         end
 
@@ -1993,32 +2698,28 @@ function SmartChatMsg:GetAutoPopulateZoneDisplayName(zoneId)
 end
 
 function SmartChatMsg:ShouldSkipAutoPopulateForZone(commandId, guildName, zoneId)
-    local lastSentAt = self:GetGuildAutoPopulateLastSentAt(commandId, guildName, zoneId)
-    if type(lastSentAt) ~= "number" or lastSentAt <= 0 then
+    local endsAt = self:GetAutoPopulateCooldownEndsAt(commandId, guildName, zoneId)
+    if not endsAt then
         return false, nil, nil
     end
 
     local now = GetTimeStamp()
-    local elapsed = now - lastSentAt
     local cooldownMinutes = self:GetGuildAutoPopulateCooldownMinutes(commandId, guildName)
     local cooldownSeconds = (cooldownMinutes or 60) * 60
-
-    if elapsed < cooldownSeconds then
-        return true, elapsed, cooldownSeconds
-    end
-
-    return false, elapsed, cooldownSeconds
+    local elapsed = now - (endsAt - cooldownSeconds)
+    return now < endsAt, elapsed, cooldownSeconds
 end
 
 function SmartChatMsg:GetAutoPopulateCooldownEndsAt(commandId, guildName, zoneId)
     local lastSentAt = self:GetGuildAutoPopulateLastSentAt(commandId, guildName, zoneId)
-    if type(lastSentAt) ~= "number" or lastSentAt <= 0 then
-        return nil
-    end
-
     local cooldownMinutes = self:GetGuildAutoPopulateCooldownMinutes(commandId, guildName)
     local cooldownSeconds = (cooldownMinutes or 60) * 60
-    return lastSentAt + cooldownSeconds
+    local ownEndsAt = lastSentAt and (lastSentAt + cooldownSeconds) or nil
+    local observedEndsAt = self:GetObservedChatCooldownEndsAt(commandId, guildName, zoneId, cooldownSeconds)
+    if ownEndsAt and observedEndsAt then
+        return math.max(ownEndsAt, observedEndsAt)
+    end
+    return ownEndsAt or observedEndsAt
 end
 
 function SmartChatMsg:FormatUnixTimestampForDisplay(timestamp)
@@ -2058,6 +2759,11 @@ end
 
 
 function SmartChatMsg:HandleZoneAutoPopulate()
+    local scheduledActive = self:GetActiveAutoPopulate()
+    if scheduledActive and self:GetGuildRunAt(scheduledActive.commandId, scheduledActive.guildName) == "SCHEDULED" then
+        self:TickSchedules()
+        return
+    end
     local currentZoneId = self:GetPlayerZoneId()
     local trackedZoneId = self:GetEffectiveAutoPopulateZoneId(currentZoneId)
     local previousZoneId = self.lastKnownZoneId
@@ -2125,27 +2831,6 @@ function SmartChatMsg:HandleZoneAutoPopulate()
     local guildIndex = self:GetGuildSlotByName(active.guildName)
     local paramText = guildIndex and tostring(guildIndex) or nil
 
-    if self:IsExecutionBusy() then
-        self:QueueCommandExecution(active.commandId, self:GetSlashCommandDisplayName(active.commandId), paramText, "busy auto populate", {
-            autoPopulate = true,
-            commandId = active.commandId,
-            guildName = active.guildName,
-            guildIndex = guildIndex,
-            paramText = paramText,
-            zoneId = trackedZoneId,
-        })
-        self:DebugLog(string.format(
-            "Auto populate debug: queued because execution is busy commandId=%s guildName=%s zoneId=%s",
-            tostring(active.commandId),
-            tostring(active.guildName),
-            tostring(trackedZoneId)
-        ))
-        if self.statusPanelVisible then
-            self:RefreshStatusPanel()
-        end
-        return
-    end
-
     local ok, err = self:PopulateChatBufferForCommand(
         active.commandId,
         active.guildName,
@@ -2187,6 +2872,20 @@ function SmartChatMsg:HandleZoneAutoPopulate()
 end
 
 function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channelOverride, restoreMetadata)
+    local startup=self.processingStartupEntry
+    if startup and startup.commandId==commandId and self:StringsEqualIgnoreCase(startup.guildName,guildName) then
+        local metadata={}; for k,v in pairs(restoreMetadata or {}) do metadata[k]=v end
+        metadata.startupQueue=true; restoreMetadata=metadata
+    end
+    local isScheduled = self:GetGuildRunAt(commandId, guildName) == "SCHEDULED"
+    if isScheduled and self:GetGuildScheduleState(commandId, guildName) ~= "RUNNING" then
+        return false, "Schedule is outside its active window or paused."
+    end
+    if not (restoreMetadata and restoreMetadata.queuedDelivery) and self:IsChatPopulationBusy() then
+        return self:QueueChatPopulation(commandId, guildName, channelOverride, restoreMetadata,
+            restoreMetadata and restoreMetadata.startupQueue and 2
+                or restoreMetadata and (restoreMetadata.reminderRepeat or restoreMetadata.autoPopulate or restoreMetadata.scheduledDelivery) and 3 or 1)
+    end
     self:DebugLog(string.format(
         "PopulateChatBufferForCommand start commandId=%s guildName=%s channelOverride=%s",
         tostring(commandId),
@@ -2194,7 +2893,8 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
         tostring(channelOverride)
     ))
 
-    local messages = self:GetMessageEntriesForCommandAndGuild(commandId, guildName)
+    local messages = isScheduled and self:GetScheduledMessageEntries(commandId, guildName)
+        or self:GetMessageEntriesForCommandAndGuild(commandId, guildName)
     self:DebugLog("PopulateChatBufferForCommand message count=" .. tostring(#messages))
     if #messages == 0 then
         self:DebugLog("PopulateChatBufferForCommand aborted: no saved messages")
@@ -2240,9 +2940,14 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
     watcherMetadata.commandId = watcherMetadata.commandId or commandId
     watcherMetadata.guildName = watcherMetadata.guildName or guildName
     watcherMetadata.selectedEntryId = selectedEntry.id
+    if isScheduled then
+        watcherMetadata.scheduledDelivery = true
+        watcherMetadata.scheduledPhase = self:GetSchedulePhase(self:GetGuildSchedule(commandId, guildName), GetTimeStamp())
+    end
 
     local currentQueueItem = self.startupQueueCurrent
-    if type(currentQueueItem) == "table" and type(currentQueueItem.id) == "string" and currentQueueItem.id ~= "" then
+    if type(currentQueueItem) == "table" and type(currentQueueItem.id) == "string" and currentQueueItem.id ~= ""
+        and currentQueueItem.commandId==commandId and self:StringsEqualIgnoreCase(currentQueueItem.guildName or "",guildName) then
         watcherMetadata.queueItemId = currentQueueItem.id
     end
 
@@ -2256,6 +2961,10 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
     if channel == "Zone" then
         self:DebugLog("PopulateChatBufferForCommand starting chat input for Zone")
         StartChatInput(resolvedMessageText, CHAT_CHANNEL_ZONE)
+        if isScheduled then
+            local runtime = self.scheduleRuntime[self:GetReminderStateKey(commandId, guildName)]
+            if runtime then runtime.zonePending = false end
+        end
         self:PlayPopulateSound(commandId, guildName)
         return true
     end
@@ -2402,19 +3111,19 @@ function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, raw
 
     local commandDisplayName = self:GetSlashCommandDisplayName(commandId, slashCommandName)
 
-    if self:IsExecutionBusy() then
-        local queuedRawParam = self:BuildQueuedRawParam(guildSlot, channelOverride, stopAutomation)
-        self:QueueCommandExecution(commandId, slashCommandName, queuedRawParam, "busy command", {
-            guildName = guildName,
-            guildIndex = guildSlot,
-            paramText = reminderParamText,
-        })
-        self:ShowQueuedExecutionNotification(commandDisplayName, guildName)
-        PlaySound(SOUNDS.DEFAULT_CLICK)
+    if self:GetGuildRunAt(commandId, guildName) == "SCHEDULED" then
+        if stopAutomation then
+            self:PauseGuildSchedule(commandId, guildName)
+            self:ShowStatusMessage(commandDisplayName .. " schedule paused for " .. guildName .. ". Resume it in scheduling settings.")
+        else
+            local ok, reason = self:RequestScheduledDelivery(commandId, guildName, true)
+            if ok then self:ProcessChatPopulationQueue() else self:ShowStatusMessage(reason) end
+        end
         return
     end
 
     if stopAutomation then
+        self:CancelQueuedChatPopulation(commandId, guildName)
         local stoppedParts = {}
 
         if self:ToggleOffActiveAutoPopulateIfMatching(commandId, guildName) then
@@ -2647,7 +3356,13 @@ function SmartChatMsg:FinalizeStartupQueueCurrent(success, reason)
     ))
 
     if success == true then
-        self:RemoveQueuedEntryById(current.id)
+        if current.id then
+            self:RemoveQueuedEntryById(current.id)
+        else
+            for index, entry in ipairs(self.startupQueue or {}) do
+                if entry == current then table.remove(self.startupQueue, index); break end
+            end
+        end
     end
 
     if #(self.startupQueue or {}) > 0 and not self:IsExecutionBusy() then
@@ -2656,12 +3371,14 @@ function SmartChatMsg:FinalizeStartupQueueCurrent(success, reason)
 end
 
 function SmartChatMsg:HandleStartupQueuePopulateSuccess(metadata)
-    if type(metadata) ~= "table" or type(metadata.queueItemId) ~= "string" or metadata.queueItemId == "" then
+    if type(metadata) ~= "table" then
         return
     end
 
     local current = self.startupQueueCurrent
-    if not current or current.id ~= metadata.queueItemId then
+    if not current or (metadata.queueItemId and current.id~=metadata.queueItemId)
+        or (not metadata.queueItemId and (not metadata.startupQueue or current.commandId~=metadata.commandId
+            or not self:StringsEqualIgnoreCase(current.guildName or "",metadata.guildName or ""))) then
         return
     end
 
@@ -2669,12 +3386,14 @@ function SmartChatMsg:HandleStartupQueuePopulateSuccess(metadata)
 end
 
 function SmartChatMsg:HandleStartupQueuePopulateTimeout(metadata)
-    if type(metadata) ~= "table" or type(metadata.queueItemId) ~= "string" or metadata.queueItemId == "" then
+    if type(metadata) ~= "table" then
         return
     end
 
     local current = self.startupQueueCurrent
-    if not current or current.id ~= metadata.queueItemId then
+    if not current or (metadata.queueItemId and current.id~=metadata.queueItemId)
+        or (not metadata.queueItemId and (not metadata.startupQueue or current.commandId~=metadata.commandId
+            or not self:StringsEqualIgnoreCase(current.guildName or "",metadata.guildName or ""))) then
         return
     end
 
@@ -2716,7 +3435,9 @@ function SmartChatMsg:ProcessStartupQueue()
 
     self:DebugLog("Execution queue: processing current=" .. self:FormatQueueEntry(entry) .. " remaining=" .. tostring(#queue))
 
+    self.processingStartupEntry=entry
     self:HandleDynamicSlashCommand(entry.commandId, slashCommandName, rawParam)
+    self.processingStartupEntry=nil
 
     local currentStillQueued = self.startupQueueCurrent and self.startupQueueCurrent.id == entry.id
     if not currentStillQueued then
@@ -2724,6 +3445,8 @@ function SmartChatMsg:ProcessStartupQueue()
         return
     end
 
+    local queued=self.chatPopulationQueue and self.chatPopulationQueue[self:GetReminderStateKey(entry.commandId,entry.guildName)]
+    if queued and queued.metadata.startupQueue then return end
     if self:IsExecutionBusy() then
         self:DebugLog(string.format(
             "Execution queue: entry id=%s is now waiting for send or timeout",
@@ -2784,6 +3507,8 @@ local function OnAddonLoaded(event, addonName)
     SmartChatMsg:CreateSettingsPanel()
     SmartChatMsg:CreateStatusPanel()
     SmartChatMsg:RegisterDynamicCommands()
+    SmartChatMsg:RegisterIncomingChatWatcher()
+    SmartChatMsg:InitializeScheduler()
 
     if SmartChatMsg:GetStatusPanelVisiblePreference() then
         SmartChatMsg:SetStatusPanelVisible(true)
@@ -2800,8 +3525,11 @@ local function OnAddonLoaded(event, addonName)
         if normalized == "status" then
             SmartChatMsg:ToggleStatusPanel()
             return
+        elseif normalized == "schedule" then
+            SmartChatMsg:OpenSettings()
+            return
         elseif normalized ~= "" then
-            d("[SmartChatMsg] Usage: /scm or /scm status")
+            d("[SmartChatMsg] Usage: /scm, /scm schedule, or /scm status")
             return
         end
 
@@ -2814,6 +3542,7 @@ local function OnAddonLoaded(event, addonName)
 
     EVENT_MANAGER:RegisterForEvent(SmartChatMsg.name .. "_PlayerActivated", EVENT_PLAYER_ACTIVATED, function()
         SmartChatMsg:HandleZoneAutoPopulate()
+        SmartChatMsg:TickSchedules()
         SmartChatMsg:InitializeStartupQueueOnce()
     end)
 end
@@ -3121,7 +3850,7 @@ end
 local function scm_is_likely_date_fragment(text, s, e)
     local before = s > 1 and text:sub(s - 1, s - 1) or ""
     local after = e < #text and text:sub(e + 1, e + 1) or ""
-    return before == "/" or after == "/" or before == "-" or after == "-" or before == "." or after == "."
+    return before == "/" or after == "/" or before == "-" or after == "-" or (before == "." and text:sub(s - 2, s - 2):match("%d") ~= nil) or (after == "." and text:sub(e + 2, e + 2):match("%d") ~= nil)
 end
 local function scm_is_fuzzy_separator_char(ch)
     return ch and ch ~= "" and ch:match("[%s%p]") ~= nil
@@ -3999,16 +4728,19 @@ function SmartChatMsg:InsertCountdownIntoMessageText(text)
     if self.debugEnabled then
         self:EmitCountdownDebugResult("Countdown Debug", source, best, all)
     end
-    return best and best.outputText or source
+    -- Use main's improved parser, but preserve the template's literal wording
+    -- and expose countdown insertion metadata for incoming peer matching.
+    return self:InsertCountdownPreservingTemplate(source)
 end
 
 function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName)
-    local result = tostring(text or "")
+    local result = self:ResolveScheduledEventTokens(text,commandId,guildName)
     local timeOfDay = self:GetCurrentTimeTokenValue()
     local substitutions = {
         ["timeofday"] = timeOfDay,
         ["greeting"] = timeOfDay,
         ["morning"] = timeOfDay,
+        ["time"] = timeOfDay,
         ["guild"] = self:Trim(guildName or ""),
         ["zone"] = self:GetCurrentZoneName() or "",
     }
@@ -4222,4 +4954,3 @@ function SmartChatMsg:HandleScmDebugCommand(paramText)
     end
     d("[SmartChatMsg] Usage: /scmdebug, /scmdebug on, /scmdebug off, /scmdebug status, /scmdebug queue, /scmdebug countdown <text>")
 end
-    

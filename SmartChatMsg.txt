@@ -1,12 +1,18 @@
 ## Title: SmartChatMsg
 ## Author: evainefaye
-## Version: 1.9.1
+## Version: 1.10.0
 ## APIVersion: 101049
 ## SavedVariables: SmartChatMsgSavedVars
 ## DependsOn: LibAddonMenu-2.0
 ## OptionalDependsOn: LibDebugLogger
 
-SmartChatMsg.lua
-SCM_StatusPanel.lua
+SCM_MessageSharing.lua
 SCM_SavedVars.lua
+SCM_Calendar.lua
+SCM_Schedules.lua
+SCM_Scheduler.lua
+SCM_ScheduleSettings.lua
+SCM_StatusPanel.lua
 SCM_Settings.lua
+SCM_IncomingChat.lua
+SmartChatMsg.lua
