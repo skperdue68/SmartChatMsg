@@ -27,7 +27,7 @@ function d() end
 SOUNDS = { NONE="none", DEFAULT_CLICK="click", NEGATIVE_CLICK="negative", DUEL_START="duel" }
 function PlaySound() end
 function ZO_Alert() end
-function StartChatInput(text,channel) CHAT_SYSTEM.textEntry.EditControl.text=text; CHAT_SYSTEM.channel=channel end
+function StartChatInput(text,channel) CHAT_SYSTEM.textEntry.editControl.text=text; CHAT_SYSTEM.channel=channel end
 EVENT_ADD_ON_LOADED, EVENT_CHAT_MESSAGE_CHANNEL = 1, 2
 CHAT_CHANNEL_ZONE, CHAT_CHANNEL_SAY, CHAT_CHANNEL_YELL = 3, 0, 1
 CHAT_CHANNEL_EMOTE, CHAT_CHANNEL_PARTY = 4, 5
@@ -67,7 +67,9 @@ local function reset()
     function edit:GetText() return self.text end
     function edit:SetText(value) self.text = value end
     function edit:LoseFocus() end
-    CHAT_SYSTEM = { textEntry = { EditControl = edit }, channel = CHAT_CHANNEL_SAY }
+    CHAT_SYSTEM = { textEntry = { editControl = edit }, channel = CHAT_CHANNEL_SAY }
+    function CHAT_SYSTEM.textEntry:GetEditControl() return self.editControl end
+    function CHAT_SYSTEM:GetEditControl() return self.textEntry:GetEditControl() end
     function CHAT_SYSTEM:SetChannel(channel) self.channel = channel end
     function CHAT_SYSTEM:GetCurrentChannelData() return {id=self.channel} end
 end

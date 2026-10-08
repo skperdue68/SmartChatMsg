@@ -77,31 +77,31 @@ local function savedRuntime()
     now=1792080000
 end
 local function sent()
-    local text=CHAT_SYSTEM.textEntry.EditControl.text
-    CHAT_SYSTEM.textEntry.EditControl.text=""
+    local text=CHAT_SYSTEM.textEntry.editControl.text
+    CHAT_SYSTEM.textEntry.editControl.text=""
     scm:HandleRestoreWatcherChatMessage(2,3,"My Character",text,false,"@Me")
 end
 test("scheduler activates inside the window and stops at its end", function()
     savedRuntime(); scm:TickSchedules()
-    assert(CHAT_SYSTEM.textEntry.EditControl.text:find("Friday"))
+    assert(CHAT_SYSTEM.textEntry.editControl.text:find("Friday"))
     assert(scm.pendingRestoreState.metadata.scheduledDelivery)
     now=1792198800; scm:TickSchedules()
-    eq(CHAT_SYSTEM.textEntry.EditControl.text,""); eq(scm.pendingRestoreState,nil)
+    eq(CHAT_SYSTEM.textEntry.editControl.text,""); eq(scm.pendingRestoreState,nil)
     eq(scm:IsReminderAutomationActive("ad","Amber Traders"),false)
 end)
 test("repeat waits for a confirmed send and honors the phase interval", function()
     savedRuntime(); scm:TickSchedules(); sent()
     eq(scm:GetGuildSchedule("ad","Amber Traders").nextDueAt,1792080300)
-    now=1792080299; scm:TickSchedules(); eq(CHAT_SYSTEM.textEntry.EditControl.text,"")
+    now=1792080299; scm:TickSchedules(); eq(CHAT_SYSTEM.textEntry.editControl.text,"")
     now=1792080300; scm:TickSchedules(); assert(scm.pendingRestoreState)
-    sent(); now=1792123200; scm:TickSchedules(); assert(CHAT_SYSTEM.textEntry.EditControl.text:find("tonight"))
+    sent(); now=1792123200; scm:TickSchedules(); assert(CHAT_SYSTEM.textEntry.editControl.text:find("tonight"))
     sent(); eq(scm:GetGuildSchedule("ad","Amber Traders").nextDueAt,1792124100)
 end)
 test("busy player input is preserved and delayed delivery uses the current phase", function()
-    savedRuntime(); CHAT_SYSTEM.textEntry.EditControl.text="My personal message"
-    scm:TickSchedules(); eq(CHAT_SYSTEM.textEntry.EditControl.text,"My personal message")
-    now=1792123200; CHAT_SYSTEM.textEntry.EditControl.text=""; scm:TickSchedules()
-    assert(CHAT_SYSTEM.textEntry.EditControl.text:find("tonight"))
+    savedRuntime(); CHAT_SYSTEM.textEntry.editControl.text="My personal message"
+    scm:TickSchedules(); eq(CHAT_SYSTEM.textEntry.editControl.text,"My personal message")
+    now=1792123200; CHAT_SYSTEM.textEntry.editControl.text=""; scm:TickSchedules()
+    assert(CHAT_SYSTEM.textEntry.editControl.text:find("tonight"))
 end)
 test("manual off persists across scheduler restart and peers do not unpause", function()
     savedRuntime(); scm:TickSchedules()
@@ -125,15 +125,15 @@ test("peer observation defers active repeat and does not deliver beyond end", fu
 end)
 test("late login produces only the current phase and no expired backlog", function()
     savedRuntime(); now=1792195300; scm:InitializeScheduler()
-    assert(CHAT_SYSTEM.textEntry.EditControl.text:find("underway"))
+    assert(CHAT_SYSTEM.textEntry.editControl.text:find("underway"))
     now=1792199000; scm:InitializeScheduler()
     eq(scm.pendingRestoreState,nil)
 end)
 test("expired schedules preserve even whitespace-only player edits", function()
     savedRuntime(); scm:TickSchedules()
-    CHAT_SYSTEM.textEntry.EditControl.text="Player edit"
+    CHAT_SYSTEM.textEntry.editControl.text="Player edit"
     now=1792198800; scm:TickSchedules()
-    eq(CHAT_SYSTEM.textEntry.EditControl.text,"Player edit")
+    eq(CHAT_SYSTEM.textEntry.editControl.text,"Player edit")
     eq(scm.pendingRestoreState,nil)
 end)
 test("manual scheduled requests respect window and pause", function()
@@ -187,14 +187,14 @@ end)
 test("deleting every eligible message withdraws untouched pending scheduled text", function()
     savedRuntime(); scm:TickSchedules(); assert(scm.pendingRestoreState)
     table.remove(scm.savedVars.messages,1); scm:TickSchedules()
-    eq(scm.pendingRestoreState,nil); eq(CHAT_SYSTEM.textEntry.EditControl.text,"")
+    eq(scm.pendingRestoreState,nil); eq(CHAT_SYSTEM.textEntry.editControl.text,"")
 end)
 test("manual requests outrank scheduled requests without replacing typed chat", function()
-    savedRuntime(); CHAT_SYSTEM.textEntry.EditControl.text="Player typing"; scm:TickSchedules()
+    savedRuntime(); CHAT_SYSTEM.textEntry.editControl.text="Player typing"; scm:TickSchedules()
     f.entry("manual","other","Blue Traders","Manual message.")
     scm:PopulateChatBufferForCommand("other","Blue Traders")
-    eq(CHAT_SYSTEM.textEntry.EditControl.text,"Player typing")
-    CHAT_SYSTEM.textEntry.EditControl.text=""; scm:ProcessChatPopulationQueue()
+    eq(CHAT_SYSTEM.textEntry.editControl.text,"Player typing")
+    CHAT_SYSTEM.textEntry.editControl.text=""; scm:ProcessChatPopulationQueue()
     eq(scm.pendingRestoreState.metadata.commandId,"other")
 end)
 test("timeout retries wait the interval and expired callbacks do not restart schedules", function()
@@ -218,13 +218,14 @@ test("settings draft validates transactionally and persists message phase edits"
         if control.getFunc then control.getFunc() end
         if control.type=="description" and type(control.text)=="function" then control.text() end
     end
-    byName["Save schedule"].func(); eq(scm:GetGuildSchedule("ad","Amber Traders"),nil)
+    byName["Save and activate"].func(); eq(scm:GetGuildSchedule("ad","Amber Traders"),nil)
     local d=scm:GetScheduleEditorDraft()
     for k,v in pairs(draft()) do d[k]=v end
-    byName["Message number to assign"].setFunc("1")
-    byName["Selected message: ANY"].setFunc(false)
-    byName["Selected message: DAY"].setFunc(true)
-    byName["Save schedule"].func()
+    local before=scm:GetScheduleMessageChecklist("BEFORE")
+    local day=scm:GetScheduleMessageChecklist("DAY")
+    before[1].setFunc(false)
+    day[1].setFunc(true)
+    byName["Save and activate"].func()
     assert(scm:GetGuildSchedule("ad","Amber Traders").messagePhases.a.DAY)
     byName["Pause saved schedule"].func(); eq(scm:GetGuildSchedule("ad","Amber Traders").paused,true)
     byName["Resume saved schedule"].func(); eq(scm:GetGuildSchedule("ad","Amber Traders").paused,false)
@@ -232,19 +233,19 @@ test("settings draft validates transactionally and persists message phase edits"
 end)
 test("queued Zone requests recheck current zone eligibility before delivery", function()
     local d=draft(); d.delivery="ZONE"; assert(scm:SaveGuildSchedule("ad","Amber Traders",d))
-    now=1792080000; CHAT_SYSTEM.textEntry.EditControl.text="Typing"; scm:TickSchedules()
+    now=1792080000; CHAT_SYSTEM.textEntry.editControl.text="Typing"; scm:TickSchedules()
     local original=scm.GetEffectiveAutoPopulateZoneId
     scm.GetEffectiveAutoPopulateZoneId=function() return nil end
-    CHAT_SYSTEM.textEntry.EditControl.text=""; scm:ProcessChatPopulationQueue()
+    CHAT_SYSTEM.textEntry.editControl.text=""; scm:ProcessChatPopulationQueue()
     eq(scm.pendingRestoreState,nil)
     scm.GetEffectiveAutoPopulateZoneId=original
 end)
 test("restore timeout preserves edited text and an old callback cannot clear a new request", function()
     savedRuntime(); scm:TickSchedules()
     local old=EVENT_MANAGER.updates[scm.restoreWatcherTimeoutName].callback
-    CHAT_SYSTEM.textEntry.EditControl.text="My edit"; now=now+60; old()
-    eq(CHAT_SYSTEM.textEntry.EditControl.text,"My edit"); eq(scm.pendingRestoreState,nil)
-    CHAT_SYSTEM.textEntry.EditControl.text=""; now=now+300; scm:TickSchedules()
+    CHAT_SYSTEM.textEntry.editControl.text="My edit"; now=now+60; old()
+    eq(CHAT_SYSTEM.textEntry.editControl.text,"My edit"); eq(scm.pendingRestoreState,nil)
+    CHAT_SYSTEM.textEntry.editControl.text=""; now=now+300; scm:TickSchedules()
     local pending=scm.pendingRestoreState; assert(pending); old(); eq(scm.pendingRestoreState,pending)
 end)
 test("busy startup uses lower priority than manual and retains confirmation ownership", function()
@@ -253,12 +254,12 @@ test("busy startup uses lower priority than manual and retains confirmation owne
     scm.startupQueueInitialized=true
     scm.startupQueue={}
     assert(scm:QueueCommandExecution("ad", nil, "1", "startup", {guildName="Amber Traders",guildIndex=1,paramText="1"}))
-    CHAT_SYSTEM.textEntry.EditControl.text="Typing"; scm:ProcessStartupQueue()
+    CHAT_SYSTEM.textEntry.editControl.text="Typing"; scm:ProcessStartupQueue()
     local queued=scm.chatPopulationQueue[scm:GetReminderStateKey("ad","Amber Traders")]
     assert(queued); eq(queued.priority,2); assert(queued.metadata.startupQueue)
     assert(scm.startupQueueCurrent)
     scm:PopulateChatBufferForCommand("other","Blue Traders")
-    CHAT_SYSTEM.textEntry.EditControl.text=""; scm:ProcessChatPopulationQueue()
+    CHAT_SYSTEM.textEntry.editControl.text=""; scm:ProcessChatPopulationQueue()
     eq(scm.pendingRestoreState.metadata.commandId,"other")
     eq(scm.pendingRestoreState.metadata.queueItemId,nil)
     local startupId=scm.startupQueueCurrent.id
@@ -285,10 +286,10 @@ end)
 test("discarded stale startup requests release their current ownership", function()
     scm:SetGuildRunAt("ad","Amber Traders","STARTUP")
     scm.startupQueueInitialized=true; scm.startupQueue={{commandId="ad",guildName="Amber Traders",paramText="1"}}
-    CHAT_SYSTEM.textEntry.EditControl.text="Typing"; scm:ProcessStartupQueue()
+    CHAT_SYSTEM.textEntry.editControl.text="Typing"; scm:ProcessStartupQueue()
     assert(scm.startupQueueCurrent)
     scm:SetGuildRunAt("ad","Amber Traders","ON_DEMAND")
-    CHAT_SYSTEM.textEntry.EditControl.text=""; scm:ProcessChatPopulationQueue()
+    CHAT_SYSTEM.textEntry.editControl.text=""; scm:ProcessChatPopulationQueue()
     eq(scm.startupQueueCurrent,nil); eq(scm.pendingRestoreState,nil)
 end)
 test("peer usage while paused advances the due time without resuming", function()
@@ -334,14 +335,68 @@ test("manual delivery outranks an ordinary repeat queued earlier", function()
     scm:SetGuildReminderMinutes("ad","Amber Traders",5)
     scm:MarkCommandUsed("ad","Amber Traders","1",1)
     scm:SetReminderAutomationActive("ad","Amber Traders",true)
-    CHAT_SYSTEM.textEntry.EditControl.text="Typing"
+    CHAT_SYSTEM.textEntry.editControl.text="Typing"
     scm:TriggerReminderPopulate("ad","Amber Traders",scm:GetGuildLastUsedAt("ad","Amber Traders"))
     eq(scm.chatPopulationQueue[scm:GetReminderStateKey("ad","Amber Traders")].priority,3)
     f.entry("m","other","Blue Traders","Manual message.")
     scm:PopulateChatBufferForCommand("other","Blue Traders")
-    CHAT_SYSTEM.textEntry.EditControl.text=""; scm:ProcessChatPopulationQueue()
+    CHAT_SYSTEM.textEntry.editControl.text=""; scm:ProcessChatPopulationQueue()
     eq(scm.pendingRestoreState.metadata.commandId,"other")
 end)
+test("optional Starting soon phase has precise boundaries, pool and interval",function()
+    local d=draft();d.startingSoonEnabled=true;d.startingSoonMinutes=120
+    d.messagePhases.b={SOON=true};d.phaseIntervals.SOON=2
+    assert(scm:SaveGuildSchedule("ad","Amber Traders",d))
+    local s=scm:GetGuildSchedule("ad","Amber Traders")
+    eq(scm:GetSchedulePhase(s,s.eventAtUtc-7201),"DAY")
+    eq(scm:GetSchedulePhase(s,s.eventAtUtc-7200),"SOON")
+    eq(scm:GetSchedulePhase(s,s.eventAtUtc-1),"SOON")
+    eq(scm:GetSchedulePhase(s,s.eventAtUtc),"LIVE")
+    now=s.eventAtUtc-3600;eq(scm:GetScheduleIntervalMinutes("ad","Amber Traders"),2)
+    eq(scm:GetScheduledMessageEntries("ad","Amber Traders")[1].id,"b")
+    s.startingSoonEnabled=false;eq(scm:GetSchedulePhase(s,now),"DAY")
+end)
+
+test("Starting soon settings and assignments survive full export import",function()
+    local d=draft();d.startingSoonEnabled=true;d.startingSoonMinutes=90
+    d.messagePhases.b={SOON=true};d.phaseIntervals.SOON=3;d.phaseOnce={SOON=true}
+    assert(scm:SaveGuildSchedule("ad","Amber Traders",d))
+    local exported=scm:BuildExportString();local ok,reason=scm:ImportSettingsFromString(exported);assert(ok,reason)
+    local s=scm:GetGuildSchedule("ad","Amber Traders")
+    eq(s.startingSoonEnabled,true);eq(s.startingSoonMinutes,90)
+    eq(s.phaseIntervals.SOON,3);eq(s.phaseOnce.SOON,true);eq(s.messagePhases.b.SOON,true)
+    eq(s.messagePhases.c.LIVE,true)
+end)
+
+test("Starting soon validates lead time and follows recurring events across midnight",function()
+    local d=draft();d.startingSoonEnabled=true;d.startingSoonMinutes=0
+    local ok,reason=scm:SaveGuildSchedule("ad","Amber Traders",d);eq(ok,false);assert(reason)
+    d.startingSoonMinutes=120;d.eventTime="01:00 AM";d.endTime="02:00 AM";d.recurrence="WEEKLY"
+    assert(scm:SaveGuildSchedule("ad","Amber Traders",d))
+    local s=scm:GetGuildSchedule("ad","Amber Traders")
+    eq(scm:GetSchedulePhase(s,s.eventAtUtc-7200),"SOON")
+    eq(scm:GetSchedulePhase(s,s.eventAtUtc+7*86400-7200),"SOON")
+end)
+
+test("scheduler switches to Starting soon, repeats at its interval and protects edits",function()
+    f.entry("soon","ad","Amber Traders","Amber Traders trial starts very soon!")
+    local d=draft();d.startingSoonEnabled=true;d.startingSoonMinutes=120
+    d.messagePhases.soon={SOON=true};d.phaseIntervals.SOON=2
+    assert(scm:SaveGuildSchedule("ad","Amber Traders",d))
+    local s=scm:GetGuildSchedule("ad","Amber Traders")
+    now=s.eventAtUtc-7201;scm:TickSchedules();eq(scm.pendingRestoreState.metadata.scheduledPhase,"DAY")
+    now=now+1;scm:TickSchedules();eq(scm.pendingRestoreState.metadata.scheduledPhase,"SOON")
+    assert(CHAT_SYSTEM.textEntry.editControl.text:find("very soon",1,true))
+    assert(scm:GetScheduleStatusText("ad","Amber Traders"):find("Starting soon",1,true))
+    sent();eq(s.nextDueAt,now+120)
+    now=now+119;scm:TickSchedules();eq(scm.pendingRestoreState,nil)
+    now=now+1;scm:TickSchedules();eq(scm.pendingRestoreState.metadata.scheduledPhase,"SOON")
+    CHAT_SYSTEM.textEntry.editControl.text="My edited chat"
+    now=s.eventAtUtc;scm:TickSchedules();eq(CHAT_SYSTEM.textEntry.editControl.text,"My edited chat")
+    CHAT_SYSTEM.textEntry.editControl.text="";scm:TickSchedules()
+    eq(scm.pendingRestoreState.metadata.scheduledPhase,"LIVE")
+end)
+
 test("schedule editor shows command name and explains an unsaved schedule", function()
     scm.savedVars.selectedMessagesCommand="ad"
     local original=scm.GetSelectedGuildNameForMessages
@@ -351,7 +406,7 @@ test("schedule editor shows command name and explains an unsaved schedule", func
     scm.GetSelectedGuildNameForMessages=original
     assert(text:find(scm:GetCommandNameById("ad").." / Amber Traders",1,true))
     assert(text:find("No schedule saved yet",1,true))
-    assert(text:find("Save schedule",1,true))
+    assert(text:find("Save and activate",1,true))
     assert(not text:find("UNCONFIGURED",1,true))
 end)
 local failures=0

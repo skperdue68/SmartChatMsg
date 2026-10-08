@@ -1166,7 +1166,7 @@ local function BuildMessagesBehaviorSettings(parent)
 
             local entry = runAtComboBox:CreateItemEntry(option.label, function()
                 SmartChatMsg.settings.pendingGuildRunAt = option.value
-                if option.value=="SCHEDULED" then SmartChatMsg:ShowStatusMessage("Configure and Save this command/guild in Event Scheduling (Eastern Time).") end
+                if option.value=="SCHEDULED" then SmartChatMsg:ShowStatusMessage("Open Scheduling below to configure and activate this command and guild.") end
 
                 local ok, err = SmartChatMsg.settings:SaveBehaviorSettings()
                 if not ok and err then
@@ -1696,7 +1696,8 @@ local function BuildMessagesEditor(parent)
         addButton:SetAnchor(TOPLEFT, addBackdrop, TOPRIGHT, 12, 0)
         resetButton:SetAnchor(LEFT, addButton, RIGHT, 8, 0)
 
-        local totalHeight = 24
+        -- Include the count label's 45px top inset in the occupied height.
+        local totalHeight = 45 + 24
         if rowsHeight > 0 then
             totalHeight = totalHeight + 8 + rowsHeight + 14
         else
@@ -2069,6 +2070,7 @@ function SmartChatMsg:CreateSettingsPanel()
                 {
                     type = "custom",
                     reference = "SCM_MessagesBehaviorSettingsHolder",
+                    minHeight = 0, maxHeight = 335,
                     createFunc = function(control)
                         control:SetHeight(335)
                         messagesBehaviorSettingsHolder = BuildMessagesBehaviorSettings(control)
@@ -2085,6 +2087,7 @@ function SmartChatMsg:CreateSettingsPanel()
                 {
                     type = "custom",
                     reference = "SCM_MessagesEditorHolder",
+                    minHeight = 0, maxHeight = 20000,
                     createFunc = function(control)
                         control:SetHeight(0)
                         messagesEditorHolder = BuildMessagesEditor(control)
@@ -2097,7 +2100,9 @@ function SmartChatMsg:CreateSettingsPanel()
                             local hasChannel = SmartChatMsg:GetSelectedMessagesChannel() ~= "Select a Chat Channel"
                             local shouldShow = SmartChatMsg:IsMessagesSelectionComplete() and hasChannel
 
-                            control:SetHeight(shouldShow and messagesEditorHolder:GetHeight() or 0)
+                            -- The editor is anchored 30px below this holder.
+                            -- Reserve that inset and a gap for the following submenu.
+                            control:SetHeight(shouldShow and (30 + messagesEditorHolder:GetHeight() + 12) or 0)
                         else
                             control:SetHeight(0)
                         end
@@ -2129,7 +2134,21 @@ function SmartChatMsg:CreateSettingsPanel()
         },
     }
 
-    table.insert(optionsTable, #optionsTable, {type="submenu",name="Event Scheduling (Eastern Time)",controls=self:BuildScheduleOptionControls()})
+    for _,section in ipairs(optionsTable) do
+        if section.name=="Create / Edit / Delete Messages" then
+            table.insert(section.controls, {
+                type="submenu", name="Scheduling (Eastern Time)",
+                tooltip="Select Scheduled in Run At above to configure automatic reminders.",
+                disabled=function()
+                    local id=SmartChatMsg.savedVars.selectedMessagesCommand
+                    local guild=SmartChatMsg:GetSelectedGuildNameForMessages()
+                    return not SmartChatMsg:IsMessagesSelectionComplete() or SmartChatMsg:GetGuildRunAt(id,guild)~="SCHEDULED"
+                end,
+                controls=self:BuildScheduleOptionControls(),
+            })
+            break
+        end
+    end
     LAM2:RegisterOptionControls("SmartChatMsgOptionsPanel", optionsTable)
 end
 

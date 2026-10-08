@@ -1,79 +1,80 @@
-# Trying event scheduling
+# Try simple scheduling in ESO
 
-Install the complete current addon, including the updated manifest and
-all `SCM_*.lua` files. Keep your existing LibAddonMenu2 dependency. Export current
-settings before trying a new window so you can restore your configuration.
+Install the complete addon and LibAddonMenu-2.0 release 34 or newer plus
+LibAddonMenuDatePicker. Reload the UI. Export existing settings first.
 
-## Configure a short window
+1. In Messages Settings select a command, guild, and output channel. Add at least
+   three message variants. Set Run At to Scheduled and open Scheduling (Eastern Time) inside Create / Edit / Delete Messages.
+2. Choose Run during a window. Use the calendar for today and set start a few
+   minutes ahead and stop ten minutes later. Set the message interval to one
+   minute. Select several messages, review the preview, and click Save and activate.
+3. Confirm the status shows readable ET dates. At start chat should populate;
+   press Enter to send. Type your own text before the next interval: it must
+   remain untouched. At stop untouched generated chat withdraws, edits survive.
+4. Reopen the schedule: calendar and time values must match what you saved.
+   Change your computer timezone and verify the selected calendar day stays the
+   same and ET occurrence times do not shift.
+5. Choose Remind me at set times. Try every two weeks with a first date and time.
+   Preview must show the correct alternating weeks, with no event/end field.
+6. Try monthly date and monthly weekday recurrence. Preview January 31 and a
+   fifth weekday to verify missing dates skip the month. Preview across March
+   and November clock changes to verify Eastern wall-clock behavior.
+7. Choose Promote an event. Pick its date/time and promotion lead/stop delay.
+   Select multiple messages in each phase and give the phases distinct wording.
+   Verify day-before, event-day, and event-start deliveries use their own pools.
+   Choose Prepare only once when event starts and verify it doesn't keep repeating.
+8. Repeat with two different commands; confirm both engage without overwriting
+   each other or typed chat. Pause one and reload; only the other may continue.
+9. Export full settings, import, and reopen: modes, dates, recurrence, interval,
+   message pools and pauses must survive. Old saved event schedules must load.
+10. Have another player post a selected template on the same output channel and
+    guild. The cooldown resets with 30–90 seconds extra delay. A different guild
+    or channel must not reset it; own outgoing messages are ignored.
 
-1. Open `/scm` (or `/scm schedule`). In Messages Settings, select your command,
-   guild, and output channel, and save the messages you want to use.
-2. Open **Event Scheduling (Eastern Time)**. Confirm the displayed command/guild.
-3. Enable the window. Choose REPEAT, with a one-minute default interval. Enter
-   today's Eastern date and start/event/end times a few minutes apart. Dates use
-   `YYYY-MM-DD`; times use `HH:MM AM/PM`. Start must be at or before the event;
-   end must be after it.
-4. Assign messages using their displayed numbers. For a phase-specific message,
-   uncheck ANY, then check DAY or LIVE. BEFORE means before the event's Eastern
-   calendar day; DAY means midnight until event start; LIVE means event start
-   until window end. Unassigned messages apply to ANY phase. Unchecking all
-   phases deliberately disables that message for this schedule.
-5. Optional phase interval overrides must be positive whole minutes; leave blank
-   to inherit the default. Click **Save schedule**. Invalid edits stay in the
-   draft and do not replace the previous saved schedule.
+Automatic scheduling requires ESO to be running. It prepares messages for Enter,
+not silent sends, and does not replay offline occurrences.
 
-Example message: `%guild% trial %eventwhen%, %eventdate% at %eventtime%.`
-The tokens produce an Eastern date, time with EDT/EST, and today/tomorrow or a
-weekday/date. Original event identity remains required for peer matching.
+## Test incoming-message detection by yourself
 
-## Verify behavior in ESO
+Create a test message such as `SCM solo cooldown test` with Zone output. Enable
+`/scmdebug on`, then enter:
 
-- Before start, `/scm status` shows WAITING and no scheduled text appears.
-- At start, an eligible message fills the chat box. Press Enter to send it.
-  The next interval starts on a confirmed send; unsubmitted text uses the
-  existing restore timeout and configured retry, or the schedule interval.
-- Type your own text before a delivery is due. It should remain untouched.
-  Clear/send it and let the scheduler deliver. Manual requests take priority
-  over Startup requests, which take priority over scheduled requests.
-- At event start, verify LIVE selection. If the current phase has no eligible
-  messages, delivery waits instead of selecting another phase's message.
-- Leave an untouched scheduled message pending until end: it should withdraw.
-  Edit the pending text: your edits should survive end and restore timeout.
-- Run `/yourcommand 1 off` (use the appropriate guild slot) to pause. Reload UI:
-  it must remain paused. Resume through scheduling settings. Incoming peer
-  messages must not resume a paused schedule.
-- With a second player, send a matching message on the same configured channel
-  and guild. Your combination's cooldown should reset with an extra 30–90
-  seconds. Different event dates/times and different guilds must not match.
-- Repeat with ZONE delivery. Travel between eligible overland zones; busy-input
-  requests must be revalidated after travel, and excluded zones must not deliver.
-  Only one enabled scheduled Zone combination is supported. An existing manual
-  Zone owner keeps ownership until stopped.
-- Export/import, then reload: window dates, pauses, phase assignments, and
-  intervals should survive. Import errors must leave current settings intact.
-
-ET follows US Eastern daylight saving rules from 2007 through 2099. Spring
-missing times are rejected. In the repeated November hour, choose EDT (first)
-or EST (second) for that timestamp. Your computer's timezone does not change the
-schedule. Try the same configuration with clients in different timezones.
-
-This first implementation supports one event window per command/guild and no
-weekly recurrence. Automation runs while ESO is running; late login selects the
-current phase without replaying offline deliveries. It populates chat and still
-requires you to send. Automated tests use mocked ESO APIs; real ESO UI and
-two-player trials remain necessary.
-
-## Automated checks
-
-For the full setup and editable import/export choices, see [the user guide](../README.md).
-Message-only sharing does not copy schedule times or phase assignments; full
-settings export does. Recipients can edit imported schedules and save their own
-times and message-phase choices. Full import replaces existing settings.
-
-From the repository root with Lua 5.1:
-
+```lua
+/script SmartChatMsg:HandleIncomingChatMessage(nil, CHAT_CHANNEL_ZONE, "SCM Test Player", "SCM solo cooldown test", false, "@SCMTestSender")
 ```
-lua tests/calendar_spec.lua
-lua tests/incoming_chat_spec.lua
-lua tests/schedules_spec.lua
-```
+
+This calls the real incoming-message handler locally; it sends no chat. A match
+logs `Incoming match` and updates the actual saved cooldown with the random
+30–90-second delay. The command need not be running. Use your rendered message
+text to test substitutions or a changing countdown. Use `CHAT_CHANNEL_GUILD_1`
+for your first guild or `CHAT_CHANNEL_OFFICER_1` for its officer chat. Changing
+the channel or guild must prevent a match unless a corresponding template exists.
+Sending the message yourself normally is ignored. This simulation checks the
+matching and cooldown path; a second player is still needed to test live reception.
+
+## Check the settings cleanup
+
+Scheduling must be disabled with Run At set to On Demand or Startup, and enabled
+with Run At set to Scheduled. Change command or guild above it and verify the
+schedule belongs to that selection. Save disabled must preserve the schedule
+without running it. Save and activate must activate it. Invalid saves must keep
+the previous saved schedule. Edits must show Unsaved changes until saved.
+A prepared message must say Message ready — press Enter; typed or edited chat
+must say Waiting for your chat, without overwriting the text.
+
+## Test Starting soon and longer message lists
+
+In Promote an event, expand Event and promotion timing and enable Starting soon.
+Set the lead time to five minutes for a quick test and the event time a little
+over five minutes ahead. Open Starting soon, select its messages and set its
+Message interval override to one minute. Save and activate. It should change
+from On event day to Starting soon exactly five minutes before the event, then
+to From event start at the event time. An untouched pending message from the
+earlier phase is replaced; edits remain protected. Default lead time is 120
+minutes, and existing schedules leave this optional phase disabled.
+
+Add at least ten message variations, including messages that wrap over several
+lines. Every phase checklist should remain inside its scroll area. Use the wheel
+over text or a checkbox, or drag the scrollbar, to reach and select the last row.
+Changing a selection must preserve the scroll position. Check that the interval
+and once-only controls below the list remain visible and do not overlap it.

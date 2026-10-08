@@ -1,4 +1,4 @@
-# SmartChatMsg (v1.10.0)
+# SmartChatMsg (v1.11.0)
 
 SmartChatMsg is an Elder Scrolls Online addon for reusable chat messages: guild
 recruitment, trial reminders, auctions, officer notices, and other announcements.
@@ -21,13 +21,14 @@ runs while ESO and the addon are running. It does not silently send messages.
 
 ## Install or update
 
-Keep **LibAddonMenu-2.0** installed. Copy the complete addon release/branch into
+Install **LibAddonMenu-2.0 (release 34 or newer)** and **LibAddonMenuDatePicker**.
+The DatePicker dependency adds the calendar selector used by scheduling. Copy the complete addon release/branch into
 your SmartChatMsg addon folder, including every file listed in `SmartChatMsg.txt`.
 Copying only the main Lua file misses the scheduling and sharing modules.
 Reload the UI after updating. Export your settings before trying a new setup.
 
 The runtime files are `SCM_MessageSharing.lua`, `SCM_SavedVars.lua`,
-`SCM_Calendar.lua`, `SCM_Schedules.lua`, `SCM_Scheduler.lua`,
+`SCM_Calendar.lua`, `SCM_Recurrence.lua`, `SCM_Schedules.lua`, `SCM_Scheduler.lua`,
 `SCM_ScheduleSettings.lua`, `SCM_StatusPanel.lua`, `SCM_Settings.lua`, `SCM_IncomingChat.lua`, and
 `SmartChatMsg.lua`, loaded by `SmartChatMsg.txt`.
 
@@ -42,7 +43,7 @@ The runtime files are `SCM_MessageSharing.lua`, `SCM_SavedVars.lua`,
 | Command | Purpose |
 | --- | --- |
 | `/scm` | Open settings. |
-| `/scm schedule` | Open settings; expand Event Scheduling (Eastern Time). |
+| `/scm schedule` | Open settings; expand Create / Edit / Delete Messages, then Scheduling (Eastern Time). |
 | `/scm status` | Toggle the live status window. |
 | `/scmdebug on`, `/scmdebug off`, `/scmdebug status` | Control debugging; `/scmdebug` toggles it. |
 | `/recruit 1` | Run your custom command for local guild slot 1. |
@@ -56,90 +57,90 @@ Guild to run without a guild parameter. Select the saved output channel in setti
 
 - **On Demand:** run the command to populate a message/start its configured automation.
 - **Startup:** the combination enters the startup queue after login/player activation.
-- **Scheduled:** save an enabled window in Event Scheduling. No command is needed
+- **Scheduled:** save an enabled window in Scheduling. No command is needed
   at its start time. Selecting Scheduled without a valid saved window does nothing.
 
-## Schedule an event
+## Set up a schedule
 
-You need **one command and one schedule per event**, rather than separate commands
-for the day before, event day, and event start.
+Select a command, guild, and output channel in Messages Settings, set **Run At** to **Scheduled**, then open
+**Scheduling (Eastern Time)** inside **Create / Edit / Delete Messages**. Choose what you want to do:
 
-1. Create `/trial`, select its guild/channel, and save its message variations.
-2. Open **Event Scheduling (Eastern Time)**. Check the displayed command/guild.
-3. Check **Enable scheduled window** and choose **REPEAT** or **ZONE** delivery.
-4. Enter three dates/times: **start** for reminders, **event** for the event itself,
-   and **end** for when reminders stop.
-5. Set the default interval in whole minutes. Optional BEFORE, DAY, and LIVE
-   overrides use their own interval; blank overrides inherit the default.
-6. Assign messages to phases, then click **Save schedule**.
+- **Run during a window:** pick a start date/time and stop date/time, choose
+  messages, and set how often to prepare one. No event date is required.
+- **Remind me at set times:** pick the first date/time and recurrence. Each
+  occurrence prepares one message; no separate event or stop date is required.
+- **Promote an event:** pick the event date/time, how many days beforehand to
+  begin promoting it, and how long after the start to stop.
 
-Dates use `YYYY-MM-DD`; times use `HH:MM AM/PM`. Start must be at or before the
-event, and end must be after it. Invalid drafts do not replace saved schedules.
-Start is inclusive; end is exclusive.
+Dates use a calendar picker; times use Eastern Time (ET). Saved schedules reopen
+with readable date/time values. Internal timestamps never appear as settings.
+The review shows the start, stop, event time (when applicable), and upcoming occurrences. **Save and activate** starts automatically at the scheduled time while you are online; **Save disabled** keeps your setup without running it. Changes remain a draft until saved. The Scheduling section is disabled unless Run At is Scheduled for the selected command and guild.
 
-### Message phases
+### Repeat a schedule
 
-Use **Message number to assign** to select a message from the displayed numbered
-list, then check its allowed phases. Save the schedule to apply your edits.
+Choose once, daily, weekly, every two weeks, monthly on the selected date, or
+monthly on the selected weekday (for example, the third Friday). The selected
+initial date anchors recurring weeks and months. Weekday selections and the
+custom interval under **More repeat options** refine repeated reminders. Timed reminders have a two-minute
+eligibility window; overdue offline reminders are skipped. Schedule recurrence is separate from
+how often a message is prepared during an active window.
 
-| Phase | When eligible | Friday 8 PM trial example |
-| --- | --- | --- |
-| ANY | Anywhere inside the reminder window | “Ask an officer about joining our trial.” |
-| BEFORE | Before midnight on the event's Eastern calendar day | “Our Friday trial is coming up!” |
-| DAY | Event-day midnight until event start | “Our trial is tonight at 8 PM!” |
-| LIVE | Event start until reminder end | “Our trial is underway!” |
+Eastern wall-clock times remain consistent across daylight saving changes.
+Dates that do not exist in a month and times skipped by the spring clock change
+are skipped. Preview the next occurrences to check your choice.
 
-Unassigned messages default to ANY. Uncheck ANY to restrict a message to other
-phases. Multiple boxes may be checked; unchecking every box excludes the message.
-Several messages can share a phase; the addon rotates among currently eligible
-messages. An empty phase waits instead of borrowing messages from another phase.
+### Choose several messages for each event phase
 
-BEFORE means before the event day, not specifically the preceding 24 hours. DAY
-covers the whole event day before the start. There is no separate “30 minutes
-before start” phase or arbitrary per-message time window in this implementation.
+Expand the message choices and check the variations you want. Each checklist
+has a bounded scroll area; use its scrollbar or mouse wheel to see all messages.
+Long messages wrap within their own rows. You can assign
+several messages to each phase and assign one message to several phases:
 
-### Example and simultaneous events
+- **Before event day:** promotion start until midnight on the Eastern event day.
+- **On event day:** midnight until the event starts.
+- **Starting soon (optional):** enable this in Event and promotion timing and
+  enter the lead time in minutes (120 means two hours). It takes over from the
+  earlier phase at that threshold and runs until the event starts, within the
+  promotion window. Select its messages and a Message interval override, such
+  as five minutes. It can begin the previous evening for an early-morning event.
+- **From event start until promotion ends:** event start until promotion ends.
 
-For a Friday 8 PM trial, start reminders Thursday at noon and stop Friday at
-9 PM. Set the default interval to 60 minutes, DAY to 30, and LIVE to 10. The addon
-automatically changes phase as those boundaries pass.
+SmartChatMsg randomly selects from the messages eligible in the current phase,
+using its existing message rotation. Each phase can use its own interval; a
+phase can also prepare a message once. Missing phase choices do not fall back to
+an unrelated phase. Simple windows and timed reminders use one message pool.
+With Starting soon enabled, Before event day and On event day end when that
+phase begins. Leave it disabled to retain the original three event phases.
+Full settings export/import includes its lead time, messages, interval and
+once-only option. Existing schedules leave it disabled.
 
-To promote a Saturday auction at the same time, create `/auction` with its own
-window for the same guild. Both REPEAT schedules can run together with independent
-cooldowns. Each command/guild has one event window. Only one enabled scheduled
-ZONE combination is supported; it waits for an existing manual Zone owner to
-stop before taking ownership. Weekly recurrence is not included.
+Event templates can include `%eventdate%`, `%eventtime%`, and `%eventwhen%`.
+`%eventwhen%` describes the Eastern calendar day: weekday/date when further away,
+tomorrow the day before, and today throughout the event day (including after
+the start). It does not change to hours/minutes or "already started". Countdown
+annotations and phase-specific message wording provide those details.
+They refer to the current occurrence of a recurring event. Example:
+`%guild% trial %eventwhen%, %eventdate% at %eventtime%.`
 
-### Automatic start, stop, and pause
+### Start, stop, and multiple promotions
 
-- Log in before start: it waits, then engages at start.
-- Log in inside the window: it engages using the current phase, without replaying
-  missed offline reminders.
-- At end: it stops creating reminders and withdraws untouched scheduled text
-  still pending in chat. Player-edited text is preserved.
-- Log in after end: it stays finished.
-- `/trial 1 off` or **Pause saved schedule** persists a pause through UI reloads.
-  Use **Resume saved schedule** to resume within the window.
+Enabled schedules engage automatically while ESO is running and stop at their
+window end. Logging in late uses the current occurrence rather than replaying
+missed reminders. SmartChatMsg fills chat; you still press Enter to send.
 
-REPEAT starts its next interval after a confirmed send. An unsubmitted reminder
-uses the restore timeout, then the effective Retry Delay or schedule interval.
-ZONE uses eligible zone arrivals and the interval as its per-zone cooldown;
-existing zone exclusions remain in effect.
+Use separate commands for independent promotions. Multiple Repeat schedules can
+run together, sharing the chat box without replacing typed text. Only one Zone
+automation can own zone arrivals at a time. Zone output is also available with
+scheduled interval delivery.
 
-Busy chat input waits rather than being replaced. Manual requests take priority
-over Startup requests, then scheduled requests. Queued scheduled work is checked
-again against its window, phase, guild, and Zone eligibility before delivery.
-
-### Eastern Time
-
-**All schedule times use ET, independently of your computer timezone.** The addon
-converts dates to fixed timestamps using US Eastern daylight saving rules:
-EST is UTC−5 and EDT is UTC−4. Supported dates are 2007–2099. Correct clock time
-is still needed; conversion does not require identifying your computer timezone.
-
-Missing spring clock-change times are rejected. During the repeated November
-hour, choose EDT for the first occurrence or EST for the second using that
-timestamp's **repeated-hour choice**. Leave Automatic for ordinary times.
+Pause/resume in scheduling settings. `/yourcommand 1 off` pauses that guild's
+schedule until resumed. Peer messages reset the matching command/guild cooldown
+with an extra random 30–90 seconds; they do not resume paused schedules.
+The status panel reports engagement, waiting, and the next eligible time in ET.
+Local notifications announce schedule starts/ends and cooldown delays once per
+change. These notices are visible only to you. Matching peer messages are
+recorded even while a command is inactive, and later activation honors that
+recorded cooldown.
 
 ## Message substitutions and countdowns
 
@@ -234,7 +235,7 @@ the recipient assigns their phases.
 
 Full settings export includes event dates/times and message-phase assignments.
 After import, select the command/guild, edit its window and intervals in Event
-Scheduling, change phase checkboxes, and **Save schedule**. Edits affect only your
+Scheduling, change phase checkboxes, and **Save and activate**. Edits affect only your
 own copy. For example, keep Friday's event start but begin your reminders later.
 
 Full import replaces all settings and may import enabled schedules; review them
