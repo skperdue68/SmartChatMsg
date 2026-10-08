@@ -42,6 +42,7 @@ function SmartChatMsg:ProcessChatPopulationQueue()
         if request.metadata.scheduledDelivery then
             valid=valid and state=="RUNNING" and phase==request.metadata.scheduledPhase
                 and self:GetGuildSchedule(request.commandId,request.guildName)==request.schedule
+                and (not request.metadata.scheduledOccurrence or (self:GetScheduleOccurrence(request.schedule,GetTimeStamp()) or {}).occurrenceKey==request.metadata.scheduledOccurrence)
             if valid and request.schedule.delivery=="ZONE" then
                 local zone=self:GetEffectiveAutoPopulateZoneId(self:GetPlayerZoneId())
                 valid=zone and zone==request.metadata.zoneId
@@ -61,13 +62,22 @@ function SmartChatMsg:ProcessChatPopulationQueue()
                 and zone and zone==request.metadata.zoneId
                 and not self:ShouldSkipAutoPopulateForZone(request.commandId,request.guildName,zone)
         end
-        if valid then
+        if valid and request.metadata.observedDueAt and GetTimeStamp()<request.metadata.observedDueAt then
+            self.chatPopulationQueue[request.key]=request
+        elseif valid then
             request.metadata.queuedDelivery=true
             local ok=self:PopulateChatBufferForCommand(request.commandId,request.guildName,request.channelOverride,request.metadata)
+            if ok and self.pendingRestoreState and request.metadata.scheduledDelivery then
+                local schedule=request.schedule
+                if schedule.mode=="REMINDER" or (schedule.phaseOnce or {})[phase] then
+                    local o=self:GetScheduleOccurrence(schedule,GetTimeStamp())
+                    schedule.completedOccurrences={[o.occurrenceKey..":"..phase]=true}
+                end
+            end
             if ok and self.pendingRestoreState then return end
         end
         local startup=self.startupQueueCurrent
-        if request.metadata.startupQueue and startup and startup.commandId==request.commandId
+        if not self.chatPopulationQueue[request.key] and request.metadata.startupQueue and startup and startup.commandId==request.commandId
             and self:StringsEqualIgnoreCase(startup.guildName,request.guildName) then
             self:FinalizeStartupQueueCurrent(true,"queued startup no longer deliverable")
         end
@@ -123,18 +133,25 @@ end
 
 function SmartChatMsg:GetScheduledDueAt(commandId,guildName,phase)
     local schedule=self:GetGuildSchedule(commandId,guildName)
+    local occurrence=self:GetScheduleOccurrence(schedule,GetTimeStamp())
+    if not occurrence then return math.huge end
+    local observed=self:GetObservedCommandCooldownEndsAt(commandId,guildName,self:GetSavedChatChannel(commandId,guildName))
+    local function deadline(value) return observed and math.max(value,observed) or value end
+    local once=schedule.mode=="REMINDER" or (schedule.phaseOnce or {})[phase]
+    local token=occurrence.occurrenceKey..":"..phase
+    if once and (schedule.completedOccurrences or {})[token] then return math.huge end
     local lastUsedAt=self:GetGuildLastUsedAt(commandId,guildName)
     local peerDelay=lastUsedAt and self:GetScheduledPeerDelay(commandId,guildName,lastUsedAt) or 0
-    if schedule.nextDueAt and schedule.nextDuePhase==phase then
-        if peerDelay>0 and lastUsedAt>=schedule.startsAtUtc then
-            return math.max(schedule.nextDueAt,lastUsedAt+self:GetScheduleIntervalMinutes(commandId,guildName)*60+peerDelay)
+    if schedule.nextDueAt and schedule.nextDuePhase==phase and (not schedule.nextDueOccurrence and (schedule.recurrence or "NONE")=="NONE" or schedule.nextDueOccurrence==occurrence.occurrenceKey) then
+        if peerDelay>0 and lastUsedAt>=occurrence.startsAtUtc then
+            return deadline(math.max(schedule.nextDueAt,lastUsedAt+self:GetScheduleIntervalMinutes(commandId,guildName)*60+peerDelay))
         end
-        return schedule.nextDueAt
+        return deadline(schedule.nextDueAt)
     end
-    if lastUsedAt and lastUsedAt>=schedule.startsAtUtc then
-        return lastUsedAt+self:GetScheduleIntervalMinutes(commandId,guildName)*60+peerDelay
+    if lastUsedAt and lastUsedAt>=occurrence.startsAtUtc then
+        return deadline(lastUsedAt+self:GetScheduleIntervalMinutes(commandId,guildName)*60+peerDelay)
     end
-    return schedule.startsAtUtc
+    return deadline(occurrence.startsAtUtc)
 end
 
 function SmartChatMsg:ScheduleNextScheduledDelivery(commandId,guildName,extraDelaySeconds)
@@ -142,6 +159,8 @@ function SmartChatMsg:ScheduleNextScheduledDelivery(commandId,guildName,extraDel
     local schedule=self:GetGuildSchedule(commandId,guildName)
     schedule.nextDueAt=GetTimeStamp()+self:GetScheduleIntervalMinutes(commandId,guildName)*60+(extraDelaySeconds or 0)
     schedule.nextDuePhase=self:GetSchedulePhase(schedule,GetTimeStamp())
+    local occurrence=self:GetScheduleOccurrence(schedule,GetTimeStamp())
+    schedule.nextDueOccurrence=occurrence and occurrence.occurrenceKey
     self:SetReminderAutomationActive(commandId,guildName,schedule.delivery=="REPEAT")
 end
 
@@ -154,13 +173,17 @@ function SmartChatMsg:RequestScheduledDelivery(commandId,guildName,manual)
     if schedule.delivery=="ZONE" then
         zoneId=self:GetEffectiveAutoPopulateZoneId(self:GetPlayerZoneId())
         if not zoneId then return false,"Current zone is not eligible." end
-        if self:ShouldSkipAutoPopulateForZone(commandId,guildName,zoneId) then return false,"Zone cooldown." end
+        if self:ShouldSkipAutoPopulateForZone(commandId,guildName,zoneId) then
+            self:NotifyCooldownDelay(commandId,guildName,self:GetAutoPopulateCooldownEndsAt(commandId,guildName,zoneId))
+            return false,"Zone cooldown."
+        end
     elseif GetTimeStamp()<self:GetScheduledDueAt(commandId,guildName,phase) then
+        self:NotifyCooldownDelay(commandId,guildName,self:GetObservedCommandCooldownEndsAt(commandId,guildName,self:GetSavedChatChannel(commandId,guildName)))
         return false,"Repeat cooldown."
     end
     local pending=self.pendingRestoreState and self.pendingRestoreState.metadata
     if pending and pending.commandId==commandId and self:StringsEqualIgnoreCase(pending.guildName or "",guildName) then return true end
-    return self:QueueChatPopulation(commandId,guildName,nil,{scheduledDelivery=true,scheduledPhase=phase,
+    return self:QueueChatPopulation(commandId,guildName,nil,{scheduledDelivery=true,scheduledPhase=phase,scheduledOccurrence=(self:GetScheduleOccurrence(schedule,GetTimeStamp()) or {}).occurrenceKey,
         autoPopulate=schedule.delivery=="ZONE",zoneId=zoneId,commandId=commandId,guildName=guildName,
         guildIndex=self:GetGuildSlotByName(guildName),paramText=tostring(self:GetGuildSlotByName(guildName))},manual and 1 or 3)
 end
@@ -168,11 +191,49 @@ end
 function SmartChatMsg:HandleScheduledPopulateTimeout(metadata)
     if self:GetGuildScheduleState(metadata.commandId,metadata.guildName)~="RUNNING" then return end
     local schedule=self:GetGuildSchedule(metadata.commandId,metadata.guildName)
+    local occurrence=self:GetScheduleOccurrence(schedule,GetTimeStamp())
+    if metadata.scheduledOccurrence and metadata.scheduledOccurrence~=occurrence.occurrenceKey then return end
+    if metadata.scheduledPhase and metadata.scheduledPhase~=self:GetSchedulePhase(schedule,GetTimeStamp()) then return end
     local retry=self:GetGuildEffectiveReminderRetryMinutes(metadata.commandId,metadata.guildName)
     schedule.nextDueAt=GetTimeStamp()+(retry>0 and retry or self:GetScheduleIntervalMinutes(metadata.commandId,metadata.guildName))*60
     schedule.nextDuePhase=self:GetSchedulePhase(schedule,GetTimeStamp())
+    local occurrence=self:GetScheduleOccurrence(schedule,GetTimeStamp())
+    schedule.nextDueOccurrence=occurrence and occurrence.occurrenceKey
     local runtime=self.scheduleRuntime and self.scheduleRuntime[self:GetReminderStateKey(metadata.commandId,metadata.guildName)]
     if runtime and schedule.delivery=="ZONE" then runtime.zonePending=retry>0 end
+end
+
+-- These notices use the local addon notification path, never an outgoing chat channel.
+function SmartChatMsg:NotifyScheduleTransition(commandId,guildName,state)
+    self.scheduleNoticeStates=self.scheduleNoticeStates or {}
+    local key=self:GetReminderStateKey(commandId,guildName)
+    local config=self:GetGuildSchedule(commandId,guildName)
+    local previous=self.scheduleNoticeStates[key]
+    if previous and previous.config~=config then previous=nil end
+    local occurrence=config and self:GetScheduleOccurrence(config,GetTimeStamp())
+    local prefix=self:GetSlashCommandDisplayName(commandId).." / "..guildName..": "
+    if previous and previous.occurrence and not previous.ended and GetTimeStamp()>=previous.occurrence.endsAtUtc then
+        self:ShowStatusMessage(prefix.."schedule ended at "..self:FormatEasternDateTime(previous.occurrence.endsAtUtc)..".")
+        previous.ended=true
+    end
+    if state=="RUNNING" and occurrence and (not previous or previous.state~="RUNNING" or previous.occurrence.occurrenceKey~=occurrence.occurrenceKey) then
+        self:ShowStatusMessage(prefix.."schedule "..(previous and previous.state=="PAUSED" and "resumed" or "started").."; active until "..self:FormatEasternDateTime(occurrence.endsAtUtc)..".")
+        previous={config=config,occurrence=occurrence,ended=false}
+    elseif state=="PAUSED" and previous and previous.state=="RUNNING" then
+        self:ShowStatusMessage(prefix.."schedule paused.")
+    end
+    previous=previous or {config=config}
+    previous.state=state
+    self.scheduleNoticeStates[key]=previous
+end
+
+function SmartChatMsg:NotifyCooldownDelay(commandId,guildName,endsAt)
+    if not endsAt or endsAt==math.huge or endsAt<=GetTimeStamp() then return end
+    self.cooldownNoticeDeadlines=self.cooldownNoticeDeadlines or {}
+    local key=self:GetReminderStateKey(commandId,guildName)
+    if self.cooldownNoticeDeadlines[key]==endsAt then return end
+    self.cooldownNoticeDeadlines[key]=endsAt
+    self:ShowStatusMessage(self:GetSlashCommandDisplayName(commandId).." / "..guildName..": message delayed by cooldown until "..self:FormatEasternDateTime(endsAt)..".")
 end
 
 function SmartChatMsg:TickSchedules()
@@ -196,16 +257,18 @@ function SmartChatMsg:TickSchedules()
         guild=slot and self:GetGuildNameByIndex(slot) or guild
         seen[key]=true
         local state,phase=self:GetGuildScheduleState(id,guild)
+        if slot and self:GetCommandById(id) then self:NotifyScheduleTransition(id,guild,state) end
         if state~="RUNNING" or not slot or not self:GetCommandById(id) then
             self:StopScheduledDelivery(id,guild)
         else
             local schedule=self:GetGuildSchedule(id,guild)
             local runtime=self.scheduleRuntime[key]
             if not runtime then runtime={commandId=id,guildName=guild,zonePending=true}; self.scheduleRuntime[key]=runtime end
-            if runtime.phase and runtime.phase~=phase then
+            local occurrence=self:GetScheduleOccurrence(schedule,GetTimeStamp())
+            if runtime.phase and (runtime.phase~=phase or runtime.occurrenceKey~=occurrence.occurrenceKey) then
                 self:WithdrawScheduledPending(id,guild); self:CancelQueuedChatPopulation(id,guild); runtime.zonePending=true
             end
-            runtime.phase,runtime.reason=phase,nil
+            runtime.phase,runtime.reason,runtime.occurrenceKey=phase,nil,occurrence.occurrenceKey
             local eligible=self:GetScheduledMessageEntries(id,guild)
             local pending=self.pendingRestoreState and self.pendingRestoreState.metadata
             if pending and pending.scheduledDelivery and pending.commandId==id and self:StringsEqualIgnoreCase(pending.guildName,guild) then
@@ -272,15 +335,18 @@ end
 function SmartChatMsg:GetScheduleStatusText(commandId,guildName)
     local state,phase=self:GetGuildScheduleState(commandId,guildName)
     local schedule=self:GetGuildSchedule(commandId,guildName)
-    local text=state..(phase and " / "..phase or "")
+    local labels={RUNNING="Engaged",WAITING="Waiting",PAUSED="Paused",FINISHED="Finished",DISABLED="Disabled",UNCONFIGURED="Not configured",ON_DEMAND="On demand"}
+    local phaseNames={BEFORE="Before event",DAY="Event day",LIVE="Event live"}
+    local text=(labels[state] or state)..(phaseNames[phase] and " / "..phaseNames[phase] or "")
     local runtime=self.scheduleRuntime and self.scheduleRuntime[self:GetReminderStateKey(commandId,guildName)]
     if runtime and runtime.reason then text=text.." — "..runtime.reason end
     if state=="RUNNING" and self:IsChatPopulationBusy() then text=text.." — Chat input busy" end
     if schedule then
-        text=text.."\n"..self:FormatEasternDateTime(schedule.startsAtUtc).." → "..self:FormatEasternDateTime(schedule.endsAtUtc)
+        local occurrence=self:GetScheduleOccurrence(schedule,GetTimeStamp()) or schedule
+        text=text.."\n"..self:FormatEasternDateTime(occurrence.startsAtUtc).." → "..self:FormatEasternDateTime(occurrence.endsAtUtc)
         if phase and schedule.delivery=="REPEAT" then
             local due=self:GetScheduledDueAt(commandId,guildName,phase)
-            text=text..(due<schedule.endsAtUtc and "\nNext eligible: "..self:FormatEasternDateTime(math.max(due,GetTimeStamp())) or "\nNo further delivery before window end")
+            text=text..(due<occurrence.endsAtUtc and "\nNext eligible: "..self:FormatEasternDateTime(math.max(due,GetTimeStamp())) or "\nNo further delivery before window end")
         end
     end
     return text
@@ -289,6 +355,7 @@ end
 function SmartChatMsg:GetScheduledEventTokenValue(token,commandId,guildName)
     local schedule=self:GetGuildSchedule(commandId,guildName)
     if not schedule then return nil end
+    schedule=self:GetScheduleOccurrence(schedule,GetTimeStamp()) or schedule
     local event=self:GetEasternParts(schedule.eventAtUtc)
     if token=="eventdate" then return string.format("%02d/%02d/%04d",event.month,event.day,event.year) end
     if token=="eventtime" then return self:FormatEasternDateTime(schedule.eventAtUtc):sub(12) end

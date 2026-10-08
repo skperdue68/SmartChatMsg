@@ -221,9 +221,10 @@ test("settings draft validates transactionally and persists message phase edits"
     byName["Save schedule"].func(); eq(scm:GetGuildSchedule("ad","Amber Traders"),nil)
     local d=scm:GetScheduleEditorDraft()
     for k,v in pairs(draft()) do d[k]=v end
-    byName["Message number to assign"].setFunc("1")
-    byName["Selected message: ANY"].setFunc(false)
-    byName["Selected message: DAY"].setFunc(true)
+    local before=scm:GetScheduleMessageChecklist("BEFORE")
+    local day=scm:GetScheduleMessageChecklist("DAY")
+    before[1].setFunc(false)
+    day[1].setFunc(true)
     byName["Save schedule"].func()
     assert(scm:GetGuildSchedule("ad","Amber Traders").messagePhases.a.DAY)
     byName["Pause saved schedule"].func(); eq(scm:GetGuildSchedule("ad","Amber Traders").paused,true)

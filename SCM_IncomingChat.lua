@@ -166,7 +166,8 @@ function SmartChatMsg:MatchesIncomingMessage(entry, guildName, normalizedText)
     self.incomingMessageMatchCache = self.incomingMessageMatchCache or setmetatable({}, { __mode = "k" })
     local cached = self.incomingMessageMatchCache[entry]
     local schedule=self:GetGuildSchedule(entry.commandId,guildName)
-    local eventAt=schedule and schedule.eventAtUtc
+    local occurrence=schedule and self:GetScheduleOccurrence(schedule,GetTimeStamp())
+    local eventAt=occurrence and occurrence.eventAtUtc or (schedule and schedule.eventAtUtc)
     local eventWhen=schedule and self:GetScheduledEventTokenValue("eventwhen",entry.commandId,guildName)
     if not cached or cached.text ~= entry.text or cached.guildName ~= guildName or cached.eventAt~=eventAt or cached.eventWhen~=eventWhen then
         cached = { text = entry.text, guildName = guildName,eventAt=eventAt,eventWhen=eventWhen, matcher = self:BuildIncomingMessageMatcher(entry.text, guildName,entry.commandId) }
@@ -224,6 +225,13 @@ function SmartChatMsg:GetObservedChatCooldownEndsAt(commandId, guildName, zoneId
     return endsAt
 end
 
+-- Passive observations apply even before this command's automation is started.
+function SmartChatMsg:GetObservedCommandCooldownEndsAt(commandId,guildName,channel)
+    local minutes=self:GetGuildReminderMinutes(commandId,guildName) or self:GetGuildAutoPopulateCooldownMinutes(commandId,guildName)
+    local zone=channel=="Zone" and self:GetPlayerZoneId() or nil
+    return self:GetObservedChatCooldownEndsAt(commandId,guildName,zone,(minutes or 0)*60)
+end
+
 function SmartChatMsg:WithdrawObservedChatDuplicate(commandId, guildName)
     local state = self.pendingRestoreState
     local metadata = state and state.metadata
@@ -263,7 +271,11 @@ function SmartChatMsg:MarkObservedChatUsage(entry, guildName, channel)
         self:SetGuildAutoPopulateLastSentAt(commandId, guildName, zoneId, timestamp)
     end
     self:WithdrawObservedChatDuplicate(commandId, guildName)
-    self:CancelQueuedChatPopulation(commandId, guildName)
+    local key=self:GetReminderStateKey(commandId,guildName)
+    local waiting=self.chatPopulationQueue and self.chatPopulationQueue[key]
+    if waiting and waiting.metadata.observedDueAt then
+        waiting.metadata.observedDueAt=self:GetObservedCommandCooldownEndsAt(commandId,guildName,waiting.channelOverride or channel)
+    else self:CancelQueuedChatPopulation(commandId, guildName) end
     local scheduledRuntime = self.scheduleRuntime and self.scheduleRuntime[self:GetReminderStateKey(commandId, guildName)]
     if scheduledRuntime then scheduledRuntime.zonePending = false end
     if repeatActive then self:ScheduleCommandReminder(commandId, guildName, delaySeconds) end

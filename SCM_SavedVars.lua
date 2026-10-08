@@ -576,7 +576,7 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
 
         local recordType = table.remove(parts, 1)
 
-        if recordType == "SCHEDULE_V1" or recordType == "SCHEDULEMESSAGE_V1" then
+        if recordType == "SCHEDULE_V1" or recordType == "SCHEDULEMESSAGE_V1" or recordType == "SCHEDULEOPTIONS_V1" then
             table.insert(parts, 1, recordType)
             scheduleRecords[#scheduleRecords + 1] = parts
         elseif recordType == "DEFAULT" then

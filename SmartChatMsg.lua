@@ -2881,6 +2881,17 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
     if isScheduled and self:GetGuildScheduleState(commandId, guildName) ~= "RUNNING" then
         return false, "Schedule is outside its active window or paused."
     end
+    local outputChannel=channelOverride or self:GetSavedChatChannel(commandId,guildName)
+    local observedDue=self:GetObservedCommandCooldownEndsAt(commandId,guildName,outputChannel)
+    if observedDue and GetTimeStamp()<observedDue then
+        self:NotifyCooldownDelay(commandId,guildName,observedDue)
+        local metadata={}; for k,v in pairs(restoreMetadata or {}) do metadata[k]=v end
+        metadata.observedDueAt=observedDue
+        if self:GetGuildReminderMinutes(commandId,guildName) then
+            self:SetReminderAutomationActive(commandId,guildName,true,observedDue)
+        end
+        return self:QueueChatPopulation(commandId,guildName,channelOverride,metadata,metadata.startupQueue and 2 or 1)
+    end
     if not (restoreMetadata and restoreMetadata.queuedDelivery) and self:IsChatPopulationBusy() then
         return self:QueueChatPopulation(commandId, guildName, channelOverride, restoreMetadata,
             restoreMetadata and restoreMetadata.startupQueue and 2
@@ -2943,6 +2954,8 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
     if isScheduled then
         watcherMetadata.scheduledDelivery = true
         watcherMetadata.scheduledPhase = self:GetSchedulePhase(self:GetGuildSchedule(commandId, guildName), GetTimeStamp())
+        local occurrence = self:GetScheduleOccurrence(self:GetGuildSchedule(commandId, guildName), GetTimeStamp())
+        watcherMetadata.scheduledOccurrence = occurrence and occurrence.occurrenceKey
     end
 
     local currentQueueItem = self.startupQueueCurrent

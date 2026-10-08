@@ -65,6 +65,9 @@ function SmartChatMsg:FormatEasternDateTime(utc)
 end
 
 function SmartChatMsg:GetSchedulePhase(schedule, utc)
+    if schedule.mode=="WINDOW" or schedule.mode=="REMINDER" then return "ANY" end
+    local occurrence=self.GetScheduleOccurrence and self:GetScheduleOccurrence(schedule,utc)
+    schedule=occurrence or schedule
     if utc >= schedule.eventAtUtc then return "LIVE" end
     local event = self:GetEasternParts(schedule.eventAtUtc)
     local midnight = self:ParseEasternDateTime(string.format("%04d-%02d-%02d", event.year, event.month, event.day), "12:00 AM")
