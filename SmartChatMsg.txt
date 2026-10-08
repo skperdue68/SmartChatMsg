@@ -12,6 +12,7 @@ SCM_Calendar.lua
 SCM_Schedules.lua
 SCM_Scheduler.lua
 SCM_ScheduleSettings.lua
+SCM_StatusPanel.lua
 SCM_Settings.lua
 SCM_IncomingChat.lua
 SmartChatMsg.lua

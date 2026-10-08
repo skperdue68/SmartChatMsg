@@ -119,6 +119,21 @@ function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName, commandId
         return "%" .. token .. "%"
     end)
     local _, timeDetails = self:InsertCountdownIntoMessageText(source)
+    -- Older clients may annotate a bare time even though the current formatter
+    -- requires an explicit timezone. Match only additions at that detected time.
+    if not timeDetails then
+        local detected = self:AnalyzeEmbeddedTime(source)
+        if detected and not detected.explicitTimezone then
+            timeDetails = {
+                prefix = source:sub(1, detected.startPos - 1),
+                timeText = detected.rawMatch,
+                suffix = source:sub(detected.endPos + 1),
+                allowMeridiem = not detected.explicitMeridiem and detected.ambiguous,
+                allowTimezone = true,
+                soonText = self:HasEndingPhraseBeforeTime(source, detected.rawMatch) and "ending soon" or "starting soon",
+            }
+        end
+    end
     if timeDetails then
         source = timeDetails.prefix .. timeDetails.timeText .. field("countdown", timeDetails) .. timeDetails.suffix
     end

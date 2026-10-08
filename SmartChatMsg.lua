@@ -19,6 +19,7 @@ SmartChatMsg.startupQueue = SmartChatMsg.startupQueue or {}
 SmartChatMsg.startupQueueCurrent = SmartChatMsg.startupQueueCurrent or nil
 SmartChatMsg.startupQueueInitialized = SmartChatMsg.startupQueueInitialized == true
 SmartChatMsg.startupQueueDelayName = SmartChatMsg.name .. "_StartupQueueDelay"
+SmartChatMsg.queueProcessingScheduled = SmartChatMsg.queueProcessingScheduled == true
 
 SmartChatMsg.autoPopulateTestHouseZoneId = SmartChatMsg.autoPopulateTestHouseZoneId or 1109
 SmartChatMsg.infiniteArchiveZoneId = SmartChatMsg.infiniteArchiveZoneId or 1463
@@ -37,6 +38,70 @@ function SmartChatMsg:DebugLog(message)
 
     d("[SmartChatMsg] " .. text)
 end
+
+function SmartChatMsg:FormatQueueEntry(entry)
+    if type(entry) ~= "table" then
+        return "nil"
+    end
+
+    return string.format(
+        "id=%s queueKey=%s commandId=%s guildName=%s guildIndex=%s rawParam=%s paramText=%s source=%s enqueuedAt=%s queueItemId=%s",
+        tostring(entry.id),
+        tostring(entry.queueKey),
+        tostring(entry.commandId),
+        tostring(entry.guildName),
+        tostring(entry.guildIndex),
+        tostring(entry.rawParam),
+        tostring(entry.paramText),
+        tostring(entry.source),
+        tostring(entry.enqueuedAt),
+        tostring(entry.queueItemId)
+    )
+end
+
+function SmartChatMsg:DumpQueueState(reason)
+    if not self.debugEnabled then
+        return
+    end
+
+    local queue = self.startupQueue or {}
+    self:DebugLog(string.format(
+        "Execution queue dump: reason=%s size=%s current=%s scheduled=%s initialized=%s",
+        tostring(reason or "unspecified"),
+        tostring(#queue),
+        self:FormatQueueEntry(self.startupQueueCurrent),
+        tostring(self.queueProcessingScheduled),
+        tostring(self.startupQueueInitialized)
+    ))
+
+    for index, entry in ipairs(queue) do
+        self:DebugLog(string.format(
+            "Execution queue dump: index=%s %s",
+            tostring(index),
+            self:FormatQueueEntry(entry)
+        ))
+    end
+end
+
+function SmartChatMsg:DebugCountdownState(label, data)
+    if not self.debugEnabled then
+        return
+    end
+
+    if type(data) ~= "table" then
+        self:DebugLog("Countdown debug: " .. tostring(label) .. " data=nil")
+        return
+    end
+
+    local parts = {}
+    for key, value in pairs(data) do
+        table.insert(parts, tostring(key) .. "=" .. tostring(value))
+    end
+
+    table.sort(parts)
+    self:DebugLog("Countdown debug: " .. tostring(label) .. " " .. table.concat(parts, " "))
+end
+
 
 function SmartChatMsg:FormatChatChannelInfo(channelInfo)
     if not channelInfo then
@@ -254,21 +319,35 @@ function SmartChatMsg:GetApproximateCountdownTextFromSeconds(diffSeconds, source
     return "about " .. table.concat(parts, " ")
 end
 
-function SmartChatMsg:GetLocalUtcOffsetHours(epochSeconds)
-    local now = tonumber(epochSeconds) or os.time()
-    local localTime = os.date("*t", now)
-    local utcTime = os.date("!*t", now)
-
-    local localEpoch = os.time(localTime)
-    local utcEpochAsLocal = os.time(utcTime)
-    return (localEpoch - utcEpochAsLocal) / 3600
+local function scm_get_utc_now()
+    return os.time(os.date("!*t"))
 end
 
-function SmartChatMsg:GetResolvedTimezoneOffsetHours(timezoneName)
+local function scm_get_local_utc_offset_seconds(epoch)
+    local targetEpoch = tonumber(epoch) or os.time()
+    return targetEpoch - os.time(os.date("!*t", targetEpoch))
+end
+
+local function scm_build_utc_timestamp(year, month, day, hour, minute, second)
+    local localEpoch = os.time({
+        year = year,
+        month = month,
+        day = day,
+        hour = hour,
+        min = minute,
+        sec = second or 0,
+    })
+
+    return localEpoch + scm_get_local_utc_offset_seconds(localEpoch)
+end
+
+function SmartChatMsg:GetUtcNow()
+    return scm_get_utc_now()
+end
+
+function SmartChatMsg:GetResolvedTimezoneOffsetHours(timezoneName, eventEpoch)
     local normalized = self:Trim(tostring(timezoneName or ""))
-    if normalized == "" then
-        return nil
-    end
+    if normalized == "" then return nil end
 
     normalized = zo_strupper(normalized)
     normalized = normalized:gsub("%.", "")
@@ -292,7 +371,13 @@ function SmartChatMsg:GetResolvedTimezoneOffsetHours(timezoneName)
         return fixedOffsets[normalized]
     end
 
-    local isDst = os.date("*t").isdst == true
+    -- DST based on EVENT TIME (NOT local)
+    local isDst = false
+    if eventEpoch then
+        local t = os.date("*t", eventEpoch)
+        isDst = t and t.isdst == true
+    end
+
     local genericOffsets = {
         ET = isDst and -4 or -5,
         EASTERN = isDst and -4 or -5,
@@ -364,12 +449,85 @@ function SmartChatMsg:GetSupportedTimezoneTokens()
     }
 end
 
+function SmartChatMsg:GetSupportedTimezoneTokensSorted()
+    local seen = {}
+    local tokens = {}
+
+    for _, token in ipairs(self:GetSupportedTimezoneTokens() or {}) do
+        local trimmed = self:Trim(tostring(token or ""))
+        if trimmed ~= "" then
+            local key = zo_strlower(trimmed)
+            if not seen[key] then
+                table.insert(tokens, trimmed)
+                seen[key] = true
+            end
+        end
+    end
+
+    table.sort(tokens, function(a, b)
+        if #a ~= #b then
+            return #a > #b
+        end
+        return zo_strlower(a) < zo_strlower(b)
+    end)
+
+    return tokens
+end
+
+function SmartChatMsg:FindLeadingSupportedTimezoneToken(text)
+    local source = tostring(text or "")
+    if source == "" then
+        return nil, nil
+    end
+
+    local lowerSource = zo_strlower(source)
+    for _, token in ipairs(self:GetSupportedTimezoneTokensSorted()) do
+        local lowerToken = zo_strlower(token)
+        local pattern = "^(%s*" .. self:EscapeLuaPattern(lowerToken) .. ")%f[%A]"
+        local startPos, endPos = lowerSource:find(pattern)
+        if startPos and endPos then
+            return token, source:sub(startPos, endPos)
+        end
+    end
+
+    return nil, nil
+end
+
+function SmartChatMsg:GetTrailingSupportedTimezoneToken(text)
+    local source = tostring(text or "")
+    if source == "" then
+        return nil, nil
+    end
+
+    local lowerSource = zo_strlower(source)
+    for _, token in ipairs(self:GetSupportedTimezoneTokensSorted()) do
+        local lowerToken = zo_strlower(token)
+        local startPos, endPos = lowerSource:find("(%s*" .. self:EscapeLuaPattern(lowerToken) .. ")%f[%A]$")
+        if startPos and endPos then
+            return token, source:sub(startPos, endPos)
+        end
+    end
+
+    return nil, nil
+end
+
+function SmartChatMsg:HasExplicitMeridiem(text)
+    local source = zo_strlower(tostring(text or ""))
+    if source == "" then
+        return false
+    end
+
+    return source:find("[ap]%.?%s*m%.?%f[%A]") ~= nil
+end
+
+
 function SmartChatMsg:GetLocalTimezoneDisplayName(epochSeconds)
     local when = tonumber(epochSeconds) or os.time()
     local timezoneName = self:Trim(os.date("%Z", when) or "")
     local normalized = zo_strupper(timezoneName):gsub("%.", ""):gsub("%s+TIME$", ""):gsub("%s+", "")
 
-    local isDst = os.date("*t", when).isdst == true
+    local localDate = os.date("*t", when)
+    local isDst = localDate and localDate.isdst == true
     local aliasMap = {
         UTC = "UTC",
         GMT = "GMT",
@@ -395,7 +553,18 @@ function SmartChatMsg:GetLocalTimezoneDisplayName(epochSeconds)
         return aliasMap[normalized]
     end
 
-    local offset = self:GetLocalUtcOffsetHours(when)
+    local utcDate = os.date("!*t", when)
+    local localEpoch = os.time(localDate)
+    local utcEpochAsLocal = os.time(utcDate)
+    local offset = (localEpoch - utcEpochAsLocal) / 3600
+    if type(offset) ~= "number" then
+        return "UTC"
+    end
+
+    if offset ~= math.floor(offset) then
+        return string.format("UTC%+.1f", offset)
+    end
+
     local lookup = {
         [-8] = "PST",
         [-7] = isDst and "MDT" or "MST",
@@ -465,14 +634,13 @@ function SmartChatMsg:TryReturnDetectedTime(source, fullMatch, hour, minute, tim
         return nil, nil, nil, nil
     end
 
-    self:DebugLog(string.format(
-        "Countdown debug: time detected match=%s hour=%s minute=%s timezone=%s pattern=%s",
-        tostring(fullMatch),
-        tostring(hour),
-        tostring(normalizedMinute),
-        tostring(timezoneToken or "local"),
-        tostring(patternName)
-    ))
+    self:DebugCountdownState("time_detected", {
+        match = fullMatch,
+        hour = hour,
+        minute = normalizedMinute,
+        timezone = timezoneToken or "local",
+        pattern = patternName,
+    })
     return fullMatch, hour, normalizedMinute, timezoneToken
 end
 
@@ -1006,7 +1174,7 @@ function SmartChatMsg:GetCountdownUntilEmbeddedTimeText(text)
     return countdownText, metadata
 end
 
-function SmartChatMsg:InsertCountdownIntoMessageText(text)
+function SmartChatMsg:InsertCountdownPreservingTemplate(text)
     local source = tostring(text or "")
     local timeMatch, _, _, sourceTz = self:FindEmbeddedTimeDetails(source)
     if not timeMatch or timeMatch == "" then
@@ -1383,22 +1551,58 @@ function SmartChatMsg:GetReminderStateKey(commandId, guildName)
     return commandId .. "::" .. guildKey
 end
 
-function SmartChatMsg:SetReminderAutomationActive(commandId, guildName, isActive)
+function SmartChatMsg:SetReminderAutomationActive(commandId, guildName, isActive, nextTriggerAt)
     local stateKey = self:GetReminderStateKey(commandId, guildName)
     if not stateKey then
         return
     end
 
     if isActive then
-        self.activeReminderStates[stateKey] = true
+        local state = self.activeReminderStates[stateKey]
+        if type(state) ~= "table" then
+            state = {}
+            self.activeReminderStates[stateKey] = state
+        end
+
+        state.isActive = true
+        if type(nextTriggerAt) == "number" and nextTriggerAt > 0 then
+            state.nextTriggerAt = math.floor(nextTriggerAt)
+        else
+            state.nextTriggerAt = nil
+        end
     else
         self.activeReminderStates[stateKey] = nil
     end
 end
 
-function SmartChatMsg:IsReminderAutomationActive(commandId, guildName)
+function SmartChatMsg:GetReminderAutomationState(commandId, guildName)
     local stateKey = self:GetReminderStateKey(commandId, guildName)
-    return stateKey and self.activeReminderStates[stateKey] == true or false
+    local state = stateKey and self.activeReminderStates[stateKey] or nil
+
+    if state == true then
+        return { isActive = true, nextTriggerAt = nil }
+    end
+
+    if type(state) == "table" and state.isActive == true then
+        if type(state.nextTriggerAt) == "number" and state.nextTriggerAt > 0 then
+            state.nextTriggerAt = math.floor(state.nextTriggerAt)
+        else
+            state.nextTriggerAt = nil
+        end
+        return state
+    end
+
+    return nil
+end
+
+function SmartChatMsg:GetReminderNextTriggerAt(commandId, guildName)
+    local state = self:GetReminderAutomationState(commandId, guildName)
+    return state and state.nextTriggerAt or nil
+end
+
+function SmartChatMsg:IsReminderAutomationActive(commandId, guildName)
+    local state = self:GetReminderAutomationState(commandId, guildName)
+    return state ~= nil and state.isActive == true
 end
 
 function SmartChatMsg:DeactivateReminderAutomation(commandId, guildName, reason)
@@ -1504,6 +1708,8 @@ function SmartChatMsg:HandleReminderPopulateTimeout(metadata)
     end
 
     local delayMs = retryMinutes * 60 * 1000
+    local nextTriggerAt = GetTimeStamp() + (retryMinutes * 60)
+    self:SetReminderAutomationActive(commandId, guildName, true, nextTriggerAt)
     self:DebugLog(string.format(
         "Reminder debug: scheduling retry timer timerName=%s commandId=%s guildName=%s retryMinutes=%s delayMs=%s",
         tostring(timerName),
@@ -1514,6 +1720,7 @@ function SmartChatMsg:HandleReminderPopulateTimeout(metadata)
     ))
 
     EVENT_MANAGER:RegisterForUpdate(timerName, delayMs, function()
+        self:SetReminderAutomationActive(commandId, guildName, true, nil)
         self:DebugLog(string.format(
             "Reminder debug: retry timer fired timerName=%s commandId=%s guildName=%s",
             tostring(timerName),
@@ -1583,6 +1790,7 @@ function SmartChatMsg:TriggerReminderPopulate(commandId, guildName, expectedLast
         return
     end
 
+    self:SetReminderAutomationActive(commandId, guildName, true, nil)
     self:DebugLog(string.format(
         "Reminder debug: populate armed successfully for commandId=%s guildName=%s",
         tostring(commandId),
@@ -1615,7 +1823,7 @@ function SmartChatMsg:ScheduleCommandReminder(commandId, guildName, extraDelaySe
         return
     end
 
-    self:SetReminderAutomationActive(commandId, guildName, true)
+    self:SetReminderAutomationActive(commandId, guildName, true, nil)
 
     local lastUsedAt = self:GetGuildLastUsedAt(commandId, guildName)
     if type(lastUsedAt) ~= "number" or lastUsedAt <= 0 then
@@ -1637,6 +1845,8 @@ function SmartChatMsg:ScheduleCommandReminder(commandId, guildName, extraDelaySe
     end
 
     local delayMs = (reminderMinutes * 60 + (extraDelaySeconds or 0)) * 1000
+    local nextTriggerAt = GetTimeStamp() + delayMs / 1000
+    self:SetReminderAutomationActive(commandId, guildName, true, nextTriggerAt)
     self:DebugLog(string.format(
         "Reminder debug: scheduling repeat-after timer timerName=%s commandId=%s commandName=%s guildName=%s repeatAfterMinutes=%s delayMs=%s lastUsedAt=%s",
         tostring(timerName),
@@ -1955,6 +2165,8 @@ function SmartChatMsg:IsOutgoingChatMessageType(messageType)
 end
 
 function SmartChatMsg:ClearPendingRestoreState(reason)
+    local hadPendingState = self.pendingRestoreState ~= nil
+
     if self.pendingRestoreState then
         self:DebugLog(string.format(
             "Clearing pending restore state reason=%s previousChannel=%s expectedText=%s",
@@ -1969,6 +2181,209 @@ function SmartChatMsg:ClearPendingRestoreState(reason)
     self.pendingRestoreState = nil
     EVENT_MANAGER:UnregisterForEvent(self.restoreWatcherEventName, EVENT_CHAT_MESSAGE_CHANNEL)
     EVENT_MANAGER:UnregisterForUpdate(self.restoreWatcherTimeoutName)
+
+    if hadPendingState then
+        self:SetGlobalExecutionStatus("available", reason or "pending restore cleared")
+    end
+end
+
+function SmartChatMsg:GetGlobalExecutionStatus()
+    if type(self.savedVars) ~= "table" then
+        return "available"
+    end
+
+    local status = self.savedVars.globalExecutionStatus
+    if status ~= "busy" then
+        status = "available"
+    end
+
+    return status
+end
+
+function SmartChatMsg:SetGlobalExecutionStatus(status, reason)
+    if type(self.savedVars) ~= "table" then
+        return
+    end
+
+    local normalized = (status == "busy") and "busy" or "available"
+    local previous = self:GetGlobalExecutionStatus()
+    self.savedVars.globalExecutionStatus = normalized
+
+    self:DebugLog(string.format(
+        "Execution status changed from %s to %s reason=%s",
+        tostring(previous),
+        tostring(normalized),
+        tostring(reason or "unspecified")
+    ))
+
+    if normalized == "available" and previous ~= "available" then
+        self:ScheduleStartupQueueNextStep(0, reason or "status available")
+    end
+end
+
+function SmartChatMsg:IsExecutionBusy()
+    return self:GetGlobalExecutionStatus() == "busy" or self.pendingRestoreState ~= nil
+end
+
+function SmartChatMsg:BuildQueuedRawParam(guildSlot, channelOverride, stopAutomation)
+    local parts = {}
+
+    if type(guildSlot) == "number" and guildSlot >= 1 and guildSlot <= 5 then
+        if channelOverride == "Guild" then
+            table.insert(parts, string.format("g%d", guildSlot))
+        elseif channelOverride == "Officer" then
+            table.insert(parts, string.format("o%d", guildSlot))
+        else
+            table.insert(parts, tostring(guildSlot))
+        end
+    end
+
+    if stopAutomation == true then
+        table.insert(parts, "off")
+    end
+
+    return table.concat(parts, " ")
+end
+
+function SmartChatMsg:BuildQueueIdentityKey(commandId, guildName, guildIndex)
+    if type(commandId) ~= "string" or commandId == "" then
+        return nil
+    end
+
+    local normalizedGuildName = self:NormalizeKey(guildName)
+    if normalizedGuildName then
+        return string.format("%s::%s", tostring(commandId), tostring(normalizedGuildName))
+    end
+
+    if type(guildIndex) == "number" and guildIndex >= 1 and guildIndex <= 5 then
+        local resolvedGuildName = self:GetGuildNameByIndex(guildIndex)
+        local resolvedGuildKey = self:NormalizeKey(resolvedGuildName)
+        if resolvedGuildKey then
+            return string.format("%s::%s", tostring(commandId), tostring(resolvedGuildKey))
+        end
+
+        return string.format("%s::guildindex:%d", tostring(commandId), guildIndex)
+    end
+
+    return string.format("%s::noguild", tostring(commandId))
+end
+
+function SmartChatMsg:QueueCommandExecution(commandId, slashCommandName, rawParam, source, details)
+    if type(commandId) ~= "string" or commandId == "" then
+        self:DebugLog("Execution queue: enqueue aborted because commandId was invalid")
+        return false
+    end
+
+    if type(self.startupQueue) ~= "table" then
+        self.startupQueue = {}
+    end
+
+    local detailsTable = type(details) == "table" and details or nil
+    local queueKey = self:BuildQueueIdentityKey(
+        commandId,
+        detailsTable and detailsTable.guildName or nil,
+        detailsTable and detailsTable.guildIndex or nil
+    )
+
+    local entry = {
+        id = self:GenerateUuid(),
+        queueKey = queueKey,
+        commandId = commandId,
+        slashCommandName = slashCommandName or self:GetSlashCommandDisplayName(commandId),
+        rawParam = self:Trim(rawParam or ""),
+        source = self:Trim(source or "queued"),
+        enqueuedAt = os.time(),
+    }
+
+    if detailsTable then
+        for key, value in pairs(detailsTable) do
+            if entry[key] == nil then
+                entry[key] = value
+            end
+        end
+    end
+
+    self:DebugLog("Execution queue: enqueue request " .. self:FormatQueueEntry(entry))
+
+    if queueKey then
+        local currentEntry = self.startupQueueCurrent
+        if type(currentEntry) == "table" and currentEntry.queueKey == queueKey then
+            self:DebugLog("Execution queue: replacing active current entry old=" .. self:FormatQueueEntry(currentEntry))
+
+            local preservedId = currentEntry.id
+            local preservedEnqueuedAt = currentEntry.enqueuedAt
+
+            for key, _ in pairs(currentEntry) do
+                currentEntry[key] = nil
+            end
+
+            for key, value in pairs(entry) do
+                currentEntry[key] = value
+            end
+
+            currentEntry.id = preservedId or currentEntry.id
+            currentEntry.enqueuedAt = preservedEnqueuedAt or currentEntry.enqueuedAt
+
+            for index, existingEntry in ipairs(self.startupQueue) do
+                if existingEntry == currentEntry or (type(existingEntry) == "table" and existingEntry.id == currentEntry.id) then
+                    self.startupQueue[index] = currentEntry
+                    break
+                end
+            end
+
+            self.startupQueueInitialized = true
+            self:DebugLog("Execution queue: replaced active current entry new=" .. self:FormatQueueEntry(currentEntry))
+            self:DumpQueueState("after replace active current")
+            return true, currentEntry
+        end
+
+        for index, existingEntry in ipairs(self.startupQueue) do
+            if type(existingEntry) == "table" and existingEntry.queueKey == queueKey then
+                self:DebugLog("Execution queue: replacing existing entry old=" .. self:FormatQueueEntry(existingEntry))
+
+                local preservedId = existingEntry.id
+                local preservedEnqueuedAt = existingEntry.enqueuedAt
+                entry.id = preservedId or entry.id
+                entry.enqueuedAt = preservedEnqueuedAt or entry.enqueuedAt
+                self.startupQueue[index] = entry
+                self.startupQueueInitialized = true
+
+                self:DebugLog("Execution queue: replaced existing entry new=" .. self:FormatQueueEntry(entry))
+                self:DumpQueueState("after replace")
+                return true, entry
+            end
+        end
+    end
+
+    table.insert(self.startupQueue, entry)
+    self.startupQueueInitialized = true
+
+    self:DebugLog("Execution queue: enqueued new entry " .. self:FormatQueueEntry(entry))
+    self:DumpQueueState("after enqueue")
+    return true, entry
+end
+
+function SmartChatMsg:RemoveQueuedEntryById(entryId)
+    if type(entryId) ~= "string" or entryId == "" then
+        self:DebugLog("Execution queue: remove skipped because entryId was invalid")
+        return false
+    end
+
+    for index, entry in ipairs(self.startupQueue or {}) do
+        if type(entry) == "table" and entry.id == entryId then
+            self:DebugLog(string.format(
+                "Execution queue: removing entry index=%s %s",
+                tostring(index),
+                self:FormatQueueEntry(entry)
+            ))
+            table.remove(self.startupQueue, index)
+            self:DumpQueueState("after remove")
+            return true
+        end
+    end
+
+    self:DebugLog("Execution queue: remove missed entryId=" .. tostring(entryId))
+    return false
 end
 
 function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fromName, text, isCustomerService, fromDisplayName)
@@ -2042,7 +2457,7 @@ function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fr
             end
         end
 
-        if metadata.startupQueue == true then
+        if metadata.startupQueue == true or (type(metadata.queueItemId) == "string" and metadata.queueItemId ~= "") then
             self:HandleStartupQueuePopulateSuccess(metadata)
         end
     end
@@ -2118,7 +2533,7 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
             SmartChatMsg:HandleScheduledPopulateTimeout(pendingState.metadata)
         end
 
-        if pendingState and type(pendingState.metadata) == "table" and pendingState.metadata.startupQueue == true then
+        if pendingState and type(pendingState.metadata) == "table" and (pendingState.metadata.startupQueue == true or (type(pendingState.metadata.queueItemId) == "string" and pendingState.metadata.queueItemId ~= "")) then
             SmartChatMsg:HandleStartupQueuePopulateTimeout(pendingState.metadata)
         end
 
@@ -2173,7 +2588,6 @@ function SmartChatMsg:GetActiveAutoPopulate()
 
     return active
 end
-
 
 
 function SmartChatMsg:GetPlayerZoneId()
@@ -2469,7 +2883,8 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
     end
     if not (restoreMetadata and restoreMetadata.queuedDelivery) and self:IsChatPopulationBusy() then
         return self:QueueChatPopulation(commandId, guildName, channelOverride, restoreMetadata,
-            restoreMetadata and restoreMetadata.startupQueue and 2 or 1)
+            restoreMetadata and restoreMetadata.startupQueue and 2
+                or restoreMetadata and (restoreMetadata.reminderRepeat or restoreMetadata.autoPopulate or restoreMetadata.scheduledDelivery) and 3 or 1)
     end
     self:DebugLog(string.format(
         "PopulateChatBufferForCommand start commandId=%s guildName=%s channelOverride=%s",
@@ -2530,8 +2945,18 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
         watcherMetadata.scheduledPhase = self:GetSchedulePhase(self:GetGuildSchedule(commandId, guildName), GetTimeStamp())
     end
 
+    local currentQueueItem = self.startupQueueCurrent
+    if type(currentQueueItem) == "table" and type(currentQueueItem.id) == "string" and currentQueueItem.id ~= ""
+        and currentQueueItem.commandId==commandId and self:StringsEqualIgnoreCase(currentQueueItem.guildName or "",guildName) then
+        watcherMetadata.queueItemId = currentQueueItem.id
+    end
+
     local armedRestore = self:ArmPendingRestoreState(previousChannelInfo, resolvedMessageText, watcherMetadata)
     self:DebugLog("PopulateChatBufferForCommand armedRestore=" .. tostring(armedRestore))
+
+    if armedRestore then
+        self:SetGlobalExecutionStatus("busy", "chat populated into buffer")
+    end
 
     if channel == "Zone" then
         self:DebugLog("PopulateChatBufferForCommand starting chat input for Zone")
@@ -2626,24 +3051,6 @@ function SmartChatMsg:ParseCommandParameter(rawParam)
     return result
 end
 
-function SmartChatMsg:ShouldOpenStatusPanelOnRun(commandId, guildName)
-    if self:GetGuildOpenStatusPanelOnRun(commandId, guildName) ~= true then
-        return false
-    end
-
-    if self:GetGuildAutoPopulateOnZone(commandId, guildName) == true then
-        return true
-    end
-
-    local repeatMinutes = self:GetGuildReminderMinutes(commandId, guildName)
-    return type(repeatMinutes) == "number" and repeatMinutes > 0
-end
-
-function SmartChatMsg:OpenStatusPanelOnRunIfConfigured(commandId, guildName)
-    if self:ShouldOpenStatusPanelOnRun(commandId, guildName) then
-        self:SetStatusPanelVisible(true)
-    end
-end
 
 function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, rawParam)
     local trimmedParam = self:Trim(rawParam or "")
@@ -2878,18 +3285,27 @@ function SmartChatMsg:BuildStartupQueueEntries()
                 if guildId and guildId ~= 0 then
                     local guildName = self:GetGuildNameByIndex(guildIndex)
                     if guildName and self:GetGuildRunAt(command.id, guildName) == "STARTUP" then
-                        table.insert(entries, {
+                        local entry = {
+                            id = self:GenerateUuid(),
                             commandId = command.id,
                             guildName = guildName,
                             guildIndex = guildIndex,
                             paramText = tostring(guildIndex),
-                        })
+                            rawParam = tostring(guildIndex),
+                            slashCommandName = self:GetSlashCommandDisplayName(command.id),
+                            source = "startup",
+                            enqueuedAt = os.time(),
+                            queueKey = self:BuildQueueIdentityKey(command.id, guildName, guildIndex),
+                        }
+                        table.insert(entries, entry)
+                        self:DebugLog("Execution queue: startup candidate " .. self:FormatQueueEntry(entry))
                     end
                 end
             end
         end
     end
 
+    self:DebugLog("Execution queue: startup build complete count=" .. tostring(#entries))
     return entries
 end
 
@@ -2902,13 +3318,15 @@ function SmartChatMsg:ScheduleStartupQueueNextStep(delayMs, reason)
 
     local queueCount = #(self.startupQueue or {})
     if queueCount <= 0 then
-        self:DebugLog("Startup queue: nothing left to schedule reason=" .. tostring(reason or "unspecified"))
+        self.queueProcessingScheduled = false
+        self:DebugLog("Execution queue: nothing left to schedule reason=" .. tostring(reason or "unspecified"))
         return
     end
 
     local effectiveDelayMs = math.max(0, math.floor(tonumber(delayMs) or 0))
+    self.queueProcessingScheduled = true
     self:DebugLog(string.format(
-        "Startup queue: scheduling next step delayMs=%s remaining=%s reason=%s",
+        "Execution queue: scheduling next step delayMs=%s remaining=%s reason=%s",
         tostring(effectiveDelayMs),
         tostring(queueCount),
         tostring(reason or "unspecified")
@@ -2916,6 +3334,7 @@ function SmartChatMsg:ScheduleStartupQueueNextStep(delayMs, reason)
 
     EVENT_MANAGER:RegisterForUpdate(self.startupQueueDelayName, effectiveDelayMs, function()
         EVENT_MANAGER:UnregisterForUpdate(SmartChatMsg.startupQueueDelayName)
+        SmartChatMsg.queueProcessingScheduled = false
         SmartChatMsg:ProcessStartupQueue()
     end)
 end
@@ -2925,96 +3344,118 @@ function SmartChatMsg:FinalizeStartupQueueCurrent(success, reason)
     self.startupQueueCurrent = nil
 
     if not current then
-        self:DebugLog("Startup queue: finalize called with no current item reason=" .. tostring(reason or "unspecified"))
+        self:DebugLog("Execution queue: finalize called with no current item reason=" .. tostring(reason or "unspecified"))
         return
     end
 
     self:DebugLog(string.format(
-        "Startup queue: finalizing commandId=%s guildName=%s success=%s reason=%s",
-        tostring(current.commandId),
-        tostring(current.guildName),
+        "Execution queue: finalizing success=%s reason=%s current=%s",
         tostring(success == true),
-        tostring(reason or "unspecified")
+        tostring(reason or "unspecified"),
+        self:FormatQueueEntry(current)
     ))
 
-    if success ~= true then
-        table.insert(self.startupQueue, current)
-        self:ScheduleStartupQueueNextStep(self:GetStartupQueueRetryDelayMilliseconds(), reason or "startup queue retry")
-        return
+    if success == true then
+        if current.id then
+            self:RemoveQueuedEntryById(current.id)
+        else
+            for index, entry in ipairs(self.startupQueue or {}) do
+                if entry == current then table.remove(self.startupQueue, index); break end
+            end
+        end
     end
 
-    if #(self.startupQueue or {}) > 0 then
-        self:ScheduleStartupQueueNextStep(0, reason or "startup queue continue")
+    if #(self.startupQueue or {}) > 0 and not self:IsExecutionBusy() then
+        self:ScheduleStartupQueueNextStep(0, reason or "queue continue")
     end
 end
 
 function SmartChatMsg:HandleStartupQueuePopulateSuccess(metadata)
-    if type(metadata) ~= "table" or metadata.startupQueue ~= true then
+    if type(metadata) ~= "table" then
         return
     end
 
-    self:FinalizeStartupQueueCurrent(true, "startup queue message sent")
+    local current = self.startupQueueCurrent
+    if not current or (metadata.queueItemId and current.id~=metadata.queueItemId)
+        or (not metadata.queueItemId and (not metadata.startupQueue or current.commandId~=metadata.commandId
+            or not self:StringsEqualIgnoreCase(current.guildName or "",metadata.guildName or ""))) then
+        return
+    end
+
+    self:FinalizeStartupQueueCurrent(true, "queued message sent")
 end
 
 function SmartChatMsg:HandleStartupQueuePopulateTimeout(metadata)
-    if type(metadata) ~= "table" or metadata.startupQueue ~= true then
+    if type(metadata) ~= "table" then
         return
     end
 
-    self:FinalizeStartupQueueCurrent(false, "startup queue timed out")
+    local current = self.startupQueueCurrent
+    if not current or (metadata.queueItemId and current.id~=metadata.queueItemId)
+        or (not metadata.queueItemId and (not metadata.startupQueue or current.commandId~=metadata.commandId
+            or not self:StringsEqualIgnoreCase(current.guildName or "",metadata.guildName or ""))) then
+        return
+    end
+
+    self:FinalizeStartupQueueCurrent(false, "queued message timed out")
 end
 
 function SmartChatMsg:ProcessStartupQueue()
     if not self.startupQueueInitialized then
-        self:DebugLog("Startup queue: process skipped because queue has not been initialized")
+        self:DebugLog("Execution queue: process skipped because queue has not been initialized")
         return
     end
 
     if self.startupQueueCurrent then
-        self:DebugLog("Startup queue: process skipped because current item is still active")
+        self:DebugLog("Execution queue: process skipped because current item is still active")
         return
     end
 
-    if self.pendingRestoreState then
-        self:DebugLog("Startup queue: process skipped because restore watcher is already armed")
+    if self:IsExecutionBusy() then
+        self:DebugLog("Execution queue: process skipped because execution is busy")
         return
     end
 
     local queue = self.startupQueue or {}
     if #queue <= 0 then
-        self:DebugLog("Startup queue: complete")
+        self:DebugLog("Execution queue: complete")
         return
     end
 
-    local entry = table.remove(queue, 1)
-    self.startupQueue = queue
+    self:DumpQueueState("before process")
+
+    local entry = queue[1]
     self.startupQueueCurrent = entry
 
-    local slashCommandName = self:GetSlashCommandDisplayName(entry.commandId)
-    self:DebugLog(string.format(
-        "Startup queue: processing commandId=%s guildName=%s paramText=%s remainingAfterPop=%s",
-        tostring(entry.commandId),
-        tostring(entry.guildName),
-        tostring(entry.paramText),
-        tostring(#queue)
-    ))
+    local slashCommandName = entry.slashCommandName or self:GetSlashCommandDisplayName(entry.commandId)
+    local rawParam = entry.rawParam
+    if self:Trim(rawParam or "") == "" then
+        rawParam = entry.paramText or ""
+    end
+
+    self:DebugLog("Execution queue: processing current=" .. self:FormatQueueEntry(entry) .. " remaining=" .. tostring(#queue))
 
     self.processingStartupEntry=entry
-    self:HandleDynamicSlashCommand(entry.commandId, slashCommandName, entry.paramText)
+    self:HandleDynamicSlashCommand(entry.commandId, slashCommandName, rawParam)
     self.processingStartupEntry=nil
 
-    local pendingState = self.pendingRestoreState
-    local metadata = pendingState and pendingState.metadata or nil
-    if type(metadata) == "table"
-        and metadata.commandId == entry.commandId
-        and self:StringsEqualIgnoreCase(metadata.guildName or "", entry.guildName or "") then
-        metadata.startupQueue = true
+    local currentStillQueued = self.startupQueueCurrent and self.startupQueueCurrent.id == entry.id
+    if not currentStillQueued then
+        self:DebugLog("Execution queue: current item cleared during processing id=" .. tostring(entry.id))
         return
     end
 
     local queued=self.chatPopulationQueue and self.chatPopulationQueue[self:GetReminderStateKey(entry.commandId,entry.guildName)]
     if queued and queued.metadata.startupQueue then return end
-    self:FinalizeStartupQueueCurrent(true, "startup queue completed without pending chat")
+    if self:IsExecutionBusy() then
+        self:DebugLog(string.format(
+            "Execution queue: entry id=%s is now waiting for send or timeout",
+            tostring(entry.id)
+        ))
+        return
+    end
+
+    self:FinalizeStartupQueueCurrent(true, "queue entry completed without pending chat")
 end
 
 function SmartChatMsg:InitializeStartupQueueOnce()
@@ -3025,72 +3466,14 @@ function SmartChatMsg:InitializeStartupQueueOnce()
     self.startupQueueInitialized = true
     self.startupQueue = self:BuildStartupQueueEntries()
     self.startupQueueCurrent = nil
+    self.queueProcessingScheduled = false
+    self:SetGlobalExecutionStatus("available", "startup initialize")
 
-    self:DebugLog("Startup queue: initialized with " .. tostring(#(self.startupQueue or {})) .. " entries")
+    self:DebugLog("Execution queue: initialized with " .. tostring(#(self.startupQueue or {})) .. " entries")
 
     if #(self.startupQueue or {}) > 0 then
-        self:ScheduleStartupQueueNextStep(0, "startup queue initialize")
+        self:ScheduleStartupQueueNextStep(0, "queue initialize")
     end
-end
-
-function SmartChatMsg:FormatStatusDuration(secondsRemaining)
-    if type(secondsRemaining) ~= "number" or secondsRemaining <= 0 then
-        return "Ready"
-    end
-
-    local total = math.max(0, math.floor(secondsRemaining))
-    local hours = math.floor(total / 3600)
-    local minutes = math.floor((total % 3600) / 60)
-    local seconds = total % 60
-
-    if hours > 0 then
-        return string.format("%d:%02d:%02d", hours, minutes, seconds)
-    end
-
-    return string.format("%02d:%02d", minutes, seconds)
-end
-
-function SmartChatMsg:GetStatusPanelZoneTimerText(zoneId, secondsRemaining, isCurrent)
-    if isCurrent then
-        if not self:IsAutoPopulateEligibleZone(zoneId) then
-            return "N/A", false
-        end
-    else
-        if type(zoneId) ~= "number" or zoneId == 0 then
-            return "N/A", false
-        end
-    end
-
-    return self:FormatStatusDuration(secondsRemaining), true
-end
-
-function SmartChatMsg:GetStatusPanelMaxVisibleCooldownRows()
-    return 10
-end
-
-function SmartChatMsg:GetStatusPanelScrollOffset()
-    local panel = self.statusPanel
-    if not panel then
-        return 0
-    end
-    local value = tonumber(panel.cooldownScrollOffset) or 0
-    return math.max(0, math.floor(value))
-end
-
-function SmartChatMsg:SetStatusPanelScrollOffset(offset, totalRows)
-    local panel = self.statusPanel
-    if not panel then
-        return
-    end
-    local maxVisible = self:GetStatusPanelMaxVisibleCooldownRows()
-    local maxOffset = math.max(0, (tonumber(totalRows) or 0) - maxVisible)
-    local clamped = math.max(0, math.min(maxOffset, math.floor(tonumber(offset) or 0)))
-    panel.cooldownScrollOffset = clamped
-end
-
-function SmartChatMsg:AdjustStatusPanelScrollOffset(delta, totalRows)
-    local current = self:GetStatusPanelScrollOffset()
-    self:SetStatusPanelScrollOffset(current + (delta or 0), totalRows)
 end
 
 
@@ -3109,863 +3492,6 @@ function SmartChatMsg:GetAutoPopulateChannelStatusText(commandId, guildName)
     return channel or "Unknown"
 end
 
-function SmartChatMsg:GetAutoPopulateStatusRows(commandId, guildName)
-    local rows = {}
-    local seenZoneKeys = {}
-    local currentZoneId = GetZoneId(GetUnitZoneIndex("player"))
-    local currentTrackedZoneId = self:GetEffectiveAutoPopulateZoneId(currentZoneId)
-    local otherRows = {}
-
-    local function buildRow(zoneId, isCurrent)
-        if type(zoneId) ~= "number" or zoneId == 0 then
-            return nil
-        end
-
-        local zoneKey = tostring(zoneId)
-        if seenZoneKeys[zoneKey] then
-            return nil
-        end
-        seenZoneKeys[zoneKey] = true
-
-        local zoneName = self:GetAutoPopulateZoneDisplayName(zoneId)
-        local cooldownEndsAt = self:GetAutoPopulateCooldownEndsAt(commandId, guildName, zoneId)
-        local secondsRemaining = nil
-        if type(cooldownEndsAt) == "number" and cooldownEndsAt > 0 then
-            secondsRemaining = cooldownEndsAt - GetTimeStamp()
-        end
-
-        local statusText, isApplicable = self:GetStatusPanelZoneTimerText(zoneId, secondsRemaining, isCurrent)
-
-        return {
-            zoneId = zoneId,
-            zoneName = zoneName,
-            isCurrent = isCurrent == true,
-            secondsRemaining = secondsRemaining,
-            statusText = statusText,
-            isApplicable = isApplicable,
-            isReady = isApplicable and (type(secondsRemaining) ~= "number" or secondsRemaining <= 0) or false,
-        }
-    end
-
-    local currentRow = buildRow(currentTrackedZoneId or currentZoneId, true)
-    if currentRow then
-        table.insert(rows, currentRow)
-    end
-
-    local settings = self:GetCommandGuildSettings(commandId, guildName, false)
-    local byZone = settings and settings.lastAutoPopulateSentAtByZone or nil
-    if type(byZone) == "table" then
-        for zoneKey, timestamp in pairs(byZone) do
-            if type(timestamp) == "number" and timestamp > 0 then
-                local zoneId = tonumber(zoneKey)
-                local row = buildRow(zoneId, false)
-                if row then
-                    table.insert(otherRows, row)
-                end
-            end
-        end
-    end
-
-    table.sort(otherRows, function(a, b)
-        if a.isApplicable ~= b.isApplicable then
-            return a.isApplicable == true
-        end
-
-        if a.isReady ~= b.isReady then
-            return a.isReady == true
-        end
-
-        if a.isReady and b.isReady then
-            local aName = zo_strlower(a.zoneName or "")
-            local bName = zo_strlower(b.zoneName or "")
-            if aName == bName then
-                return (a.zoneId or 0) < (b.zoneId or 0)
-            end
-            return aName < bName
-        end
-
-        local aSeconds = math.max(0, math.floor(tonumber(a.secondsRemaining) or 0))
-        local bSeconds = math.max(0, math.floor(tonumber(b.secondsRemaining) or 0))
-        if aSeconds == bSeconds then
-            local aName = zo_strlower(a.zoneName or "")
-            local bName = zo_strlower(b.zoneName or "")
-            if aName == bName then
-                return (a.zoneId or 0) < (b.zoneId or 0)
-            end
-            return aName < bName
-        end
-        return aSeconds < bSeconds
-    end)
-
-    for _, row in ipairs(otherRows) do
-        table.insert(rows, row)
-    end
-
-    return rows
-end
-
-function SmartChatMsg:GetStatusPanelTimerColor(secondsRemaining, isApplicable)
-    if isApplicable == false then
-        return 0.70, 0.70, 0.70, 1
-    end
-
-    if type(secondsRemaining) ~= "number" or secondsRemaining <= 0 then
-        return 0.32, 0.86, 0.45, 1
-    end
-
-    if secondsRemaining <= 60 then
-        return 0.92, 0.28, 0.22, 1
-    end
-
-    return 0.95, 0.62, 0.24, 1
-end
-
-function SmartChatMsg:EstimateStatusPanelTextWidth(text)
-    local value = tostring(text or "")
-    local length = zo_strlen(value)
-    local bonus = 0
-    if value:find("%u%u") then
-        bonus = bonus + 8
-    end
-    if value:find("[/():]", 1) then
-        bonus = bonus + 10
-    end
-    return math.floor((length * 7.4) + bonus)
-end
-
-function SmartChatMsg:GetStatusPanelMeasuredTextWidth(control, fallbackText)
-    if control and control.GetTextDimensions then
-        local measuredWidth = select(1, control:GetTextDimensions())
-        if type(measuredWidth) == "number" and measuredWidth > 0 then
-            return math.floor(measuredWidth + 0.5)
-        end
-    end
-
-    if control and control.GetTextWidth then
-        local measuredWidth = control:GetTextWidth()
-        if type(measuredWidth) == "number" and measuredWidth > 0 then
-            return math.floor(measuredWidth + 0.5)
-        end
-    end
-
-    return self:EstimateStatusPanelTextWidth(fallbackText)
-end
-
-function SmartChatMsg:GetStatusPanelMeasuredTextHeight(control, fallbackHeight)
-    if control and control.GetTextDimensions then
-        local _, measuredHeight = control:GetTextDimensions()
-        if type(measuredHeight) == "number" and measuredHeight > 0 then
-            return math.floor(measuredHeight + 0.5)
-        end
-    end
-
-    return fallbackHeight or 24
-end
-
-function SmartChatMsg:GetStatusPanelTargetSize(active, rows)
-    local panel = self.statusPanel
-    local minWidth = 460
-    local maxWidth = 980
-    local contentWidth = 0
-
-    local function measured(control, fallback)
-        return self:GetStatusPanelMeasuredTextWidth(control, fallback)
-    end
-
-    if active and panel then
-        local firstLineWidth = 0
-        local firstLineControls = {
-            panel.statusLabel,
-            panel.commandLabel,
-            panel.guildLabel,
-            panel.channelLabel,
-        }
-
-        for _, control in ipairs(firstLineControls) do
-            if control and not control:IsHidden() then
-                firstLineWidth = firstLineWidth + measured(control, control.GetText and control:GetText() or "")
-            end
-        end
-        if firstLineWidth > 0 then
-            firstLineWidth = firstLineWidth + 54
-            contentWidth = math.max(contentWidth, firstLineWidth)
-        end
-
-        local stackedControls = {
-            panel.titleLabel,
-            panel.listHeader,
-            panel.currentLabel,
-            panel.footerLabel,
-        }
-
-        for _, control in ipairs(stackedControls) do
-            if control and not control:IsHidden() then
-                contentWidth = math.max(contentWidth, measured(control, control.GetText and control:GetText() or ""))
-            end
-        end
-
-        for _, row in ipairs(panel.rows or {}) do
-            if row and not row:IsHidden() then
-                local rowWidth = 0
-                if row.zone1 and not row.zone1:IsHidden() then
-                    rowWidth = rowWidth + measured(row.zone1, row.zone1:GetText())
-                end
-                if row.timer1 and not row.timer1:IsHidden() then
-                    rowWidth = rowWidth + 14 + measured(row.timer1, row.timer1:GetText())
-                end
-                if row.zone2 and not row.zone2:IsHidden() then
-                    rowWidth = rowWidth + 30 + measured(row.zone2, row.zone2:GetText())
-                end
-                if row.timer2 and not row.timer2:IsHidden() then
-                    rowWidth = rowWidth + 14 + measured(row.timer2, row.timer2:GetText())
-                end
-                contentWidth = math.max(contentWidth, rowWidth)
-            end
-        end
-    elseif active then
-        local commandName = self:BuildSlashCommandName(self:GetCommandNameById(active.commandId) or "") or "/command"
-        contentWidth = math.max(contentWidth, self:EstimateStatusPanelTextWidth("SmartChatMsg Status"))
-        contentWidth = math.max(contentWidth, self:EstimateStatusPanelTextWidth("Zone Cooldowns"))
-        contentWidth = math.max(contentWidth, self:EstimateStatusPanelTextWidth("Tracked Zones: 0 | Showing 0-0"))
-        contentWidth = math.max(contentWidth,
-            self:EstimateStatusPanelTextWidth("Auto: Active") +
-            self:EstimateStatusPanelTextWidth(tostring(commandName)) +
-            self:EstimateStatusPanelTextWidth(tostring(active.guildName)) +
-            self:EstimateStatusPanelTextWidth(tostring(self:GetAutoPopulateChannelStatusText(active.commandId, active.guildName))) +
-            54
-        )
-    else
-        contentWidth = math.max(
-            self:EstimateStatusPanelTextWidth("Auto: Inactive"),
-            self:EstimateStatusPanelTextWidth("Tracked Zones: 0 | Showing 0-0")
-        )
-    end
-
-    local width = math.max(minWidth, math.min(maxWidth, contentWidth + 72))
-
-    local height = 58
-    if panel then
-        local visibleControls = {
-            panel.titleLabel,
-            panel.statusLabel,
-            panel.commandLabel,
-            panel.guildLabel,
-            panel.channelLabel,
-            panel.listHeader,
-            panel.currentLabel,
-            panel.footerLabel,
-        }
-
-        for _, control in ipairs(visibleControls) do
-            if control and not control:IsHidden() then
-                height = height + self:GetStatusPanelMeasuredTextHeight(control, 18) + 4
-            end
-        end
-
-        if panel.divider and not panel.divider:IsHidden() then
-            height = height + 6
-        end
-
-        local visibleRowCount = 0
-        for _, row in ipairs(panel.rows or {}) do
-            if row and not row:IsHidden() then
-                visibleRowCount = visibleRowCount + 1
-            end
-        end
-
-        if panel.currentRow and not panel.currentRow:IsHidden() then
-            height = height + 14 + 6
-        end
-
-        height = height + (visibleRowCount * 14) + math.max(0, visibleRowCount - 1) * 2 + 4
-    else
-        local visibleRowCount = math.min(#(rows or {}), self:GetStatusPanelMaxVisibleCooldownRows())
-        height = active and (150 + (visibleRowCount * 16)) or 120
-    end
-
-    height = math.max(120, math.min(680, height))
-    return width, height
-end
-
-function SmartChatMsg:ApplyStatusPanelLayout(panel, width)
-    if not panel then
-        return
-    end
-
-    local contentWidth = math.max(372, width - 48)
-    local timerWidth = 70
-    local columnGap = 24
-    local pairGap = 12
-    local singleLineHeight = 14
-    local halfWidth = math.floor((contentWidth - columnGap) / 2)
-    local zoneWidth = math.max(90, halfWidth - timerWidth - pairGap)
-
-    local closeButtonReserve = 30
-
-    panel.dragBar:SetWidth(math.max(120, contentWidth - closeButtonReserve))
-    panel.titleLabel:SetWidth(math.max(120, contentWidth - closeButtonReserve))
-    panel.divider:SetWidth(contentWidth)
-    panel.listHeader:SetWidth(contentWidth)
-    panel.currentLabel:SetWidth(contentWidth)
-    panel.footerLabel:SetWidth(contentWidth)
-
-    local firstLineGap = 3
-    local statusWidth = math.max(60, self:EstimateStatusPanelTextWidth(panel.statusLabel:GetText()))
-    local commandWidth = math.max(110, self:EstimateStatusPanelTextWidth(panel.commandLabel:GetText()))
-    local guildWidth = math.max(110, self:EstimateStatusPanelTextWidth(panel.guildLabel:GetText()))
-    local remainingWidth = contentWidth - statusWidth - commandWidth - guildWidth - (firstLineGap * 3)
-    local channelWidth = math.max(110, remainingWidth)
-
-    panel.statusLabel:SetDimensions(statusWidth, singleLineHeight)
-    panel.commandLabel:SetDimensions(commandWidth, singleLineHeight)
-    panel.guildLabel:SetDimensions(guildWidth, singleLineHeight)
-    panel.channelLabel:SetDimensions(channelWidth, singleLineHeight)
-
-    panel.statusLabel:ClearAnchors()
-    panel.commandLabel:ClearAnchors()
-    panel.guildLabel:ClearAnchors()
-    panel.channelLabel:ClearAnchors()
-    panel.divider:ClearAnchors()
-    panel.listHeader:ClearAnchors()
-    panel.currentLabel:ClearAnchors()
-    panel.footerLabel:ClearAnchors()
-
-    panel.statusLabel:SetAnchor(TOPLEFT, panel.titleLabel, BOTTOMLEFT, 0, 8)
-    panel.commandLabel:SetAnchor(TOPLEFT, panel.statusLabel, TOPRIGHT, firstLineGap, 0)
-    panel.guildLabel:SetAnchor(TOPLEFT, panel.commandLabel, TOPRIGHT, firstLineGap, 0)
-    panel.channelLabel:SetAnchor(TOPLEFT, panel.guildLabel, TOPRIGHT, firstLineGap, 0)
-
-    panel.divider:SetAnchor(TOPLEFT, panel.statusLabel, BOTTOMLEFT, 0, 8)
-    panel.listHeader:SetAnchor(TOPLEFT, panel.divider, BOTTOMLEFT, 0, 8)
-    panel.currentLabel:SetAnchor(TOPLEFT, panel.listHeader, BOTTOMLEFT, 0, 6)
-
-    if panel.currentRow then
-        panel.currentRow:SetDimensions(contentWidth, singleLineHeight)
-        panel.currentRow:ClearAnchors()
-        panel.currentRow:SetAnchor(TOPLEFT, panel.currentLabel, BOTTOMLEFT, 0, 2)
-
-        panel.currentRow.zone:ClearAnchors()
-        panel.currentRow.timer:ClearAnchors()
-
-        local currentZoneWidth = math.max(90, contentWidth - timerWidth - pairGap)
-        panel.currentRow.zone:SetDimensions(currentZoneWidth, singleLineHeight)
-        panel.currentRow.timer:SetDimensions(timerWidth, singleLineHeight)
-
-        panel.currentRow.zone:SetAnchor(TOPLEFT, panel.currentRow, TOPLEFT, 0, 0)
-        panel.currentRow.timer:SetAnchor(TOPLEFT, panel.currentRow.zone, TOPRIGHT, pairGap, 0)
-
-        panel.currentRow.zone:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
-        panel.currentRow.timer:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
-        if panel.currentRow.zone.SetMaxLineCount then panel.currentRow.zone:SetMaxLineCount(1) end
-        if panel.currentRow.timer.SetMaxLineCount then panel.currentRow.timer:SetMaxLineCount(1) end
-        panel.currentRow.zone:SetHeight(singleLineHeight)
-        panel.currentRow.timer:SetHeight(singleLineHeight)
-    end
-
-    for index, row in ipairs(panel.rows or {}) do
-        row:SetDimensions(contentWidth, singleLineHeight)
-        row:ClearAnchors()
-        local previous = index == 1 and panel.currentRow or panel.rows[index - 1]
-        row:SetAnchor(TOPLEFT, previous, BOTTOMLEFT, 0, index == 1 and 6 or 2)
-
-        row.zone1:ClearAnchors()
-        row.timer1:ClearAnchors()
-        row.zone2:ClearAnchors()
-        row.timer2:ClearAnchors()
-
-        if row.isSingleSpan then
-            local spanZoneWidth = math.max(90, contentWidth - timerWidth - pairGap)
-            row.zone1:SetDimensions(spanZoneWidth, singleLineHeight)
-            row.timer1:SetDimensions(timerWidth, singleLineHeight)
-            row.zone2:SetDimensions(0, singleLineHeight)
-            row.timer2:SetDimensions(0, singleLineHeight)
-
-            row.zone1:SetAnchor(TOPLEFT, row, TOPLEFT, 0, 0)
-            row.timer1:SetAnchor(TOPLEFT, row.zone1, TOPRIGHT, pairGap, 0)
-        else
-            row.zone1:SetDimensions(zoneWidth, singleLineHeight)
-            row.timer1:SetDimensions(timerWidth, singleLineHeight)
-            row.zone2:SetDimensions(zoneWidth, singleLineHeight)
-            row.timer2:SetDimensions(timerWidth, singleLineHeight)
-
-            row.zone1:SetAnchor(TOPLEFT, row, TOPLEFT, 0, 0)
-            row.timer1:SetAnchor(TOPLEFT, row.zone1, TOPRIGHT, pairGap, 0)
-            row.zone2:SetAnchor(TOPLEFT, row.timer1, TOPRIGHT, columnGap, 0)
-            row.timer2:SetAnchor(TOPLEFT, row.zone2, TOPRIGHT, pairGap, 0)
-        end
-
-        row.zone1:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
-        row.timer1:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
-        row.zone2:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
-        row.timer2:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
-
-        if row.zone1.SetMaxLineCount then row.zone1:SetMaxLineCount(1) end
-        if row.timer1.SetMaxLineCount then row.timer1:SetMaxLineCount(1) end
-        if row.zone2.SetMaxLineCount then row.zone2:SetMaxLineCount(1) end
-        if row.timer2.SetMaxLineCount then row.timer2:SetMaxLineCount(1) end
-
-        row.zone1:SetHeight(singleLineHeight)
-        row.timer1:SetHeight(singleLineHeight)
-        row.zone2:SetHeight(singleLineHeight)
-        row.timer2:SetHeight(singleLineHeight)
-    end
-
-    local lastControl = panel.statusLabel
-
-    if panel.channelLabel and not panel.channelLabel:IsHidden() then
-        lastControl = panel.channelLabel
-    elseif panel.guildLabel and not panel.guildLabel:IsHidden() then
-        lastControl = panel.guildLabel
-    elseif panel.commandLabel and not panel.commandLabel:IsHidden() then
-        lastControl = panel.commandLabel
-    end
-
-    if panel.currentRow and not panel.currentRow:IsHidden() then
-        lastControl = panel.currentRow
-    elseif panel.currentLabel and not panel.currentLabel:IsHidden() then
-        lastControl = panel.currentLabel
-    elseif panel.listHeader and not panel.listHeader:IsHidden() then
-        lastControl = panel.listHeader
-    elseif panel.divider and not panel.divider:IsHidden() then
-        lastControl = panel.divider
-    end
-
-    for _, row in ipairs(panel.rows or {}) do
-        if row and not row:IsHidden() then
-            lastControl = row
-        end
-    end
-
-    panel.footerLabel:SetAnchor(TOPLEFT, lastControl, BOTTOMLEFT, 0, 8)
-end
-
-function SmartChatMsg:StartStatusPanelSizeAnimation(targetWidth, targetHeight)
-    local panel = self.statusPanel
-    if not panel then
-        return
-    end
-
-    panel.targetWidth = math.floor(targetWidth or panel:GetWidth())
-    panel.targetHeight = math.floor(targetHeight or panel:GetHeight())
-
-    if panel.isAnimatingSize then
-        return
-    end
-
-    panel.isAnimatingSize = true
-    EVENT_MANAGER:RegisterForUpdate(self.name .. "_StatusPanelResize", 16, function()
-        local activePanel = SmartChatMsg.statusPanel
-        if not activePanel then
-            EVENT_MANAGER:UnregisterForUpdate(SmartChatMsg.name .. "_StatusPanelResize")
-            return
-        end
-
-        local currentWidth = activePanel:GetWidth()
-        local currentHeight = activePanel:GetHeight()
-        local targetW = activePanel.targetWidth or currentWidth
-        local targetH = activePanel.targetHeight or currentHeight
-
-        local nextWidth = currentWidth + ((targetW - currentWidth) * 0.30)
-        local nextHeight = currentHeight + ((targetH - currentHeight) * 0.30)
-
-        if math.abs(targetW - nextWidth) < 2 then
-            nextWidth = targetW
-        end
-        if math.abs(targetH - nextHeight) < 2 then
-            nextHeight = targetH
-        end
-
-        nextWidth = math.floor(nextWidth + 0.5)
-        nextHeight = math.floor(nextHeight + 0.5)
-
-        activePanel:SetDimensions(nextWidth, nextHeight)
-        SmartChatMsg:ApplyStatusPanelLayout(activePanel, nextWidth)
-
-        if nextWidth == targetW and nextHeight == targetH then
-            activePanel.isAnimatingSize = false
-            EVENT_MANAGER:UnregisterForUpdate(SmartChatMsg.name .. "_StatusPanelResize")
-        end
-    end)
-end
-
-function SmartChatMsg:SaveStatusPanelPosition(panel)
-    if not panel or not panel.GetLeft or not panel.GetTop then
-        return
-    end
-
-    local left = panel:GetLeft()
-    local top = panel:GetTop()
-    if type(left) ~= "number" or type(top) ~= "number" then
-        return
-    end
-
-    self:SetStatusPanelAnchorOffsets(math.floor(left + 0.5), math.floor(top + 0.5))
-end
-
-function SmartChatMsg:CreateStatusPanel()
-    if self.statusPanel then
-        return self.statusPanel
-    end
-
-    local offsetX, offsetY = self:GetStatusPanelAnchorOffsets()
-
-    local panel = WINDOW_MANAGER:CreateTopLevelWindow("SCM_StatusPanel")
-    panel:SetDimensions(460, 120)
-    panel:SetHidden(true)
-    panel:SetMovable(true)
-    panel:SetMouseEnabled(true)
-    panel:SetClampedToScreen(true)
-    panel:ClearAnchors()
-    panel:SetAnchor(TOPLEFT, GuiRoot, TOPLEFT, offsetX, offsetY)
-    panel.cooldownScrollOffset = 0
-    panel.currentCooldownRows = {}
-
-    local backdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_StatusPanelBackdrop", panel, "ZO_DefaultBackdrop")
-    backdrop:SetAnchorFill(panel)
-    backdrop:SetCenterColor(0.05, 0.05, 0.05, 0.90)
-    backdrop:SetEdgeColor(0.75, 0.62, 0.28, 0.95)
-    backdrop:SetMouseEnabled(true)
-
-    local dragBar = WINDOW_MANAGER:CreateControl("SCM_StatusPanelDragBar", panel, CT_CONTROL)
-    dragBar:SetDimensions(412, 22)
-    dragBar:SetAnchor(TOPLEFT, panel, TOPLEFT, 16, 10)
-    dragBar:SetMouseEnabled(true)
-
-    local title = WINDOW_MANAGER:CreateControl("SCM_StatusPanelTitle", panel, CT_LABEL)
-    title:SetFont("ZoFontWinH4")
-    title:SetColor(0.95, 0.83, 0.46, 1)
-    title:SetText("SmartChatMsg Status")
-    title:SetAnchor(TOPLEFT, dragBar, TOPLEFT, 0, 0)
-
-    local closeButton = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCloseButton", panel, CT_BUTTON)
-    closeButton:SetDimensions(24, 24)
-    closeButton:SetAnchor(TOPRIGHT, panel, TOPRIGHT, -10, 8)
-    closeButton:SetFont("ZoFontWinH3")
-    closeButton:SetText("X")
-    closeButton:SetNormalFontColor(0.92, 0.92, 0.92, 1)
-    closeButton:SetMouseOverFontColor(1, 0.35, 0.35, 1)
-    closeButton:SetPressedFontColor(0.75, 0.75, 0.75, 1)
-    closeButton:SetHandler("OnClicked", function()
-        SmartChatMsg:SetStatusPanelVisible(false)
-    end)
-    closeButton:SetHandler("OnMouseEnter", function(control)
-        InitializeTooltip(InformationTooltip, control, TOP, 0, 8)
-        SetTooltipText(InformationTooltip, "Close Status Panel")
-    end)
-    closeButton:SetHandler("OnMouseExit", function()
-        ClearTooltip(InformationTooltip)
-    end)
-
-    local statusLabel = WINDOW_MANAGER:CreateControl("SCM_StatusPanelState", panel, CT_LABEL)
-    statusLabel:SetFont("ZoFontGameSmall")
-    statusLabel:SetAnchor(TOPLEFT, title, BOTTOMLEFT, 0, 8)
-
-    local commandLabel = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCommand", panel, CT_LABEL)
-    commandLabel:SetFont("ZoFontGameSmall")
-    commandLabel:SetAnchor(TOPLEFT, statusLabel, TOPRIGHT, 18, 0)
-
-    local guildLabel = WINDOW_MANAGER:CreateControl("SCM_StatusPanelGuild", panel, CT_LABEL)
-    guildLabel:SetFont("ZoFontGameSmall")
-    guildLabel:SetAnchor(TOPLEFT, commandLabel, TOPRIGHT, 18, 0)
-
-    local channelLabel = WINDOW_MANAGER:CreateControl("SCM_StatusPanelChannel", panel, CT_LABEL)
-    channelLabel:SetFont("ZoFontGameSmall")
-    channelLabel:SetAnchor(TOPLEFT, guildLabel, TOPRIGHT, 18, 0)
-
-    local divider = WINDOW_MANAGER:CreateControl("SCM_StatusPanelDivider", panel, CT_BACKDROP)
-    divider:SetDimensions(412, 2)
-    divider:SetAnchor(TOPLEFT, statusLabel, BOTTOMLEFT, 0, 8)
-    divider:SetCenterColor(0.35, 0.35, 0.35, 0.9)
-    divider:SetEdgeColor(0, 0, 0, 0)
-
-    local listHeader = WINDOW_MANAGER:CreateControl("SCM_StatusPanelListHeader", panel, CT_LABEL)
-    listHeader:SetFont("ZoFontGameSmall")
-    listHeader:SetColor(0.95, 0.83, 0.46, 1)
-    listHeader:SetAnchor(TOPLEFT, divider, BOTTOMLEFT, 0, 8)
-
-    local currentLabel = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCurrentLabel", panel, CT_LABEL)
-    currentLabel:SetFont("ZoFontGameSmall")
-    currentLabel:SetColor(0.95, 0.83, 0.46, 1)
-    currentLabel:SetText("Current Zone")
-    currentLabel:SetAnchor(TOPLEFT, listHeader, BOTTOMLEFT, 0, 6)
-
-    local currentRow = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCurrentRow", panel, CT_CONTROL)
-    currentRow:SetDimensions(412, 16)
-    currentRow:SetAnchor(TOPLEFT, currentLabel, BOTTOMLEFT, 0, 2)
-
-    local currentZone = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCurrentZone", currentRow, CT_LABEL)
-    currentZone:SetFont("ZoFontGameSmall")
-    currentZone:SetHorizontalAlignment(TEXT_ALIGN_LEFT)
-
-    local currentTimer = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCurrentTimer", currentRow, CT_LABEL)
-    currentTimer:SetFont("ZoFontGameSmall")
-    currentTimer:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
-
-    currentRow.zone = currentZone
-    currentRow.timer = currentTimer
-
-    local rows = {}
-    local previous = currentRow
-    for index = 1, 10 do
-        local row = WINDOW_MANAGER:CreateControl("SCM_StatusPanelRow" .. tostring(index), panel, CT_CONTROL)
-        row:SetDimensions(412, 16)
-        row:SetAnchor(TOPLEFT, previous, BOTTOMLEFT, 0, index == 1 and 6 or 2)
-
-        local zone1 = WINDOW_MANAGER:CreateControl("SCM_StatusPanelRowZone1" .. tostring(index), row, CT_LABEL)
-        zone1:SetFont("ZoFontGameSmall")
-        zone1:SetHorizontalAlignment(TEXT_ALIGN_LEFT)
-
-        local timer1 = WINDOW_MANAGER:CreateControl("SCM_StatusPanelRowTimer1" .. tostring(index), row, CT_LABEL)
-        timer1:SetFont("ZoFontGameSmall")
-        timer1:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
-
-        local zone2 = WINDOW_MANAGER:CreateControl("SCM_StatusPanelRowZone2" .. tostring(index), row, CT_LABEL)
-        zone2:SetFont("ZoFontGameSmall")
-        zone2:SetHorizontalAlignment(TEXT_ALIGN_LEFT)
-
-        local timer2 = WINDOW_MANAGER:CreateControl("SCM_StatusPanelRowTimer2" .. tostring(index), row, CT_LABEL)
-        timer2:SetFont("ZoFontGameSmall")
-        timer2:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
-
-        row.zone1 = zone1
-        row.timer1 = timer1
-        row.zone2 = zone2
-        row.timer2 = timer2
-        rows[index] = row
-        previous = row
-    end
-
-    local footerLabel = WINDOW_MANAGER:CreateControl("SCM_StatusPanelFooter", panel, CT_LABEL)
-    footerLabel:SetFont("ZoFontGameSmall")
-    footerLabel:SetColor(0.80, 0.80, 0.80, 1)
-    footerLabel:SetAnchor(TOPLEFT, previous, BOTTOMLEFT, 0, 8)
-
-    local function beginMove(control)
-        if not panel.isMoving and control == panel.dragBar then
-            panel.isMoving = true
-            panel:StartMoving()
-        end
-    end
-
-    local function endMove(control)
-        if panel.isMoving then
-            panel.isMoving = false
-            panel:StopMovingOrResizing()
-            SmartChatMsg:SaveStatusPanelPosition(panel)
-        end
-    end
-
-    dragBar:SetHandler("OnMouseDown", function(control, button)
-        if button == MOUSE_BUTTON_INDEX_LEFT then
-            beginMove(control)
-        end
-    end)
-    dragBar:SetHandler("OnMouseUp", function(control, button)
-        if button == MOUSE_BUTTON_INDEX_LEFT then
-            endMove(control)
-        end
-    end)
-    panel:SetHandler("OnMoveStop", function()
-        panel.isMoving = false
-        SmartChatMsg:SaveStatusPanelPosition(panel)
-    end)
-    panel:SetHandler("OnMouseWheel", function(_, delta)
-        local currentRows = panel.currentCooldownRows or {}
-        if #currentRows <= SmartChatMsg:GetStatusPanelMaxVisibleCooldownRows() then
-            return
-        end
-        SmartChatMsg:AdjustStatusPanelScrollOffset(delta > 0 and -1 or 1, #currentRows)
-        SmartChatMsg:RefreshStatusPanel()
-    end)
-
-    panel.backdrop = backdrop
-    panel.dragBar = dragBar
-    panel.titleLabel = title
-    panel.closeButton = closeButton
-    panel.statusLabel = statusLabel
-    panel.commandLabel = commandLabel
-    panel.guildLabel = guildLabel
-    panel.channelLabel = channelLabel
-    panel.divider = divider
-    panel.listHeader = listHeader
-    panel.currentLabel = currentLabel
-    panel.currentRow = currentRow
-    panel.footerLabel = footerLabel
-    panel.rows = rows
-
-    self.statusPanel = panel
-    self:ApplyStatusPanelLayout(panel, panel:GetWidth())
-    return panel
-end
-
-function SmartChatMsg:RefreshStatusPanel()
-    local panel = self:CreateStatusPanel()
-    if not panel or panel:IsHidden() then
-        return
-    end
-
-    local active = self:GetActiveAutoPopulate()
-    local rows = {}
-
-    if not active then
-        panel.statusLabel:SetColor(0.82, 0.82, 0.82, 1)
-        panel.statusLabel:SetText("Auto: Inactive")
-        panel.commandLabel:SetHidden(true)
-        panel.guildLabel:SetHidden(true)
-        panel.channelLabel:SetHidden(true)
-        panel.divider:SetHidden(true)
-        panel.listHeader:SetHidden(true)
-        panel.currentLabel:SetHidden(true)
-        panel.currentRow:SetHidden(true)
-        panel.footerLabel:SetHidden(false)
-        local schedules=self:GetScheduleSummaryText()
-        panel.footerLabel:SetText(schedules~="" and schedules or "Tracked Zones: 0 | Showing 0-0")
-
-        for _, row in ipairs(panel.rows) do
-            row:SetHidden(true)
-        end
-
-        panel.currentCooldownRows = {}
-        self:SetStatusPanelScrollOffset(0, 0)
-
-        local width, height = self:GetStatusPanelTargetSize(nil, rows)
-        self:StartStatusPanelSizeAnimation(width, height)
-        return
-    end
-
-    local commandName = self:BuildSlashCommandName(self:GetCommandNameById(active.commandId) or "") or "/command"
-    panel.statusLabel:SetColor(0.32, 0.86, 0.45, 1)
-    panel.statusLabel:SetText("Auto: Active")
-
-    panel.commandLabel:SetHidden(false)
-    panel.guildLabel:SetHidden(false)
-    panel.channelLabel:SetHidden(false)
-    panel.divider:SetHidden(false)
-    panel.listHeader:SetHidden(false)
-    panel.currentLabel:SetHidden(false)
-    panel.currentRow:SetHidden(false)
-    panel.footerLabel:SetHidden(false)
-
-    panel.commandLabel:SetText(tostring(commandName))
-    panel.guildLabel:SetText(tostring(active.guildName))
-    panel.channelLabel:SetText(tostring(self:GetAutoPopulateChannelStatusText(active.commandId, active.guildName)))
-    panel.listHeader:SetText("Zone Cooldowns")
-    panel.currentLabel:SetText("Current Zone")
-
-    rows = self:GetAutoPopulateStatusRows(active.commandId, active.guildName)
-
-    local currentRowData = nil
-    local scrollRows = {}
-    for _, rowData in ipairs(rows) do
-        if rowData.isCurrent and not currentRowData then
-            currentRowData = rowData
-        else
-            table.insert(scrollRows, rowData)
-        end
-    end
-
-    if currentRowData then
-        panel.currentRow:SetHidden(false)
-        panel.currentRow.zone:SetText(tostring(currentRowData.zoneName))
-        panel.currentRow.zone:SetColor(1, 1, 1, 1)
-        panel.currentRow.timer:SetText(tostring(currentRowData.statusText))
-        panel.currentRow.timer:SetColor(self:GetStatusPanelTimerColor(currentRowData.secondsRemaining, currentRowData.isApplicable))
-    else
-        panel.currentRow:SetHidden(true)
-        panel.currentRow.zone:SetText("")
-        panel.currentRow.timer:SetText("")
-    end
-
-    panel.currentCooldownRows = scrollRows
-
-    local maxVisible = self:GetStatusPanelMaxVisibleCooldownRows()
-    self:SetStatusPanelScrollOffset(self:GetStatusPanelScrollOffset(), #scrollRows)
-    local startIndex = self:GetStatusPanelScrollOffset() + 1
-    local endIndex = math.min(#scrollRows, startIndex + maxVisible - 1)
-
-    local rowIndex = 1
-    local dataIndex = startIndex
-    while dataIndex <= endIndex and rowIndex <= #panel.rows do
-        local row = panel.rows[rowIndex]
-        local first = scrollRows[dataIndex]
-        local second = nil
-
-        local candidate = scrollRows[dataIndex + 1]
-        if candidate and (dataIndex + 1) <= endIndex then
-            second = candidate
-        end
-
-        row:SetHidden(false)
-        row.isSingleSpan = false
-
-        row.zone1:SetHidden(false)
-        row.timer1:SetHidden(false)
-        row.zone1:SetText(tostring(first.zoneName))
-        row.zone1:SetColor(0.92, 0.92, 0.92, 1)
-        row.timer1:SetText(tostring(first.statusText))
-        row.timer1:SetColor(self:GetStatusPanelTimerColor(first.secondsRemaining, first.isApplicable))
-
-        if second and not row.isSingleSpan then
-            row.zone2:SetHidden(false)
-            row.timer2:SetHidden(false)
-            row.zone2:SetText(tostring(second.zoneName))
-            row.zone2:SetColor(0.92, 0.92, 0.92, 1)
-            row.timer2:SetText(tostring(second.statusText))
-            row.timer2:SetColor(self:GetStatusPanelTimerColor(second.secondsRemaining, second.isApplicable))
-        else
-            row.zone2:SetHidden(true)
-            row.timer2:SetHidden(true)
-            row.zone2:SetText("")
-            row.timer2:SetText("")
-        end
-
-        dataIndex = dataIndex + (second and 2 or 1)
-        rowIndex = rowIndex + 1
-    end
-
-    for index = rowIndex, #panel.rows do
-        local row = panel.rows[index]
-        row:SetHidden(true)
-        row.isSingleSpan = false
-        row.zone1:SetText("")
-        row.timer1:SetText("")
-        row.zone2:SetText("")
-        row.timer2:SetText("")
-    end
-
-    local showingFrom = #scrollRows > 0 and startIndex or 0
-    local showingTo = #scrollRows > 0 and endIndex or 0
-    local moreText = #scrollRows > maxVisible and " | Mouse wheel to scroll" or ""
-    local totalTracked = #scrollRows + (currentRowData and 1 or 0)
-    panel.footerLabel:SetText(string.format("Tracked Zones: %d | Other Zones %d-%d%s", totalTracked, showingFrom, showingTo, moreText))
-    local schedules=self:GetScheduleSummaryText()
-    if schedules~="" then panel.footerLabel:SetText(panel.footerLabel:GetText().."\n"..schedules) end
-
-    self:ApplyStatusPanelLayout(panel, panel:GetWidth())
-
-    local width, height = self:GetStatusPanelTargetSize(active, rows)
-    self:StartStatusPanelSizeAnimation(width, height)
-end
-
-function SmartChatMsg:SetStatusPanelVisible(shouldShow)
-    local panel = self:CreateStatusPanel()
-    local visible = shouldShow == true
-    self.statusPanelVisible = visible
-    self:SetStatusPanelVisiblePreference(visible)
-    panel:SetHidden(not visible)
-
-    EVENT_MANAGER:UnregisterForUpdate(self.statusPanelRefreshName)
-    if visible then
-        self:RefreshStatusPanel()
-        EVENT_MANAGER:RegisterForUpdate(self.statusPanelRefreshName, 1000, function()
-            SmartChatMsg:RefreshStatusPanel()
-        end)
-    end
-end
-
-function SmartChatMsg:ToggleStatusPanel()
-    self:SetStatusPanelVisible(not self.statusPanelVisible)
-end
 
 local function OnAddonLoaded(event, addonName)
     if addonName ~= SmartChatMsg.name then
@@ -4011,23 +3537,7 @@ local function OnAddonLoaded(event, addonName)
     end
 
     SLASH_COMMANDS["/scmdebug"] = function(paramText)
-        local normalized = zo_strlower(SmartChatMsg:Trim(paramText or ""))
-
-        if normalized == "" then
-            SmartChatMsg.debugEnabled = not SmartChatMsg.debugEnabled
-        elseif normalized == "on" or normalized == "1" or normalized == "true" then
-            SmartChatMsg.debugEnabled = true
-        elseif normalized == "off" or normalized == "0" or normalized == "false" then
-            SmartChatMsg.debugEnabled = false
-        elseif normalized == "status" then
-            d("[SmartChatMsg] Debug is " .. (SmartChatMsg.debugEnabled and "ON" or "OFF"))
-            return
-        else
-            d("[SmartChatMsg] Usage: /scmdebug, /scmdebug on, /scmdebug off, /scmdebug status")
-            return
-        end
-
-        d("[SmartChatMsg] Debug is now " .. (SmartChatMsg.debugEnabled and "ON" or "OFF"))
+        SmartChatMsg:HandleScmDebugCommand(paramText)
     end
 
     EVENT_MANAGER:RegisterForEvent(SmartChatMsg.name .. "_PlayerActivated", EVENT_PLAYER_ACTIVATED, function()
@@ -4038,3 +3548,1409 @@ local function OnAddonLoaded(event, addonName)
 end
 
 EVENT_MANAGER:RegisterForEvent(SmartChatMsg.name, EVENT_ADD_ON_LOADED, OnAddonLoaded)
+
+-- JDoodle-style countdown analysis override
+local SCM_DEFAULT_TIMEZONE = "LOCAL"
+
+local SCM_SUPPORTED_TIMEZONES = {
+    PST = true, PDT = true,
+    MST = true, MDT = true,
+    CST = true, CDT = true,
+    EST = true, EDT = true,
+    GMT = true, UTC = true,
+    PT = true, MT = true, CT = true, ET = true,
+}
+
+local SCM_WEEKDAY_ALIASES = {
+    { token = "sunday", abbr = "Sun", wday = 1 },
+    { token = "sun", abbr = "Sun", wday = 1 },
+    { token = "monday", abbr = "Mon", wday = 2 },
+    { token = "mon", abbr = "Mon", wday = 2 },
+    { token = "tuesday", abbr = "Tue", wday = 3 },
+    { token = "tues", abbr = "Tue", wday = 3 },
+    { token = "tue", abbr = "Tue", wday = 3 },
+    { token = "wednesday", abbr = "Wed", wday = 4 },
+    { token = "wed", abbr = "Wed", wday = 4 },
+    { token = "thursday", abbr = "Thu", wday = 5 },
+    { token = "thurs", abbr = "Thu", wday = 5 },
+    { token = "thur", abbr = "Thu", wday = 5 },
+    { token = "thu", abbr = "Thu", wday = 5 },
+    { token = "friday", abbr = "Fri", wday = 6 },
+    { token = "fri", abbr = "Fri", wday = 6 },
+    { token = "saturday", abbr = "Sat", wday = 7 },
+    { token = "sat", abbr = "Sat", wday = 7 },
+}
+
+local function scm_is_dst_active(nowTableOrEpoch)
+    if type(nowTableOrEpoch) == "number" then
+        local target = os.date("*t", nowTableOrEpoch)
+        if target and target.isdst ~= nil then
+            return target.isdst and true or false
+        end
+    elseif type(nowTableOrEpoch) == "table" and nowTableOrEpoch.isdst ~= nil then
+        return nowTableOrEpoch.isdst and true or false
+    end
+    local current = os.date("*t")
+    if current and current.isdst ~= nil then
+        return current.isdst and true or false
+    end
+    return false
+end
+
+local function scm_get_timezone_family(tz)
+    if not tz or tz == "" then
+        return nil
+    end
+
+    local normalized = tostring(tz):upper():gsub("%.", ""):gsub("%s+TIME$", ""):gsub("%s+", "")
+    if normalized == "ET" or normalized == "EST" or normalized == "EDT" or normalized == "EASTERN" then
+        return "EASTERN"
+    elseif normalized == "CT" or normalized == "CST" or normalized == "CDT" or normalized == "CENTRAL" then
+        return "CENTRAL"
+    elseif normalized == "MT" or normalized == "MST" or normalized == "MDT" or normalized == "MOUNTAIN" then
+        return "MOUNTAIN"
+    elseif normalized == "PT" or normalized == "PST" or normalized == "PDT" or normalized == "PACIFIC" then
+        return "PACIFIC"
+    end
+
+    return nil
+end
+
+local function scm_get_family_timezone_for_dst(family, isDst)
+    if family == "EASTERN" then
+        return isDst and "EDT" or "EST"
+    elseif family == "CENTRAL" then
+        return isDst and "CDT" or "CST"
+    elseif family == "MOUNTAIN" then
+        return isDst and "MDT" or "MST"
+    elseif family == "PACIFIC" then
+        return isDst and "PDT" or "PST"
+    end
+
+    return nil
+end
+
+local function scm_is_dst_timezone_name(timezoneName)
+    local normalized = tostring(timezoneName or ""):upper():gsub("%.", ""):gsub("%s+TIME$", ""):gsub("%s+", "")
+    return normalized == "EDT" or normalized == "CDT" or normalized == "MDT" or normalized == "PDT"
+end
+
+local function scm_resolve_timezone_context(token, eventEpoch, defaultTimezone)
+    local fixedOffsets = {
+        UTC = 0,
+        GMT = 0,
+        EST = -5,
+        EDT = -4,
+        CST = -6,
+        CDT = -5,
+        MST = -7,
+        MDT = -6,
+        PST = -8,
+        PDT = -7,
+    }
+
+    local function normalize_timezone_name(value)
+        local normalized = tostring(value or ""):upper():gsub("%.", ""):gsub("%s+TIME$", ""):gsub("%s+", "")
+        if normalized == "" then
+            return nil
+        end
+        return normalized
+    end
+
+    local requested = normalize_timezone_name(token)
+    local fallback = normalize_timezone_name(defaultTimezone) or SCM_DEFAULT_TIMEZONE
+    local normalized = requested or fallback
+
+    local family = scm_get_timezone_family(normalized)
+    local resolvedName = normalized
+    local targetIsDst = false
+
+    if family then
+        local isDst = false
+        if type(eventEpoch) == "number" then
+            local eventTable = os.date("*t", eventEpoch)
+            if eventTable and eventTable.isdst ~= nil then
+                isDst = eventTable.isdst == true
+            end
+        end
+
+        resolvedName = scm_get_family_timezone_for_dst(family, isDst) or normalized
+        targetIsDst = isDst
+    else
+        targetIsDst = scm_is_dst_timezone_name(normalized)
+    end
+
+    local offsetHours = fixedOffsets[resolvedName]
+    local isSupported = offsetHours ~= nil
+
+    if not requested and not isSupported then
+        resolvedName = SCM_DEFAULT_TIMEZONE
+        offsetHours = fixedOffsets[resolvedName]
+        isSupported = offsetHours ~= nil
+        targetIsDst = scm_is_dst_timezone_name(resolvedName)
+    end
+
+    return {
+        requestedToken = requested,
+        resolvedName = resolvedName,
+        offsetHours = offsetHours,
+        offsetSeconds = offsetHours and (offsetHours * 3600) or nil,
+        isSupported = isSupported,
+        targetIsDst = targetIsDst,
+        usedDefault = requested == nil,
+    }
+end
+
+local function scm_canonicalize_timezone_token(token, eventEpoch, defaultTimezone)
+    local context = scm_resolve_timezone_context(token, eventEpoch, defaultTimezone)
+    return context and context.resolvedName or nil
+end
+
+function SmartChatMsg:scm_canonicalize_timezone_token(token, eventEpoch)
+    return scm_canonicalize_timezone_token(token, eventEpoch)
+end
+
+local function scm_normalize_timezone(tz, defaultTimezone, nowTable)
+    if not tz or tz == "" then
+        local fallback = scm_canonicalize_timezone_token(defaultTimezone or SCM_DEFAULT_TIMEZONE, nowTable)
+        return fallback or SCM_DEFAULT_TIMEZONE, false
+    end
+
+    tz = scm_canonicalize_timezone_token(tz, nowTable)
+    if SCM_SUPPORTED_TIMEZONES[tz] or tz == "UTC" or tz == "GMT" then
+        return tz, true
+    end
+
+    local fallback = scm_canonicalize_timezone_token(defaultTimezone or SCM_DEFAULT_TIMEZONE, nowTable)
+    return fallback or SCM_DEFAULT_TIMEZONE, false
+end
+
+local function scm_convert_12h_to_24h(hour, minute, ampm)
+    if ampm == "AM" then
+        if hour == 12 then
+            return 0, minute
+        end
+        return hour, minute
+    elseif ampm == "PM" then
+        if hour < 12 then
+            return hour + 12, minute
+        end
+        return hour, minute
+    end
+    return hour, minute
+end
+
+local function scm_format_time_string(hour24, minute, timezone)
+    local ampm
+    local displayHour
+
+    if hour24 == 0 then
+        displayHour = 12
+        ampm = "AM"
+    elseif hour24 < 12 then
+        displayHour = hour24
+        ampm = "AM"
+    elseif hour24 == 12 then
+        displayHour = 12
+        ampm = "PM"
+    else
+        displayHour = hour24 - 12
+        ampm = "PM"
+    end
+
+    return string.format("%02d:%02d %s %s", displayHour, minute, ampm, timezone)
+end
+
+local function scm_clock_minutes(hour24, minute)
+    return (hour24 * 60) + minute
+end
+
+local function scm_round_minutes_for_display(totalMinutes)
+    if totalMinutes == nil then
+        return 0
+    end
+    if totalMinutes < 0 then
+        totalMinutes = 0
+    end
+    if totalMinutes < 30 then
+        return math.floor(totalMinutes + 0.5)
+    end
+    if totalMinutes < 60 then
+        return math.floor((totalMinutes + 2.5) / 5) * 5
+    end
+    if totalMinutes < 120 then
+        return math.floor((totalMinutes + 5) / 10) * 10
+    end
+    if totalMinutes < 720 then
+        return math.floor((totalMinutes + 7.5) / 15) * 15
+    end
+    if totalMinutes < 1440 then
+        return math.floor((totalMinutes + 15) / 30) * 30
+    end
+    if totalMinutes < 4320 then
+        return math.floor((totalMinutes + 30) / 60) * 60
+    end
+    if totalMinutes < 10080 then
+        return math.floor((totalMinutes + 90) / 180) * 180
+    end
+    return math.floor((totalMinutes + 180) / 360) * 360
+end
+
+local function scm_format_about_duration(totalMinutes)
+    if totalMinutes == nil then
+        totalMinutes = 0
+    end
+    if totalMinutes < 0 then
+        totalMinutes = 0
+    end
+    if totalMinutes < 5 then
+        return "soon"
+    end
+
+    local rounded = scm_round_minutes_for_display(totalMinutes)
+    local isApproximate = rounded ~= totalMinutes
+
+    if rounded <= 0 then
+        return isApproximate and "~0m" or "0m"
+    end
+
+    local days = math.floor(rounded / 1440)
+    local rem = rounded % 1440
+    local hours = math.floor(rem / 60)
+    local minutes = rem % 60
+    local parts = {}
+
+    if days > 0 then table.insert(parts, tostring(days) .. "d") end
+    if hours > 0 then table.insert(parts, tostring(hours) .. "h") end
+    if minutes > 0 then table.insert(parts, tostring(minutes) .. "m") end
+    if #parts == 0 then
+        return isApproximate and "~0m" or "0m"
+    end
+
+    local body
+    if days >= 1 then
+        body = parts[1]
+        if #parts >= 2 then body = body .. " " .. parts[2] end
+    else
+        body = table.concat(parts, " ")
+    end
+
+    if isApproximate then
+        return "~" .. body
+    end
+    return body
+end
+
+local function scm_has_digit_before(text, s)
+    return s > 1 and text:sub(s - 1, s - 1):match("%d") ~= nil
+end
+local function scm_has_digit_after(text, e)
+    return e < #text and text:sub(e + 1, e + 1):match("%d") ~= nil
+end
+local function scm_is_likely_date_fragment(text, s, e)
+    local before = s > 1 and text:sub(s - 1, s - 1) or ""
+    local after = e < #text and text:sub(e + 1, e + 1) or ""
+    return before == "/" or after == "/" or before == "-" or after == "-" or (before == "." and text:sub(s - 2, s - 2):match("%d") ~= nil) or (after == "." and text:sub(e + 2, e + 2):match("%d") ~= nil)
+end
+local function scm_is_fuzzy_separator_char(ch)
+    return ch and ch ~= "" and ch:match("[%s%p]") ~= nil
+end
+local function scm_advance_over_fuzzy_separators(text, pos, maxAdvance)
+    local current = pos
+    local advanced = 0
+    while current <= #text and advanced < maxAdvance do
+        local ch = text:sub(current, current)
+        if scm_is_fuzzy_separator_char(ch) then
+            current = current + 1
+            advanced = advanced + 1
+        else
+            break
+        end
+    end
+    return current
+end
+local function scm_is_valid_base_time(hour, minute, hasExplicitMeridiem)
+    if hour == nil or minute == nil then return false end
+    if minute < 0 or minute > 59 then return false end
+    if hasExplicitMeridiem then
+        return hour >= 1 and hour <= 12
+    end
+    return hour >= 0 and hour <= 23
+end
+local function scm_start_of_day_timestamp(year, month, day)
+    return os.time({ year = year, month = month, day = day, hour = 0, min = 0, sec = 0 })
+end
+local function scm_days_between_dates(targetYear, targetMonth, targetDay, nowTable)
+    local nowStart = scm_start_of_day_timestamp(nowTable.year, nowTable.month, nowTable.day)
+    local targetStart = scm_start_of_day_timestamp(targetYear, targetMonth, targetDay)
+    return math.floor((targetStart - nowStart) / 86400)
+end
+local function scm_compute_delta_to_specific_date_time(targetYear, targetMonth, targetDay, hour24, minute, nowTable)
+    local targetTs = os.time({ year = targetYear, month = targetMonth, day = targetDay, hour = hour24, min = minute, sec = 0 })
+    local nowTs = os.time({ year = nowTable.year, month = nowTable.month, day = nowTable.day, hour = nowTable.hour, min = nowTable.min, sec = nowTable.sec or 0, isdst = nowTable.isdst })
+    return math.floor((targetTs - nowTs) / 60)
+end
+local function scm_compute_delta_to_weekday_time(targetWday, hour24, minute, nowTable)
+    local dayOffset = (targetWday - nowTable.wday) % 7
+    local nowTotal = scm_clock_minutes(nowTable.hour, nowTable.min)
+    local targetTotal = scm_clock_minutes(hour24, minute)
+    if dayOffset == 0 and targetTotal <= nowTotal then
+        dayOffset = 7
+    end
+    return (dayOffset * 1440) + (targetTotal - nowTotal)
+end
+local function scm_compute_delta_same_day_cycle(hour24, minute, nowTable)
+    local delta = scm_clock_minutes(hour24, minute) - scm_clock_minutes(nowTable.hour, nowTable.min)
+    if delta < 0 then delta = delta + (24 * 60) end
+    return delta
+end
+
+local function scm_detect_weekday(text)
+    local lower = tostring(text or ""):lower()
+    local best = nil
+    local function is_alpha(ch) return ch and ch ~= "" and ch:match("%a") ~= nil end
+    for _, entry in ipairs(SCM_WEEKDAY_ALIASES) do
+        local startPos = 1
+        while true do
+            local s, e = lower:find(entry.token, startPos, true)
+            if not s then break end
+            local before = s > 1 and lower:sub(s - 1, s - 1) or ""
+            local after = e < #lower and lower:sub(e + 1, e + 1) or ""
+            if not is_alpha(before) and not is_alpha(after) then
+                local candidate = { startPos = s, endPos = e, raw = text:sub(s, e), abbr = entry.abbr, wday = entry.wday, tokenLength = #entry.token }
+                if not best or candidate.startPos < best.startPos or (candidate.startPos == best.startPos and candidate.tokenLength > best.tokenLength) then
+                    best = candidate
+                end
+            end
+            startPos = e + 1
+        end
+    end
+    return best
+end
+
+local function scm_detect_tomorrow(text)
+    local lower = tostring(text or ""):lower()
+    local s, e = lower:find("tomorrow", 1, true)
+    if not s then return nil end
+    local before = s > 1 and lower:sub(s - 1, s - 1) or ""
+    local after = e < #lower and lower:sub(e + 1, e + 1) or ""
+    local function is_alpha(ch) return ch and ch ~= "" and ch:match("%a") ~= nil end
+    if is_alpha(before) or is_alpha(after) then return nil end
+    return { startPos = s, endPos = e, raw = text:sub(s, e), replacement = "tomorrow" }
+end
+
+local function scm_normalize_two_digit_year(yy)
+    local n = tonumber(yy)
+    if not n then return nil end
+    if n <= 69 then return 2000 + n end
+    return 1900 + n
+end
+local function scm_format_date_md(month, day) return tostring(month) .. "/" .. tostring(day) end
+local function scm_format_date_mdy(month, day, year) return tostring(month) .. "/" .. tostring(day) .. "/" .. tostring(year) end
+
+local function scm_get_weekday_info_for_date(year, month, day)
+    local ts = os.time({ year = year, month = month, day = day, hour = 12, min = 0, sec = 0 })
+    if not ts then return nil end
+    local t = os.date("*t", ts)
+    for _, entry in ipairs(SCM_WEEKDAY_ALIASES) do
+        if entry.wday == t.wday then
+            return { wday = t.wday, abbr = entry.abbr }
+        end
+    end
+    return { wday = t.wday, abbr = tostring(t.wday) }
+end
+
+local function scm_detect_explicit_date(text, nowTable)
+    local candidates = {}
+    local function is_date_separator(ch) return ch == "/" or ch == "-" or ch == "." end
+    local function add_candidate(s, e, month, day, year, hasExplicitYear, originalYearText)
+        if not month or not day or not year then return end
+        if month < 1 or month > 12 or day < 1 or day > 31 then return end
+        local ts = os.time({ year = year, month = month, day = day, hour = 12, min = 0, sec = 0 })
+        if not ts then return end
+        local normalized = os.date("*t", ts)
+        if normalized.year ~= year or normalized.month ~= month or normalized.day ~= day then return end
+        local adjustedYear = year
+        local assumedNextYear = false
+        local initialDayDelta = scm_days_between_dates(adjustedYear, month, day, nowTable)
+        local dayDelta = initialDayDelta
+        if not hasExplicitYear and dayDelta < 0 then
+            adjustedYear = nowTable.year + 1
+            dayDelta = scm_days_between_dates(adjustedYear, month, day, nowTable)
+            assumedNextYear = true
+        end
+        local explicitPast = hasExplicitYear and initialDayDelta < 0 or false
+        local normalizedOutput
+        if adjustedYear > nowTable.year or assumedNextYear or explicitPast then
+            normalizedOutput = scm_format_date_mdy(month, day, adjustedYear)
+        else
+            normalizedOutput = scm_format_date_md(month, day)
+        end
+        local weekdayInfo = scm_get_weekday_info_for_date(adjustedYear, month, day)
+        table.insert(candidates, {
+            startPos = s, endPos = e, raw = text:sub(s, e), month = month, day = day, year = adjustedYear,
+            originalParsedYear = year, hasExplicitYear = hasExplicitYear, originalYearText = originalYearText,
+            assumedNextYear = assumedNextYear, dayDelta = dayDelta, normalizedOutput = normalizedOutput,
+            normalizedWeekdayAbbr = weekdayInfo and weekdayInfo.abbr or nil,
+            normalizedWeekdayWday = weekdayInfo and weekdayInfo.wday or nil,
+            explicitPast = explicitPast,
+        })
+    end
+
+    local i = 1
+    while i <= #text do
+        local ch = text:sub(i, i)
+        if ch:match("%d") then
+            local s = i
+            local mEnd = i
+            if i + 1 <= #text and text:sub(i + 1, i + 1):match("%d") then mEnd = i + 1 end
+            local month = tonumber(text:sub(i, mEnd))
+            local pos = mEnd + 1
+            while pos <= #text and scm_is_fuzzy_separator_char(text:sub(pos, pos)) and not is_date_separator(text:sub(pos, pos)) do pos = pos + 1 end
+            if pos <= #text and is_date_separator(text:sub(pos, pos)) then
+                pos = pos + 1
+                while pos <= #text and scm_is_fuzzy_separator_char(text:sub(pos, pos)) do pos = pos + 1 end
+                local dStart = pos
+                local dEnd = pos
+                if pos <= #text and text:sub(pos, pos):match("%d") then
+                    if pos + 1 <= #text and text:sub(pos + 1, pos + 1):match("%d") then dEnd = pos + 1 end
+                    local day = tonumber(text:sub(dStart, dEnd))
+                    local finalEnd = dEnd
+                    local year = nowTable.year
+                    local hasExplicitYear = false
+                    local originalYearText = nil
+                    local temp = dEnd + 1
+                    while temp <= #text and scm_is_fuzzy_separator_char(text:sub(temp, temp)) and not is_date_separator(text:sub(temp, temp)) do temp = temp + 1 end
+                    if temp <= #text and is_date_separator(text:sub(temp, temp)) then
+                        temp = temp + 1
+                        while temp <= #text and scm_is_fuzzy_separator_char(text:sub(temp, temp)) do temp = temp + 1 end
+                        local yStart = temp
+                        local yEnd = temp
+                        local yDigits = 0
+                        while yEnd <= #text and text:sub(yEnd, yEnd):match("%d") and yDigits < 4 do
+                            yEnd = yEnd + 1
+                            yDigits = yDigits + 1
+                        end
+                        yEnd = yEnd - 1
+                        if yDigits == 2 or yDigits == 4 then
+                            originalYearText = text:sub(yStart, yEnd)
+                            year = yDigits == 2 and scm_normalize_two_digit_year(originalYearText) or tonumber(originalYearText)
+                            hasExplicitYear = true
+                            finalEnd = yEnd
+                        end
+                    end
+                    add_candidate(s, finalEnd, month, day, year, hasExplicitYear, originalYearText)
+                end
+            end
+        end
+        i = i + 1
+    end
+
+    if #candidates == 0 then return nil end
+    table.sort(candidates, function(a, b)
+        if a.startPos ~= b.startPos then return a.startPos < b.startPos end
+        return (a.endPos - a.startPos) > (b.endPos - b.startPos)
+    end)
+    return candidates[1]
+end
+
+local function scm_detect_fuzzy_colon_core(text)
+    local candidates = {}
+    local function add_candidate(s, e, hour, minute)
+        if scm_has_digit_before(text, s) or scm_has_digit_after(text, e) then return end
+        if scm_is_likely_date_fragment(text, s, e) then return end
+        if minute < 0 or minute > 59 then return end
+        table.insert(candidates, { startPos = s, endPos = e, hour = hour, minute = minute, sourceKind = "colon", explicit24Hour = hour > 12, rawCore = text:sub(s, e) })
+    end
+    local i = 1
+    while i <= #text do
+        local ch = text:sub(i, i)
+        if ch:match("%d") then
+            local hourStart = i
+            local hourEnd = i
+            if i + 1 <= #text and text:sub(i + 1, i + 1):match("%d") then hourEnd = i + 1 end
+            local hourDigits = text:sub(hourStart, hourEnd)
+            local pos = hourEnd + 1
+            while pos <= #text and scm_is_fuzzy_separator_char(text:sub(pos, pos)) and text:sub(pos, pos) ~= ":" do pos = pos + 1 end
+            if pos <= #text and text:sub(pos, pos) == ":" then
+                pos = pos + 1
+                while pos <= #text and scm_is_fuzzy_separator_char(text:sub(pos, pos)) do pos = pos + 1 end
+                if pos + 1 <= #text then
+                    local m1 = text:sub(pos, pos)
+                    local m2 = text:sub(pos + 1, pos + 1)
+                    if m1:match("%d") and m2:match("%d") then
+                        add_candidate(hourStart, pos + 1, tonumber(hourDigits), tonumber(m1 .. m2))
+                    end
+                end
+            end
+        end
+        i = i + 1
+    end
+    return candidates
+end
+
+local function scm_detect_time_core(text)
+    local candidates = {}
+
+    local function has_explicit_ampm_or_timezone_after(endPos)
+        local pos = scm_advance_over_fuzzy_separators(text, endPos + 1, 12)
+
+        local token2 = text:sub(pos, math.min(pos + 1, #text)):upper()
+        if token2 == "AM" or token2 == "PM" then
+            return true
+        end
+
+        local token4 = text:sub(pos, math.min(pos + 3, #text)):upper()
+        if token4 == "A.M." or token4 == "P.M." then
+            return true
+        end
+
+        local s, _, token = text:find("([A-Za-z][A-Za-z]?[A-Za-z]?[A-Za-z]?)", pos)
+        if s == pos then
+            local upperToken = token:upper():gsub("%.", ""):gsub("%s+TIME$", ""):gsub("%s+", "")
+            local explicitTimezones = {
+                UTC = true, GMT = true,
+                EST = true, EDT = true,
+                CST = true, CDT = true,
+                MST = true, MDT = true,
+                PST = true, PDT = true,
+                ET = true, CT = true, MT = true, PT = true,
+            }
+
+            if explicitTimezones[upperToken] then
+                return true
+            end
+        end
+
+        return false
+    end
+
+    local function add_candidate(s, e, hour, minute, sourceKind, explicit24Hour)
+        if scm_has_digit_before(text, s) or scm_has_digit_after(text, e) then return end
+        if scm_is_likely_date_fragment(text, s, e) then return end
+        if minute < 0 or minute > 59 then return end
+        if (sourceKind == "hour_only" or sourceKind == "compact_3" or sourceKind == "compact_24h") and not has_explicit_ampm_or_timezone_after(e) then return end
+        table.insert(candidates, { startPos = s, endPos = e, hour = hour, minute = minute, sourceKind = sourceKind, explicit24Hour = explicit24Hour or false, rawCore = text:sub(s, e) })
+    end
+    for _, c in ipairs(scm_detect_fuzzy_colon_core(text)) do table.insert(candidates, c) end
+    do
+        local searchPos = 1
+        while true do
+            local s, e, h, m = text:find("(%d):(%d%d)", searchPos)
+            if not s then break end
+            add_candidate(s, e, tonumber(h), tonumber(m), "colon", false)
+            searchPos = e + 1
+        end
+    end
+    do
+        local searchPos = 1
+        while true do
+            local s, e, h, m = text:find("(%d%d):(%d%d)", searchPos)
+            if not s then break end
+            add_candidate(s, e, tonumber(h), tonumber(m), "colon", tonumber(h) > 12)
+            searchPos = e + 1
+        end
+    end
+    do
+        local searchPos = 1
+        while true do
+            local s, e, digits = text:find("(%d%d%d%d)", searchPos)
+            if not s then break end
+            add_candidate(s, e, tonumber(digits:sub(1, 2)), tonumber(digits:sub(3, 4)), "compact_24h", tonumber(digits:sub(1, 2)) > 12)
+            searchPos = e + 1
+        end
+    end
+    do
+        local searchPos = 1
+        while true do
+            local s, e, digits = text:find("(%d%d%d)", searchPos)
+            if not s then break end
+            add_candidate(s, e, tonumber(digits:sub(1, 1)), tonumber(digits:sub(2, 3)), "compact_3", false)
+            searchPos = e + 1
+        end
+    end
+    do
+        local searchPos = 1
+        while true do
+            local s, e, digits = text:find("(%d%d?)", searchPos)
+            if not s then break end
+            add_candidate(s, e, tonumber(digits), 0, "hour_only", false)
+            searchPos = e + 1
+        end
+    end
+    if #candidates == 0 then return nil, candidates end
+    table.sort(candidates, function(a, b)
+        local function score(c)
+            local v = 0
+            if c.sourceKind == "colon" then v = v + 100 end
+            if c.sourceKind == "compact_24h" then v = v + 60 end
+            if c.sourceKind == "compact_3" then v = v + 40 end
+            if c.sourceKind == "hour_only" then v = v + 10 end
+            return v
+        end
+        local as, bs = score(a), score(b)
+        if as ~= bs then return as > bs end
+        local alen = a.endPos - a.startPos
+        local blen = b.endPos - b.startPos
+        if alen ~= blen then return alen > blen end
+        return a.startPos < b.startPos
+    end)
+    return candidates[1], candidates
+end
+
+local function scm_detect_ampm_after_fuzzy(text, startPos)
+    local pos = scm_advance_over_fuzzy_separators(text, startPos, 8)
+    local token2 = text:sub(pos, pos + 1):upper()
+    if token2 == "AM" or token2 == "PM" then
+        return token2, pos, pos + 1, pos + 2
+    end
+    local token4 = text:sub(pos, math.min(pos + 3, #text)):upper()
+    if token4 == "A.M." then return "AM", pos, pos + 3, pos + 4 end
+    if token4 == "P.M." then return "PM", pos, pos + 3, pos + 4 end
+    return nil, nil, nil, startPos
+end
+
+local function scm_detect_timezone_after_fuzzy(text, startPos, defaultTimezone, nowTable)
+    local pos = scm_advance_over_fuzzy_separators(text, startPos, 12)
+    local s, e, token = text:find("([A-Za-z][A-Za-z]?[A-Za-z]?[A-Za-z]?)", pos)
+    if s == pos then
+        local normalizedToken = tostring(token or ""):upper():gsub("%.", ""):gsub("%s+TIME$", ""):gsub("%s+", "")
+        if normalizedToken ~= "" then
+            return normalizedToken, true, s, e, e + 1
+        end
+    end
+    return nil, false, nil, nil, startPos
+end
+
+local function scm_get_timezone_offset_hours(timezoneName, eventEpoch, defaultTimezone)
+    local context = scm_resolve_timezone_context(timezoneName, eventEpoch, defaultTimezone)
+    return context and context.offsetHours or nil
+end
+
+local function scm_resolve_time(hour, minute, detectedAmpm, explicit24Hour, usableDateInfo, tomorrowInfo, weekdayInfo, nowTable, sourceTimezone)
+    local nowEpoch = scm_build_utc_timestamp(
+        nowTable.year,
+        nowTable.month,
+        nowTable.day,
+        nowTable.hour,
+        nowTable.min,
+        nowTable.sec or 0
+    )
+
+    local function refresh_timing_for_event_timestamp(timing)
+        if not timing or type(timing.eventTimestamp) ~= "number" then
+            return timing
+        end
+
+        local timezoneContext = scm_resolve_timezone_context(sourceTimezone, timing.eventTimestamp)
+        timing.timezoneContext = timezoneContext
+        timing.sourceTimezoneDisplay = timezoneContext and timezoneContext.resolvedName or nil
+        timing.sourceUtcOffsetHours = timezoneContext and timezoneContext.offsetHours or nil
+        timing.sourceUtcOffsetSeconds = timezoneContext and timezoneContext.offsetSeconds or nil
+        timing.sourceTimezoneSupported = timezoneContext and timezoneContext.isSupported or false
+        timing.targetIsDst = timezoneContext and timezoneContext.targetIsDst or false
+
+        timing.diffSeconds = timing.eventTimestamp - nowEpoch
+
+        return timing
+    end
+
+    local function build_event_timing(year, month, day, hour24, min24)
+        local provisionalUtcTimestamp = scm_build_utc_timestamp(year, month, day, hour24, min24, 0)
+        local timezoneContext = scm_resolve_timezone_context(sourceTimezone, provisionalUtcTimestamp)
+        local offsetSeconds = timezoneContext and timezoneContext.offsetSeconds or 0
+        local eventTimestamp = provisionalUtcTimestamp - offsetSeconds
+
+        local timing = {
+            eventTimestamp = eventTimestamp,
+            timezoneContext = timezoneContext,
+            sourceTimezoneDisplay = timezoneContext and timezoneContext.resolvedName or nil,
+            sourceUtcOffsetHours = timezoneContext and timezoneContext.offsetHours or nil,
+            sourceUtcOffsetSeconds = offsetSeconds,
+            sourceTimezoneSupported = timezoneContext and timezoneContext.isSupported or false,
+            targetIsDst = timezoneContext and timezoneContext.targetIsDst or false,
+        }
+
+        return refresh_timing_for_event_timestamp(timing)
+    end
+
+    local function delta_for(hour24, min24)
+        if usableDateInfo then
+            local timing = build_event_timing(usableDateInfo.year, usableDateInfo.month, usableDateInfo.day, hour24, min24)
+            return math.floor(timing.diffSeconds / 60), timing
+        end
+
+        if tomorrowInfo then
+            local timing = build_event_timing(nowTable.year, nowTable.month, nowTable.day + 1, hour24, min24)
+            return math.floor(timing.diffSeconds / 60), timing
+        end
+
+        if weekdayInfo then
+            local currentWday = (nowTable and nowTable.wday) or os.date("*t").wday
+            local dayOffset = (weekdayInfo.wday - currentWday) % 7
+            local timing = build_event_timing(nowTable.year, nowTable.month, nowTable.day + dayOffset, hour24, min24)
+            if dayOffset == 0 and timing.eventTimestamp <= nowEpoch then
+                timing.eventTimestamp = timing.eventTimestamp + (7 * 24 * 60 * 60)
+                timing = refresh_timing_for_event_timestamp(timing)
+            end
+            return math.floor(timing.diffSeconds / 60), timing
+        end
+
+        local timing = build_event_timing(nowTable.year, nowTable.month, nowTable.day, hour24, min24)
+        if timing.eventTimestamp < nowEpoch then
+            timing.eventTimestamp = timing.eventTimestamp + (24 * 60 * 60)
+            timing = refresh_timing_for_event_timestamp(timing)
+        end
+        return math.floor(timing.diffSeconds / 60), timing
+    end
+
+    local function build_result(resolvedAmpm, hour24, minute24, explicitMeridiemValue, inferredMeridiemValue, ambiguousValue, explicit24HourValue)
+        local minutesUntil, timing = delta_for(hour24, minute24)
+        return {
+            resolvedAmpm = resolvedAmpm,
+            resolvedHour24 = hour24,
+            resolvedMinute24 = minute24,
+            explicitMeridiem = explicitMeridiemValue,
+            inferredMeridiem = inferredMeridiemValue,
+            ambiguous = ambiguousValue,
+            explicit24Hour = explicit24HourValue,
+            minutesUntil = minutesUntil,
+            nowTimestamp = nowEpoch,
+            eventTimestamp = timing and timing.eventTimestamp or nil,
+            diffSeconds = timing and timing.diffSeconds or nil,
+            sourceUtcOffsetHours = timing and timing.sourceUtcOffsetHours or nil,
+            sourceUtcOffsetSeconds = timing and timing.sourceUtcOffsetSeconds or nil,
+            sourceTimezoneDisplay = timing and timing.sourceTimezoneDisplay or nil,
+            sourceTimezoneSupported = timing and timing.sourceTimezoneSupported or false,
+            targetIsDst = timing and timing.targetIsDst or false,
+        }
+    end
+
+    if detectedAmpm then
+        local hour24, minute24 = scm_convert_12h_to_24h(hour, minute, detectedAmpm)
+        return build_result(detectedAmpm, hour24, minute24, true, false, false, false)
+    end
+    if explicit24Hour or hour > 12 then
+        return build_result(nil, hour, minute, false, false, false, true)
+    end
+    local amHour24, amMinute24 = scm_convert_12h_to_24h(hour, minute, "AM")
+    local pmHour24, pmMinute24 = scm_convert_12h_to_24h(hour, minute, "PM")
+    local amResult = build_result("AM", amHour24, amMinute24, false, true, true, false)
+    local pmResult = build_result("PM", pmHour24, pmMinute24, false, true, true, false)
+    if amResult.minutesUntil <= pmResult.minutesUntil then
+        return amResult
+    end
+    return pmResult
+end
+
+local function scm_replace_range(text, startPos, endPos, replacement)
+    if not startPos or not endPos or startPos < 1 or endPos < startPos then return text end
+    local before = startPos > 1 and text:sub(1, startPos - 1) or ""
+    local after = endPos < #text and text:sub(endPos + 1) or ""
+    return before .. replacement .. after
+end
+
+local function scm_apply_replacements(text, replacements)
+    table.sort(replacements, function(a, b) return a.startPos > b.startPos end)
+    local out = text
+    for _, rep in ipairs(replacements) do out = scm_replace_range(out, rep.startPos, rep.endPos, rep.replacement) end
+    return out
+end
+
+
+local SCM_ESO_LINK_PLACEHOLDER_PREFIX = "__SCMESOLINK"
+local SCM_ESO_LINK_PLACEHOLDER_SUFFIX = "__"
+
+local function scm_index_to_alpha(index)
+    local n = tonumber(index) or 1
+    if n < 1 then n = 1 end
+    local chars = {}
+    while n > 0 do
+        local rem = (n - 1) % 26
+        table.insert(chars, 1, string.char(string.byte("A") + rem))
+        n = math.floor((n - 1) / 26)
+    end
+    return table.concat(chars)
+end
+
+local function scm_map_protected_pos_to_original(pos, protectedSegments)
+    if type(pos) ~= "number" then return pos end
+    local mappedPos = pos
+    for _, segment in ipairs(protectedSegments or {}) do
+        if pos > segment.placeholderEnd then
+            mappedPos = mappedPos + (segment.originalLength - segment.placeholderLength)
+        end
+    end
+    return mappedPos
+end
+
+function SmartChatMsg:ProtectEsoLinksInText(text)
+    local source = tostring(text or "")
+    local protectedSegments = {}
+    local replacements = {}
+    local index = 1
+    local searchPos = 1
+
+    while searchPos <= #source do
+        local startPos = source:find("|H", searchPos, true)
+        if not startPos then break end
+
+        local endPos = nil
+        local labelStart = source:find("|h", startPos + 2, true)
+        if labelStart then
+            local labelEnd = source:find("|h", labelStart + 2, true)
+            if labelEnd then
+                endPos = labelEnd + 1
+            end
+        end
+
+        if not endPos then
+            local nextPipe = source:find("|", startPos + 2, true)
+            if nextPipe then
+                endPos = nextPipe
+            end
+        end
+
+        if endPos and endPos >= startPos then
+            local placeholder = SCM_ESO_LINK_PLACEHOLDER_PREFIX .. scm_index_to_alpha(index) .. SCM_ESO_LINK_PLACEHOLDER_SUFFIX
+            table.insert(replacements, {
+                startPos = startPos,
+                endPos = endPos,
+                placeholder = placeholder,
+                original = source:sub(startPos, endPos),
+            })
+            index = index + 1
+            searchPos = endPos + 1
+        else
+            searchPos = startPos + 2
+        end
+    end
+
+    if #replacements == 0 then
+        return source, {}, {}
+    end
+
+    table.sort(replacements, function(a, b) return a.startPos > b.startPos end)
+    local protectedText = source
+    for _, item in ipairs(replacements) do
+        protectedText = scm_replace_range(protectedText, item.startPos, item.endPos, item.placeholder)
+    end
+
+    local runningPos = 1
+    for _, item in ipairs(replacements) do
+        local placeholderStart = protectedText:find(item.placeholder, runningPos, true)
+        if placeholderStart then
+            local placeholderEnd = placeholderStart + #item.placeholder - 1
+            table.insert(protectedSegments, {
+                originalStart = item.startPos,
+                originalEnd = item.endPos,
+                originalLength = #item.original,
+                placeholder = item.placeholder,
+                placeholderStart = placeholderStart,
+                placeholderEnd = placeholderEnd,
+                placeholderLength = #item.placeholder,
+                original = item.original,
+            })
+            runningPos = placeholderEnd + 1
+        end
+    end
+
+    return protectedText, protectedSegments, replacements
+end
+
+function SmartChatMsg:RestoreProtectedEsoLinks(text, protectedSegments)
+    local restored = tostring(text or "")
+    for _, segment in ipairs(protectedSegments or {}) do
+        restored = restored:gsub(segment.placeholder, function() return segment.original end, 1)
+    end
+    return restored
+end
+
+function SmartChatMsg:AnalyzeEmbeddedTime(text, defaultTimezone, nowTable)
+    local originalText = tostring(text or "")
+    defaultTimezone = defaultTimezone or SCM_DEFAULT_TIMEZONE
+    nowTable = nowTable or os.date("!*t")
+
+    local protectedText, protectedSegments = self:ProtectEsoLinksInText(originalText)
+    local core, allCores = scm_detect_time_core(protectedText)
+    if not core then return nil, allCores or {} end
+
+    local ampm, ampmStart, ampmEnd, afterAmpmPos = scm_detect_ampm_after_fuzzy(protectedText, core.endPos + 1)
+    if not scm_is_valid_base_time(core.hour, core.minute, ampm ~= nil) then
+        return nil, allCores or {}
+    end
+
+    local detectedDateInfo = scm_detect_explicit_date(protectedText, nowTable)
+    local usableDateInfo = nil
+    if detectedDateInfo and detectedDateInfo.dayDelta >= 0 then usableDateInfo = detectedDateInfo end
+    local tomorrowInfo = nil
+    local weekdayInfo = scm_detect_weekday(protectedText)
+    if not usableDateInfo then tomorrowInfo = scm_detect_tomorrow(protectedText) end
+    local countdownWeekdayInfo = nil
+    if not usableDateInfo and not tomorrowInfo then countdownWeekdayInfo = weekdayInfo end
+
+    local timezone, explicitTimezone, tzStart, tzEnd, afterTzPos = scm_detect_timezone_after_fuzzy(protectedText, afterAmpmPos, defaultTimezone, nowTable)
+    local resolved = scm_resolve_time(core.hour, core.minute, ampm, core.explicit24Hour, usableDateInfo, tomorrowInfo, countdownWeekdayInfo, nowTable, explicitTimezone and timezone or nil)
+
+    if detectedDateInfo and not detectedDateInfo.hasExplicitYear and usableDateInfo and usableDateInfo.dayDelta == 0 and resolved.minutesUntil < 0 then
+        local rolledYear = usableDateInfo.year + 1
+        local rolledWeekdayInfo = scm_get_weekday_info_for_date(rolledYear, usableDateInfo.month, usableDateInfo.day)
+        usableDateInfo = {
+            startPos = usableDateInfo.startPos,
+            endPos = usableDateInfo.endPos,
+            raw = usableDateInfo.raw,
+            month = usableDateInfo.month,
+            day = usableDateInfo.day,
+            year = rolledYear,
+            originalParsedYear = usableDateInfo.originalParsedYear,
+            hasExplicitYear = false,
+            originalYearText = usableDateInfo.originalYearText,
+            assumedNextYear = true,
+            dayDelta = scm_days_between_dates(rolledYear, usableDateInfo.month, usableDateInfo.day, nowTable),
+            normalizedOutput = scm_format_date_mdy(usableDateInfo.month, usableDateInfo.day, rolledYear),
+            normalizedWeekdayAbbr = rolledWeekdayInfo and rolledWeekdayInfo.abbr or usableDateInfo.normalizedWeekdayAbbr,
+            normalizedWeekdayWday = rolledWeekdayInfo and rolledWeekdayInfo.wday or usableDateInfo.normalizedWeekdayWday,
+            explicitPast = false,
+        }
+        detectedDateInfo = usableDateInfo
+        tomorrowInfo = nil
+        countdownWeekdayInfo = nil
+        resolved = scm_resolve_time(core.hour, core.minute, ampm, core.explicit24Hour, usableDateInfo, tomorrowInfo, countdownWeekdayInfo, nowTable, explicitTimezone and timezone or nil)
+    end
+
+    if detectedDateInfo and detectedDateInfo.hasExplicitYear and resolved.minutesUntil < 0 then
+        detectedDateInfo.explicitPast = true
+        detectedDateInfo.normalizedOutput = scm_format_date_mdy(detectedDateInfo.month, detectedDateInfo.day, detectedDateInfo.year)
+    end
+
+    self:DebugCountdownState("dst_resolution", {
+        inputTimezone = explicitTimezone and (timezone or "nil") or "local",
+        normalizedTimezone = resolved and resolved.sourceTimezoneDisplay or "nil",
+        eventEpoch = resolved and resolved.eventTimestamp or "nil",
+        eventIsDst = resolved and tostring(resolved.targetIsDst) or "nil",
+        sourceOffset = resolved and resolved.sourceUtcOffsetHours or "nil",
+    })
+
+    self:DebugCountdownState("epoch_compare", {
+        now = resolved and resolved.nowTimestamp or scm_get_utc_now(),
+        event = resolved and resolved.eventTimestamp or "nil",
+        diffSeconds = resolved and resolved.diffSeconds or "nil",
+    })
+
+    local displayTimezone = (explicitTimezone and (resolved.sourceTimezoneDisplay or timezone)) or "TZ?"
+    local skipCountdownForMissingTimezone = not explicitTimezone
+    local skipCountdownForUnsupportedTimezone = explicitTimezone and not resolved.sourceTimezoneSupported
+    local timeString = scm_format_time_string(resolved.resolvedHour24, resolved.resolvedMinute24, displayTimezone)
+    local suppressCountdown = (detectedDateInfo and detectedDateInfo.explicitPast) or ((detectedDateInfo and detectedDateInfo.hasExplicitYear) and resolved.minutesUntil < 0) or skipCountdownForMissingTimezone or skipCountdownForUnsupportedTimezone
+    local aboutString = nil
+    local replacementString = timeString
+    if not suppressCountdown then
+        aboutString = "(" .. scm_format_about_duration(resolved.minutesUntil) .. ")"
+        replacementString = timeString .. " " .. aboutString
+    end
+
+    local finalEndPos = core.endPos
+    if ampmEnd then finalEndPos = ampmEnd end
+    if tzEnd then finalEndPos = tzEnd end
+    local replacements = { { startPos = core.startPos, endPos = finalEndPos, replacement = replacementString } }
+    if detectedDateInfo then
+        table.insert(replacements, { startPos = detectedDateInfo.startPos, endPos = detectedDateInfo.endPos, replacement = detectedDateInfo.normalizedOutput })
+        if weekdayInfo then
+            table.insert(replacements, { startPos = weekdayInfo.startPos, endPos = weekdayInfo.endPos, replacement = detectedDateInfo.normalizedWeekdayAbbr or weekdayInfo.abbr })
+        end
+    elseif tomorrowInfo then
+        table.insert(replacements, { startPos = tomorrowInfo.startPos, endPos = tomorrowInfo.endPos, replacement = "tomorrow" })
+    elseif weekdayInfo then
+        table.insert(replacements, { startPos = weekdayInfo.startPos, endPos = weekdayInfo.endPos, replacement = weekdayInfo.abbr })
+    end
+
+    local outputTextProtected = scm_apply_replacements(protectedText, replacements)
+    local outputText = self:RestoreProtectedEsoLinks(outputTextProtected, protectedSegments)
+
+    local originalStartPos = scm_map_protected_pos_to_original(core.startPos, protectedSegments)
+    local originalEndPos = scm_map_protected_pos_to_original(finalEndPos, protectedSegments)
+
+    return {
+        detectedDateRaw = detectedDateInfo and detectedDateInfo.raw or nil,
+        detectedDateValue = detectedDateInfo and string.format("%04d-%02d-%02d", detectedDateInfo.year, detectedDateInfo.month, detectedDateInfo.day) or nil,
+        detectedDateNormalized = detectedDateInfo and detectedDateInfo.normalizedOutput or nil,
+        detectedDateDayDelta = detectedDateInfo and detectedDateInfo.dayDelta or nil,
+        detectedDateAssumedNextYear = detectedDateInfo and detectedDateInfo.assumedNextYear or false,
+        detectedDateExplicitPast = detectedDateInfo and detectedDateInfo.explicitPast or false,
+        detectedDateWeekdayAbbr = detectedDateInfo and detectedDateInfo.normalizedWeekdayAbbr or nil,
+        detectedDateWeekdayWday = detectedDateInfo and detectedDateInfo.normalizedWeekdayWday or nil,
+        dateUsedForCountdown = usableDateInfo and true or false,
+        tomorrowRaw = tomorrowInfo and tomorrowInfo.raw or nil,
+        weekdayAbbr = detectedDateInfo and detectedDateInfo.normalizedWeekdayAbbr or (weekdayInfo and weekdayInfo.abbr or nil),
+        weekdayRaw = weekdayInfo and weekdayInfo.raw or nil,
+        weekdayWday = detectedDateInfo and detectedDateInfo.normalizedWeekdayWday or (weekdayInfo and weekdayInfo.wday or nil),
+        timeString = timeString,
+        detectedTimezone = explicitTimezone and displayTimezone or nil,
+        detectedTimezoneRaw = explicitTimezone and timezone or nil,
+        detectedTimezoneDisplay = displayTimezone,
+        explicitTimezone = explicitTimezone == true,
+        aboutString = aboutString,
+        replacementString = replacementString,
+        suppressCountdown = suppressCountdown,
+        outputText = outputText,
+        startPos = originalStartPos,
+        endPos = originalEndPos,
+        hour = core.hour,
+        minute = core.minute,
+        sourceKind = core.sourceKind,
+        rawCore = core.rawCore,
+        rawMatch = originalText:sub(originalStartPos, originalEndPos),
+        detectedAmpm = ampm,
+        explicitTimezone = explicitTimezone,
+        timezone = displayTimezone,
+        ambiguous = resolved.ambiguous,
+        explicit24Hour = resolved.explicit24Hour,
+        explicitMeridiem = resolved.explicitMeridiem,
+        inferredMeridiem = resolved.inferredMeridiem,
+        resolvedAmpm = resolved.resolvedAmpm,
+        resolvedHour24 = resolved.resolvedHour24,
+        resolvedMinute24 = resolved.resolvedMinute24,
+        minutesUntil = resolved.minutesUntil,
+        nowTimestamp = resolved.nowTimestamp,
+        eventTimestamp = resolved.eventTimestamp,
+        diffSeconds = resolved.diffSeconds,
+        sourceUtcOffsetHours = resolved.sourceUtcOffsetHours,
+        sourceUtcOffsetSeconds = resolved.sourceUtcOffsetSeconds,
+        sourceTimezoneSupported = resolved.sourceTimezoneSupported,
+        targetIsDst = resolved.targetIsDst,
+        coreCandidatesFound = allCores and #allCores or 0,
+        protectedEsoLinks = #protectedSegments,
+    }, allCores or {}
+end
+
+function SmartChatMsg:EmitCountdownDebugResult(label, input, best, all)
+    if not self.debugEnabled then return end
+    d("[SmartChatMsg] --------------------------------------------------")
+    if label and label ~= "" then d("[SmartChatMsg] " .. tostring(label)) end
+    d("[SmartChatMsg] Input: " .. tostring(input))
+    d("[SmartChatMsg] Time String: " .. tostring(best and best.timeString or "nil"))
+    d("[SmartChatMsg] Output: " .. tostring(best and best.outputText or input))
+    if not best then
+        d("[SmartChatMsg] No time found")
+        return
+    end
+    d("[SmartChatMsg] Detected Date Raw: " .. tostring(best.detectedDateRaw))
+    d("[SmartChatMsg] Detected Date Value: " .. tostring(best.detectedDateValue))
+    d("[SmartChatMsg] Detected Date Normalized: " .. tostring(best.detectedDateNormalized))
+    d("[SmartChatMsg] Detected Date Day Delta: " .. tostring(best.detectedDateDayDelta))
+    d("[SmartChatMsg] Detected Date Assumed Next Year: " .. tostring(best.detectedDateAssumedNextYear))
+    d("[SmartChatMsg] Detected Date Explicit Past: " .. tostring(best.detectedDateExplicitPast))
+    d("[SmartChatMsg] Detected Date Weekday Abbr: " .. tostring(best.detectedDateWeekdayAbbr))
+    d("[SmartChatMsg] Date Used For Countdown: " .. tostring(best.dateUsedForCountdown))
+    d("[SmartChatMsg] Tomorrow Raw: " .. tostring(best.tomorrowRaw))
+    d("[SmartChatMsg] Weekday Raw: " .. tostring(best.weekdayRaw))
+    d("[SmartChatMsg] Weekday Abbr: " .. tostring(best.weekdayAbbr))
+    d("[SmartChatMsg] Countdown Suppressed: " .. tostring(best.suppressCountdown))
+    d("[SmartChatMsg] About String: " .. tostring(best.aboutString))
+    d("[SmartChatMsg] Replacement: " .. tostring(best.replacementString))
+    d("[SmartChatMsg] Raw core: " .. tostring(best.rawCore))
+    d("[SmartChatMsg] Source kind: " .. tostring(best.sourceKind))
+    d("[SmartChatMsg] Detected AM/PM: " .. tostring(best.detectedAmpm))
+    d("[SmartChatMsg] Timezone: " .. tostring(best.timezone))
+    d("[SmartChatMsg] Current Timestamp: " .. tostring(best.nowTimestamp))
+    d("[SmartChatMsg] Event Timestamp: " .. tostring(best.eventTimestamp))
+    d("[SmartChatMsg] Diff Seconds: " .. tostring(best.diffSeconds))
+    d("[SmartChatMsg] Source UTC Offset Hours: " .. tostring(best.sourceUtcOffsetHours))
+    d("[SmartChatMsg] Source UTC Offset Seconds: " .. tostring(best.sourceUtcOffsetSeconds))
+    d("[SmartChatMsg] Ambiguous: " .. tostring(best.ambiguous))
+    d("[SmartChatMsg] Inferred meridiem: " .. tostring(best.inferredMeridiem))
+    d("[SmartChatMsg] Resolved AM/PM: " .. tostring(best.resolvedAmpm))
+    d("[SmartChatMsg] Resolved 24-hour: " .. string.format("%02d:%02d", best.resolvedHour24, best.resolvedMinute24))
+    d("[SmartChatMsg] Minutes until: " .. tostring(best.minutesUntil))
+    d("[SmartChatMsg] Core candidates found: " .. tostring(all and #all or best.coreCandidatesFound or 0))
+    d("[SmartChatMsg] Protected ESO Links: " .. tostring(best.protectedEsoLinks or 0))
+end
+
+function SmartChatMsg:FindEmbeddedTimeDetails(text)
+    local best = self:AnalyzeEmbeddedTime(text)
+    if not best then return nil, nil, nil, nil end
+    return best.rawMatch, best.resolvedHour24, best.resolvedMinute24, best.timezone
+end
+
+function SmartChatMsg:ExtractEmbeddedTimeParts(text)
+    local _, hour, minute, timezoneToken = self:FindEmbeddedTimeDetails(text)
+    return hour, minute, timezoneToken
+end
+
+function SmartChatMsg:FindEmbeddedTimeSubstring(text)
+    local best = self:AnalyzeEmbeddedTime(text)
+    return best and best.rawMatch or nil
+end
+
+function SmartChatMsg:GetExpandedDetectedTimeSpan(sourceText, timeMatch)
+    local best = self:AnalyzeEmbeddedTime(sourceText)
+    if not best then return nil end
+    return {
+        startIndex = best.startPos,
+        endIndex = best.endPos,
+        baseMatchStart = best.startPos,
+        baseMatchEnd = best.endPos,
+        fullMatch = best.rawMatch,
+        replacedSubstring = best.rawMatch,
+    }
+end
+
+function SmartChatMsg:GetEmbeddedDayOffset(text, nowEpoch, timeMatch)
+    local best = self:AnalyzeEmbeddedTime(text, SCM_DEFAULT_TIMEZONE, os.date("!*t", tonumber(nowEpoch) or scm_get_utc_now()))
+    if not best then return nil end
+    if best.detectedDateDayDelta ~= nil then return best.detectedDateDayDelta end
+    if best.tomorrowRaw then return 1 end
+    if best.weekdayWday then
+        local nowTable = os.date("!*t", tonumber(nowEpoch) or scm_get_utc_now())
+        return (best.weekdayWday - nowTable.wday) % 7
+    end
+    return 0
+end
+
+function SmartChatMsg:GetCountdownUntilEmbeddedTimeText(text)
+    local best = self:AnalyzeEmbeddedTime(text)
+    if not best or best.suppressCountdown then return nil, nil end
+    local countdownText = best.aboutString and best.aboutString:gsub("^%(", ""):gsub("%)$", "") or nil
+    local metadata = {
+        timeMatch = best.rawMatch,
+        sourceTz = best.timezone,
+        hasExplicitMeridiem = best.explicitMeridiem,
+        shouldUseNearestFuture12Hour = best.ambiguous,
+        assumedMeridiem = best.inferredMeridiem and best.resolvedAmpm or nil,
+        resolvedHour24 = best.resolvedHour24,
+    }
+    return countdownText, metadata
+end
+
+function SmartChatMsg:InsertCountdownIntoMessageText(text)
+    local source = tostring(text or "")
+    local best, all = self:AnalyzeEmbeddedTime(source)
+    if self.debugEnabled then
+        self:EmitCountdownDebugResult("Countdown Debug", source, best, all)
+    end
+    -- Use main's improved parser, but preserve the template's literal wording
+    -- and expose countdown insertion metadata for incoming peer matching.
+    return self:InsertCountdownPreservingTemplate(source)
+end
+
+function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName)
+    local result = self:ResolveScheduledEventTokens(text,commandId,guildName)
+    local timeOfDay = self:GetCurrentTimeTokenValue()
+    local substitutions = {
+        ["timeofday"] = timeOfDay,
+        ["greeting"] = timeOfDay,
+        ["morning"] = timeOfDay,
+        ["time"] = timeOfDay,
+        ["guild"] = self:Trim(guildName or ""),
+        ["zone"] = self:GetCurrentZoneName() or "",
+    }
+    result = result:gsub("%%([%a]+)%%", function(tokenName)
+        local normalizedToken = zo_strlower(tokenName or "")
+        local replacement = substitutions[normalizedToken]
+        if replacement ~= nil and replacement ~= "" then return replacement end
+        return "%" .. tostring(tokenName or "") .. "%"
+    end)
+    result = self:InsertCountdownIntoMessageText(result)
+    return result
+end
+
+
+function SmartChatMsg:ShowQueuedExecutionNotification(commandDisplayName, guildName)
+    local message = string.format("%s queued for execution for %s.", tostring(commandDisplayName or "/command"), tostring(guildName or "unknown guild"))
+
+    if self.debugEnabled then
+        d("[SmartChatMsg] " .. message)
+        return
+    end
+
+    if CENTER_SCREEN_ANNOUNCE then
+        CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
+    else
+        ZO_Alert(UI_ALERT_CATEGORY_ALERT, SOUNDS.DEFAULT_CLICK, message)
+    end
+end
+
+function SmartChatMsg:GetQueueEntryDisplayGuildName(entry)
+    local guildName = self:Trim(type(entry) == "table" and entry.guildName or "")
+    if guildName ~= "" then
+        return guildName
+    end
+
+    local guildIndex = type(entry) == "table" and tonumber(entry.guildIndex) or nil
+    if guildIndex and guildIndex >= 1 and guildIndex <= 5 then
+        local resolvedGuildName = self:GetGuildNameByIndex(guildIndex)
+        resolvedGuildName = self:Trim(resolvedGuildName or "")
+        if resolvedGuildName ~= "" then
+            return resolvedGuildName
+        end
+    end
+
+    return "Unknown Guild"
+end
+
+function SmartChatMsg:GetQueueEntryDisplayCommandName(entry)
+    local commandName = nil
+    if type(entry) == "table" then
+        commandName = self:GetCommandNameById(entry.commandId)
+        if self:Trim(commandName or "") == "" then
+            commandName = entry.slashCommandName
+        end
+    end
+
+    commandName = self:Trim(commandName or "")
+    if commandName ~= "" then
+        return commandName
+    end
+
+    return "Unknown Command"
+end
+
+function SmartChatMsg:GetQueueEntryDisplaySource(entry)
+    local source = self:Trim(type(entry) == "table" and entry.source or "")
+    if source == "" then
+        return "unknown"
+    end
+
+    local lookup = {
+        startup = "Startup",
+        slash = "Manual",
+        manual = "Manual",
+        reminder = "Repeat",
+        ["repeat"] = "Repeat",
+        autopopulate = "Auto Populate",
+        zone = "Auto Populate",
+        scheduled = "Scheduled",
+    }
+
+    return lookup[zo_strlower(source)] or source
+end
+
+function SmartChatMsg:GetActiveQueueItemNextAttemptSeconds(entry)
+    if type(entry) ~= "table" or type(entry.id) ~= "string" or entry.id == "" then
+        return nil
+    end
+
+    local pendingState = self.pendingRestoreState
+    if type(pendingState) ~= "table" then
+        return nil
+    end
+
+    local metadata = pendingState.metadata
+    if type(metadata) ~= "table" or metadata.queueItemId ~= entry.id then
+        return nil
+    end
+
+    local timeoutSeconds = tonumber(pendingState.timeoutSeconds)
+    local armedAtMs = tonumber(pendingState.armedAt)
+    local nowMs = GetFrameTimeMilliseconds and tonumber(GetFrameTimeMilliseconds()) or nil
+    if not timeoutSeconds or not armedAtMs or not nowMs then
+        return nil
+    end
+
+    local elapsedSeconds = math.max(0, (nowMs - armedAtMs) / 1000)
+    local timeoutRemainingSeconds = math.max(0, math.ceil(timeoutSeconds - elapsedSeconds))
+
+    if metadata.reminderRepeat == true then
+        local commandId = metadata.commandId
+        local guildName = metadata.guildName
+        if type(commandId) ~= "string" or commandId == "" or type(guildName) ~= "string" or guildName == "" then
+            return timeoutRemainingSeconds
+        end
+
+        local retryMinutes = self:GetGuildEffectiveReminderRetryMinutes(commandId, guildName) or 0
+        if retryMinutes > 0 then
+            return timeoutRemainingSeconds + (retryMinutes * 60)
+        end
+
+        local reminderMinutes = self:GetGuildReminderMinutes(commandId, guildName) or 0
+        if reminderMinutes > 0 then
+            return timeoutRemainingSeconds + (reminderMinutes * 60)
+        end
+
+        return timeoutRemainingSeconds
+    end
+
+    local sourceText = zo_strlower(tostring(entry.source or metadata.source or ""))
+    if metadata.autoPopulate == true or sourceText == "autopopulate" or sourceText == "zone" then
+        return nil
+    end
+
+    return nil
+end
+
+function SmartChatMsg:DumpQueueSummaryToChat()
+    local queue = self.startupQueue or {}
+    local current = self.startupQueueCurrent
+    local count = 0
+
+    if type(current) == "table" then
+        count = count + 1
+    end
+    count = count + #queue
+
+    if count <= 0 then
+        d("[SmartChatMsg] There are no pending queued commands.")
+        return
+    end
+
+    d("[SmartChatMsg] Pending queued commands:")
+
+    local order = 0
+    if type(current) == "table" then
+        order = order + 1
+        local guildName = self:GetQueueEntryDisplayGuildName(current)
+        local commandName = self:GetQueueEntryDisplayCommandName(current)
+        local sourceText = self:GetQueueEntryDisplaySource(current)
+        local nextAttemptSeconds = self:GetActiveQueueItemNextAttemptSeconds(current)
+        local nextAttemptText = nextAttemptSeconds ~= nil and string.format(" | Next Attempt In: %ss", tostring(nextAttemptSeconds)) or ""
+        d(string.format("[SmartChatMsg] %d) [ACTIVE] %s -> %s | Source: %s%s", order, guildName, commandName, sourceText, nextAttemptText))
+    end
+
+    for _, entry in ipairs(queue) do
+        order = order + 1
+        local guildName = self:GetQueueEntryDisplayGuildName(entry)
+        local commandName = self:GetQueueEntryDisplayCommandName(entry)
+        local sourceText = self:GetQueueEntryDisplaySource(entry)
+        d(string.format("[SmartChatMsg] %d) %s -> %s | Source: %s", order, guildName, commandName, sourceText))
+    end
+
+    d(string.format("[SmartChatMsg] Total queued items: %d", count))
+end
+
+function SmartChatMsg:HandleScmDebugCommand(paramText)
+    local rawText = self:Trim(paramText or "")
+    local normalized = zo_strlower(rawText)
+    local args = {}
+    for token in string.gmatch(rawText, "%S+") do table.insert(args, token) end
+    local subCommand = args[1] and zo_strlower(args[1]) or ""
+    if normalized == "" then
+        self.debugEnabled = not self.debugEnabled
+        d("[SmartChatMsg] Debug is now " .. (self.debugEnabled and "ON" or "OFF"))
+        return
+    elseif normalized == "on" or normalized == "1" or normalized == "true" then
+        self.debugEnabled = true
+        d("[SmartChatMsg] Debug is now ON")
+        return
+    elseif normalized == "off" or normalized == "0" or normalized == "false" then
+        self.debugEnabled = false
+        d("[SmartChatMsg] Debug is now OFF")
+        return
+    elseif normalized == "status" then
+        d("[SmartChatMsg] Debug is " .. (self.debugEnabled and "ON" or "OFF"))
+        return
+    elseif subCommand == "queue" then
+        self:DumpQueueSummaryToChat()
+        self:DumpQueueState("slash command")
+        return
+    elseif subCommand == "countdown" then
+        local testText = rawText:match("^%S+%s+(.+)$")
+        if not testText or self:Trim(testText) == "" then
+            d("[SmartChatMsg] Usage: /scmdebug countdown <text>")
+            return
+        end
+        local best, all = self:AnalyzeEmbeddedTime(testText)
+        self:EmitCountdownDebugResult("Countdown Debug", testText, best, all)
+        return
+    end
+    d("[SmartChatMsg] Usage: /scmdebug, /scmdebug on, /scmdebug off, /scmdebug status, /scmdebug queue, /scmdebug countdown <text>")
+end

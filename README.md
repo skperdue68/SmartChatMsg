@@ -28,7 +28,7 @@ Reload the UI after updating. Export your settings before trying a new setup.
 
 The runtime files are `SCM_MessageSharing.lua`, `SCM_SavedVars.lua`,
 `SCM_Calendar.lua`, `SCM_Schedules.lua`, `SCM_Scheduler.lua`,
-`SCM_ScheduleSettings.lua`, `SCM_Settings.lua`, `SCM_IncomingChat.lua`, and
+`SCM_ScheduleSettings.lua`, `SCM_StatusPanel.lua`, `SCM_Settings.lua`, `SCM_IncomingChat.lua`, and
 `SmartChatMsg.lua`, loaded by `SmartChatMsg.txt`.
 
 ## First setup and commands

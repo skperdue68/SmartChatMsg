@@ -50,6 +50,17 @@ function SmartChatMsg:ProcessChatPopulationQueue()
                 valid=GetTimeStamp()>=self:GetScheduledDueAt(request.commandId,request.guildName,phase)
             end
         end
+        if valid and request.metadata.reminderRepeat then
+            valid=self:IsReminderAutomationActive(request.commandId,request.guildName)
+                and self:GetGuildLastUsedAt(request.commandId,request.guildName)==request.metadata.lastUsedAt
+        elseif valid and request.metadata.autoPopulate and not request.metadata.scheduledDelivery then
+            local active=self:GetActiveAutoPopulate()
+            local zone=self:GetEffectiveAutoPopulateZoneId(self:GetPlayerZoneId())
+            valid=active and active.commandId==request.commandId
+                and self:StringsEqualIgnoreCase(active.guildName,request.guildName)
+                and zone and zone==request.metadata.zoneId
+                and not self:ShouldSkipAutoPopulateForZone(request.commandId,request.guildName,zone)
+        end
         if valid then
             request.metadata.queuedDelivery=true
             local ok=self:PopulateChatBufferForCommand(request.commandId,request.guildName,request.channelOverride,request.metadata)

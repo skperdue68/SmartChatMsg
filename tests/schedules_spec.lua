@@ -251,7 +251,8 @@ test("busy startup uses lower priority than manual and retains confirmation owne
     f.entry("m","other","Blue Traders","Manual message.")
     scm:SetGuildRunAt("ad","Amber Traders","STARTUP")
     scm.startupQueueInitialized=true
-    scm.startupQueue={{commandId="ad",guildName="Amber Traders",paramText="1"}}
+    scm.startupQueue={}
+    assert(scm:QueueCommandExecution("ad", nil, "1", "startup", {guildName="Amber Traders",guildIndex=1,paramText="1"}))
     CHAT_SYSTEM.textEntry.EditControl.text="Typing"; scm:ProcessStartupQueue()
     local queued=scm.chatPopulationQueue[scm:GetReminderStateKey("ad","Amber Traders")]
     assert(queued); eq(queued.priority,2); assert(queued.metadata.startupQueue)
@@ -259,8 +260,11 @@ test("busy startup uses lower priority than manual and retains confirmation owne
     scm:PopulateChatBufferForCommand("other","Blue Traders")
     CHAT_SYSTEM.textEntry.EditControl.text=""; scm:ProcessChatPopulationQueue()
     eq(scm.pendingRestoreState.metadata.commandId,"other")
-    sent(); scm:ProcessChatPopulationQueue(); assert(scm.pendingRestoreState.metadata.startupQueue)
-    sent(); eq(scm.startupQueueCurrent,nil)
+    eq(scm.pendingRestoreState.metadata.queueItemId,nil)
+    local startupId=scm.startupQueueCurrent.id
+    sent(); eq(scm.startupQueueCurrent.id,startupId); scm:ProcessChatPopulationQueue(); assert(scm.pendingRestoreState.metadata.startupQueue)
+    eq(scm.pendingRestoreState.metadata.queueItemId,startupId)
+    sent(); eq(scm.startupQueueCurrent,nil); eq(#scm.startupQueue,0)
 end)
 test("malformed schedule message import returns an error and leaves saved data unchanged", function()
     savedRuntime(); local before=scm:GetGuildSchedule("ad","Amber Traders")
@@ -294,6 +298,49 @@ test("peer usage while paused advances the due time without resuming", function(
     scm:ResumeGuildSchedule("ad","Amber Traders")
     eq(scm:GetScheduledDueAt("ad","Amber Traders","BEFORE"),now+360)
     eq(scm.pendingRestoreState,nil)
+end)
+test("busy repeat is canceled by peer usage before another command finishes", function()
+    scm.startupQueue={}
+    scm:SetGuildReminderMinutes("ad","Amber Traders",5)
+    scm:MarkCommandUsed("ad","Amber Traders","1",1)
+    scm:SetReminderAutomationActive("ad","Amber Traders",true)
+    f.entry("m","other","Blue Traders","Manual message.")
+    scm:PopulateChatBufferForCommand("other","Blue Traders")
+    local used=scm:GetGuildLastUsedAt("ad","Amber Traders")
+    scm:TriggerReminderPopulate("ad","Amber Traders",used)
+    assert(scm.chatPopulationQueue[scm:GetReminderStateKey("ad","Amber Traders")])
+    now=now+1
+    f.incoming(CHAT_CHANNEL_ZONE,"Amber Traders trial Friday at 8 PM EDT.")
+    sent(); scm:ProcessChatPopulationQueue(); scm:ProcessStartupQueue()
+    eq(scm.pendingRestoreState,nil); eq(#scm.startupQueue,0)
+    assert(scm:IsReminderAutomationActive("ad","Amber Traders"))
+end)
+test("off cancels a busy repeat without reactivating it after another send", function()
+    scm.startupQueue={}
+    scm:SetGuildReminderMinutes("ad","Amber Traders",5)
+    scm:MarkCommandUsed("ad","Amber Traders","1",1)
+    scm:SetReminderAutomationActive("ad","Amber Traders",true)
+    f.entry("m","other","Blue Traders","Manual message.")
+    scm:PopulateChatBufferForCommand("other","Blue Traders")
+    scm:TriggerReminderPopulate("ad","Amber Traders",scm:GetGuildLastUsedAt("ad","Amber Traders"))
+    assert(scm.chatPopulationQueue[scm:GetReminderStateKey("ad","Amber Traders")])
+    scm:HandleDynamicSlashCommand("ad","/ad","1 off")
+    sent(); scm:ProcessChatPopulationQueue(); scm:ProcessStartupQueue()
+    eq(scm.pendingRestoreState,nil); eq(#scm.startupQueue,0)
+    eq(scm:IsReminderAutomationActive("ad","Amber Traders"),false)
+end)
+test("manual delivery outranks an ordinary repeat queued earlier", function()
+    scm.startupQueue={}
+    scm:SetGuildReminderMinutes("ad","Amber Traders",5)
+    scm:MarkCommandUsed("ad","Amber Traders","1",1)
+    scm:SetReminderAutomationActive("ad","Amber Traders",true)
+    CHAT_SYSTEM.textEntry.EditControl.text="Typing"
+    scm:TriggerReminderPopulate("ad","Amber Traders",scm:GetGuildLastUsedAt("ad","Amber Traders"))
+    eq(scm.chatPopulationQueue[scm:GetReminderStateKey("ad","Amber Traders")].priority,3)
+    f.entry("m","other","Blue Traders","Manual message.")
+    scm:PopulateChatBufferForCommand("other","Blue Traders")
+    CHAT_SYSTEM.textEntry.EditControl.text=""; scm:ProcessChatPopulationQueue()
+    eq(scm.pendingRestoreState.metadata.commandId,"other")
 end)
 local failures=0
 for _,case in ipairs(tests) do

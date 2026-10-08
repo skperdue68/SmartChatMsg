@@ -17,6 +17,7 @@ SmartChatMsg.defaults = {
     defaultGuildIndex = nil,
     revertChatSeconds = 60,
     activeAutoPopulate = nil, -- { commandId = "...", guildName = "..." }
+    globalExecutionStatus = "available",
     statusPanelState = {
         visible = false,
         offsetX = -40,
@@ -58,6 +59,12 @@ function SmartChatMsg:InitializeSavedVars()
     end
 
     self.savedVars.revertChatSeconds = self:NormalizeRevertChatSeconds(self.savedVars.revertChatSeconds)
+
+    if self.savedVars.globalExecutionStatus ~= "busy" and self.savedVars.globalExecutionStatus ~= "available" then
+        self.savedVars.globalExecutionStatus = "available"
+    end
+
+    self.savedVars.globalExecutionStatus = "available"
 
     if type(self.savedVars.statusPanelState) ~= "table" then
         self.savedVars.statusPanelState = {
