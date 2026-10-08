@@ -1157,7 +1157,7 @@ function SmartChatMsg:InsertCountdownIntoMessageText(text)
 end
 
 function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName)
-    local result = tostring(text or "")
+    local result = self:ResolveScheduledEventTokens(text, commandId, guildName)
     local timeOfDay = self:GetCurrentTimeTokenValue()
 
     local substitutions = {
@@ -1591,6 +1591,10 @@ function SmartChatMsg:TriggerReminderPopulate(commandId, guildName, expectedLast
 end
 
 function SmartChatMsg:ScheduleCommandReminder(commandId, guildName, extraDelaySeconds)
+    if self:GetGuildRunAt(commandId, guildName) == "SCHEDULED" then
+        self:ScheduleNextScheduledDelivery(commandId, guildName, extraDelaySeconds)
+        return
+    end
     local command = self:GetCommandById(commandId)
     if not command then
         self:DebugLog("Reminder debug: schedule aborted, command not found for commandId=" .. tostring(commandId))
@@ -2090,21 +2094,28 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
         end
     )
 
+    local armedState=self.pendingRestoreState
     EVENT_MANAGER:RegisterForUpdate(self.restoreWatcherTimeoutName, timeoutSeconds * 1000, function()
         local pendingState = SmartChatMsg.pendingRestoreState
+        if pendingState~=armedState then return end
         local pendingTimeoutSeconds = pendingState and pendingState.timeoutSeconds or timeoutSeconds
         SmartChatMsg:DebugLog("Restore watcher timed out after " .. tostring(pendingTimeoutSeconds) .. " seconds")
-        if pendingState and pendingState.previousChannel then
+        local edit=CHAT_SYSTEM and CHAT_SYSTEM.textEntry and CHAT_SYSTEM.textEntry.EditControl
+        local untouched=edit and edit.GetText and edit:GetText()==pendingState.rawExpectedText
+        if untouched and pendingState.previousChannel then
             SmartChatMsg:DebugLog("Timeout restore attempting previous channel: " .. SmartChatMsg:FormatChatChannelInfo(pendingState.previousChannel))
             local restored = SmartChatMsg:RestoreChatChannel(pendingState.previousChannel)
             SmartChatMsg:DebugLog("Timeout restore result=" .. tostring(restored))
         end
 
-        local cleared = SmartChatMsg:ClearPendingChatBuffer()
+        local cleared = untouched and SmartChatMsg:ClearPendingChatBuffer()
         SmartChatMsg:DebugLog("Timeout clear pending chat result=" .. tostring(cleared))
 
         if pendingState and type(pendingState.metadata) == "table" and pendingState.metadata.reminderRepeat == true then
             SmartChatMsg:HandleReminderPopulateTimeout(pendingState.metadata)
+        end
+        if pendingState and type(pendingState.metadata) == "table" and pendingState.metadata.scheduledDelivery then
+            SmartChatMsg:HandleScheduledPopulateTimeout(pendingState.metadata)
         end
 
         if pendingState and type(pendingState.metadata) == "table" and pendingState.metadata.startupQueue == true then
@@ -2334,6 +2345,11 @@ end
 
 
 function SmartChatMsg:HandleZoneAutoPopulate()
+    local scheduledActive = self:GetActiveAutoPopulate()
+    if scheduledActive and self:GetGuildRunAt(scheduledActive.commandId, scheduledActive.guildName) == "SCHEDULED" then
+        self:TickSchedules()
+        return
+    end
     local currentZoneId = self:GetPlayerZoneId()
     local trackedZoneId = self:GetEffectiveAutoPopulateZoneId(currentZoneId)
     local previousZoneId = self.lastKnownZoneId
@@ -2442,6 +2458,19 @@ function SmartChatMsg:HandleZoneAutoPopulate()
 end
 
 function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channelOverride, restoreMetadata)
+    local startup=self.processingStartupEntry
+    if startup and startup.commandId==commandId and self:StringsEqualIgnoreCase(startup.guildName,guildName) then
+        local metadata={}; for k,v in pairs(restoreMetadata or {}) do metadata[k]=v end
+        metadata.startupQueue=true; restoreMetadata=metadata
+    end
+    local isScheduled = self:GetGuildRunAt(commandId, guildName) == "SCHEDULED"
+    if isScheduled and self:GetGuildScheduleState(commandId, guildName) ~= "RUNNING" then
+        return false, "Schedule is outside its active window or paused."
+    end
+    if not (restoreMetadata and restoreMetadata.queuedDelivery) and self:IsChatPopulationBusy() then
+        return self:QueueChatPopulation(commandId, guildName, channelOverride, restoreMetadata,
+            restoreMetadata and restoreMetadata.startupQueue and 2 or 1)
+    end
     self:DebugLog(string.format(
         "PopulateChatBufferForCommand start commandId=%s guildName=%s channelOverride=%s",
         tostring(commandId),
@@ -2449,7 +2478,8 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
         tostring(channelOverride)
     ))
 
-    local messages = self:GetMessageEntriesForCommandAndGuild(commandId, guildName)
+    local messages = isScheduled and self:GetScheduledMessageEntries(commandId, guildName)
+        or self:GetMessageEntriesForCommandAndGuild(commandId, guildName)
     self:DebugLog("PopulateChatBufferForCommand message count=" .. tostring(#messages))
     if #messages == 0 then
         self:DebugLog("PopulateChatBufferForCommand aborted: no saved messages")
@@ -2495,6 +2525,10 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
     watcherMetadata.commandId = watcherMetadata.commandId or commandId
     watcherMetadata.guildName = watcherMetadata.guildName or guildName
     watcherMetadata.selectedEntryId = selectedEntry.id
+    if isScheduled then
+        watcherMetadata.scheduledDelivery = true
+        watcherMetadata.scheduledPhase = self:GetSchedulePhase(self:GetGuildSchedule(commandId, guildName), GetTimeStamp())
+    end
 
     local armedRestore = self:ArmPendingRestoreState(previousChannelInfo, resolvedMessageText, watcherMetadata)
     self:DebugLog("PopulateChatBufferForCommand armedRestore=" .. tostring(armedRestore))
@@ -2502,6 +2536,10 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
     if channel == "Zone" then
         self:DebugLog("PopulateChatBufferForCommand starting chat input for Zone")
         StartChatInput(resolvedMessageText, CHAT_CHANNEL_ZONE)
+        if isScheduled then
+            local runtime = self.scheduleRuntime[self:GetReminderStateKey(commandId, guildName)]
+            if runtime then runtime.zonePending = false end
+        end
         self:PlayPopulateSound(commandId, guildName)
         return true
     end
@@ -2666,7 +2704,19 @@ function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, raw
 
     local commandDisplayName = self:GetSlashCommandDisplayName(commandId, slashCommandName)
 
+    if self:GetGuildRunAt(commandId, guildName) == "SCHEDULED" then
+        if stopAutomation then
+            self:PauseGuildSchedule(commandId, guildName)
+            self:ShowStatusMessage(commandDisplayName .. " schedule paused for " .. guildName .. ". Resume it in scheduling settings.")
+        else
+            local ok, reason = self:RequestScheduledDelivery(commandId, guildName, true)
+            if ok then self:ProcessChatPopulationQueue() else self:ShowStatusMessage(reason) end
+        end
+        return
+    end
+
     if stopAutomation then
+        self:CancelQueuedChatPopulation(commandId, guildName)
         local stoppedParts = {}
 
         if self:ToggleOffActiveAutoPopulateIfMatching(commandId, guildName) then
@@ -2949,7 +2999,9 @@ function SmartChatMsg:ProcessStartupQueue()
         tostring(#queue)
     ))
 
+    self.processingStartupEntry=entry
     self:HandleDynamicSlashCommand(entry.commandId, slashCommandName, entry.paramText)
+    self.processingStartupEntry=nil
 
     local pendingState = self.pendingRestoreState
     local metadata = pendingState and pendingState.metadata or nil
@@ -2960,6 +3012,8 @@ function SmartChatMsg:ProcessStartupQueue()
         return
     end
 
+    local queued=self.chatPopulationQueue and self.chatPopulationQueue[self:GetReminderStateKey(entry.commandId,entry.guildName)]
+    if queued and queued.metadata.startupQueue then return end
     self:FinalizeStartupQueueCurrent(true, "startup queue completed without pending chat")
 end
 
@@ -3764,7 +3818,8 @@ function SmartChatMsg:RefreshStatusPanel()
         panel.currentLabel:SetHidden(true)
         panel.currentRow:SetHidden(true)
         panel.footerLabel:SetHidden(false)
-        panel.footerLabel:SetText("Tracked Zones: 0 | Showing 0-0")
+        local schedules=self:GetScheduleSummaryText()
+        panel.footerLabel:SetText(schedules~="" and schedules or "Tracked Zones: 0 | Showing 0-0")
 
         for _, row in ipairs(panel.rows) do
             row:SetHidden(true)
@@ -3883,6 +3938,8 @@ function SmartChatMsg:RefreshStatusPanel()
     local moreText = #scrollRows > maxVisible and " | Mouse wheel to scroll" or ""
     local totalTracked = #scrollRows + (currentRowData and 1 or 0)
     panel.footerLabel:SetText(string.format("Tracked Zones: %d | Other Zones %d-%d%s", totalTracked, showingFrom, showingTo, moreText))
+    local schedules=self:GetScheduleSummaryText()
+    if schedules~="" then panel.footerLabel:SetText(panel.footerLabel:GetText().."\n"..schedules) end
 
     self:ApplyStatusPanelLayout(panel, panel:GetWidth())
 
@@ -3925,6 +3982,7 @@ local function OnAddonLoaded(event, addonName)
     SmartChatMsg:CreateStatusPanel()
     SmartChatMsg:RegisterDynamicCommands()
     SmartChatMsg:RegisterIncomingChatWatcher()
+    SmartChatMsg:InitializeScheduler()
 
     if SmartChatMsg:GetStatusPanelVisiblePreference() then
         SmartChatMsg:SetStatusPanelVisible(true)
@@ -3941,8 +3999,11 @@ local function OnAddonLoaded(event, addonName)
         if normalized == "status" then
             SmartChatMsg:ToggleStatusPanel()
             return
+        elseif normalized == "schedule" then
+            SmartChatMsg:OpenSettings()
+            return
         elseif normalized ~= "" then
-            d("[SmartChatMsg] Usage: /scm or /scm status")
+            d("[SmartChatMsg] Usage: /scm, /scm schedule, or /scm status")
             return
         end
 
@@ -3971,6 +4032,7 @@ local function OnAddonLoaded(event, addonName)
 
     EVENT_MANAGER:RegisterForEvent(SmartChatMsg.name .. "_PlayerActivated", EVENT_PLAYER_ACTIVATED, function()
         SmartChatMsg:HandleZoneAutoPopulate()
+        SmartChatMsg:TickSchedules()
         SmartChatMsg:InitializeStartupQueueOnce()
     end)
 end

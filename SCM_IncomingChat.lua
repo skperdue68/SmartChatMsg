@@ -92,7 +92,7 @@ function SmartChatMsg:IsGeneratedTimeAddition(text, details)
     return suffix == "adt" or suffix:match("^utc[%+%-]%d%d?$") ~= nil
 end
 
-function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName)
+function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName, commandId)
     local fields = {}
     local function field(kind, details)
         local marker = "SCMMATCHFIELD" .. tostring(#fields + 1) .. "SCM"
@@ -107,6 +107,15 @@ function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName)
         if token == "guild" then return guildName end
         if token == "time" or token == "timeofday" or token == "greeting" then return field("greeting") end
         if token == "zone" then return field("zone") end
+        if commandId and (token == "eventdate" or token == "eventtime") then
+            return self:GetScheduledEventTokenValue(token,commandId,guildName) or "%"..token.."%"
+        end
+        if commandId and token == "eventwhen" then
+            local schedule=self:GetGuildSchedule(commandId,guildName)
+            if schedule then
+                return self:GetScheduledEventTokenValue(token,commandId,guildName)
+            end
+        end
         return "%" .. token .. "%"
     end)
     local _, timeDetails = self:InsertCountdownIntoMessageText(source)
@@ -141,8 +150,11 @@ end
 function SmartChatMsg:MatchesIncomingMessage(entry, guildName, normalizedText)
     self.incomingMessageMatchCache = self.incomingMessageMatchCache or setmetatable({}, { __mode = "k" })
     local cached = self.incomingMessageMatchCache[entry]
-    if not cached or cached.text ~= entry.text or cached.guildName ~= guildName then
-        cached = { text = entry.text, guildName = guildName, matcher = self:BuildIncomingMessageMatcher(entry.text, guildName) }
+    local schedule=self:GetGuildSchedule(entry.commandId,guildName)
+    local eventAt=schedule and schedule.eventAtUtc
+    local eventWhen=schedule and self:GetScheduledEventTokenValue("eventwhen",entry.commandId,guildName)
+    if not cached or cached.text ~= entry.text or cached.guildName ~= guildName or cached.eventAt~=eventAt or cached.eventWhen~=eventWhen then
+        cached = { text = entry.text, guildName = guildName,eventAt=eventAt,eventWhen=eventWhen, matcher = self:BuildIncomingMessageMatcher(entry.text, guildName,entry.commandId) }
         self.incomingMessageMatchCache[entry] = cached
     end
     local matcher = cached.matcher
@@ -236,6 +248,9 @@ function SmartChatMsg:MarkObservedChatUsage(entry, guildName, channel)
         self:SetGuildAutoPopulateLastSentAt(commandId, guildName, zoneId, timestamp)
     end
     self:WithdrawObservedChatDuplicate(commandId, guildName)
+    self:CancelQueuedChatPopulation(commandId, guildName)
+    local scheduledRuntime = self.scheduleRuntime and self.scheduleRuntime[self:GetReminderStateKey(commandId, guildName)]
+    if scheduledRuntime then scheduledRuntime.zonePending = false end
     if repeatActive then self:ScheduleCommandReminder(commandId, guildName, delaySeconds) end
     self:DebugLog(string.format("Incoming match commandId=%s guild=%s channel=%s cooldown delay=%ds", commandId, guildName, channel, delaySeconds))
 end
