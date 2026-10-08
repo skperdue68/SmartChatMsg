@@ -105,6 +105,8 @@ function SmartChatMsg:ProcessChatPopulationQueue()
             request.metadata.queuedDelivery=true
             local ok=self:PopulateChatBufferForCommand(request.commandId,request.guildName,request.channelOverride,request.metadata)
             if ok and self.pendingRestoreState and request.metadata.scheduledDelivery then
+                self:ShowStatusMessage(self:GetSlashCommandDisplayName(request.commandId).." / "..request.guildName
+                    ..": scheduled message ready in chat. Press Enter to send (chat timeout: "..tostring(self.pendingRestoreState.timeoutSeconds).." seconds).")
                 local schedule=request.schedule
                 if schedule.mode=="REMINDER" or (schedule.phaseOnce or {})[phase] then
                     local o=self:GetScheduleOccurrence(schedule,GetTimeStamp())
@@ -239,10 +241,44 @@ function SmartChatMsg:HandleScheduledPopulateTimeout(metadata)
     local occurrence=self:GetScheduleOccurrence(schedule,GetTimeStamp())
     schedule.nextDueOccurrence=occurrence and occurrence.occurrenceKey
     local runtime=self.scheduleRuntime and self.scheduleRuntime[self:GetReminderStateKey(metadata.commandId,metadata.guildName)]
+    self:ShowStatusMessage(self:GetSlashCommandDisplayName(metadata.commandId).." / "..metadata.guildName
+        ..": scheduled message was not sent before the chat timeout. Next attempt: "..self:FormatEasternDateTime(schedule.nextDueAt)..".")
     if runtime and schedule.delivery=="ZONE" then runtime.zonePending=retry>0 end
 end
 
 -- These notices use the local addon notification path, never an outgoing chat channel.
+-- Explicit testing action. Preserve templates, dates, pause state and rotation counts.
+function SmartChatMsg:ResetAllCooldowns()
+    local repeats={}
+    for _,command in ipairs(self:GetCommands() or {}) do
+        command.lastUsedAt=nil
+        for guild,settings in pairs((self.savedVars.commandGuildSettings or {})[command.id] or {}) do
+            local active=self:IsReminderAutomationActive(command.id,guild)
+            self:CancelQueuedChatPopulation(command.id,guild)
+            self:WithdrawObservedChatDuplicate(command.id,guild)
+            self:ClearCommandReminder(command.id,guild)
+            settings.lastUsedAt=nil
+            settings.lastAutoPopulateSentAtByZone={}
+            settings.observedChatCooldowns={}
+            local schedule=settings.schedule
+            if schedule then
+                schedule.nextDueAt=nil;schedule.nextDuePhase=nil;schedule.nextDueOccurrence=nil
+                schedule.completedOccurrences={}
+            end
+            if active and settings.runAt~="SCHEDULED" then repeats[#repeats+1]={command.id,guild} end
+        end
+    end
+    self.scheduledSendPause=nil
+    self.cooldownNoticeDeadlines={}
+    for _,runtime in pairs(self.scheduleRuntime or {}) do runtime.zonePending=true end
+    self:ShowStatusMessage("SmartChatMsg cooldowns reset for testing. Schedule dates and On/Paused/Off states are unchanged; the startup delay still applies.")
+    for _,item in ipairs(repeats) do self:TriggerReminderPopulate(item[1],item[2],nil,"cooldown reset") end
+    self:TickSchedules()
+    local auto=self:GetActiveAutoPopulate()
+    if auto and self:GetGuildRunAt(auto.commandId,auto.guildName)~="SCHEDULED" then self:HandleZoneAutoPopulate() end
+    if self.statusPanelVisible then self:RefreshStatusPanel() end
+end
+
 function SmartChatMsg:GetSchedulePhaseDescription(commandId,guildName)
     local schedule=self:GetGuildSchedule(commandId,guildName)
     local phase=self:GetSchedulePhase(schedule,GetTimeStamp())

@@ -110,7 +110,7 @@ function SmartChatMsg:GetGuildScheduleState(commandId,guildName,utc)
     if self:GetGuildRunAt(commandId,guildName)~="SCHEDULED" then return "ON_DEMAND" end
     local schedule=self:GetGuildSchedule(commandId,guildName)
     if not schedule then return "UNCONFIGURED" end
-    if not schedule.enabled then return "DISABLED" end
+    if not schedule.enabled then return schedule.paused and "PAUSED" or "DISABLED" end
     utc=utc or GetTimeStamp()
     local occurrence=self:GetScheduleOccurrence(schedule,utc)
     if not occurrence then return "FINISHED" end
