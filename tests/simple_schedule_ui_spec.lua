@@ -148,6 +148,8 @@ scm.settings.InitializeState=function() end
 scm:CreateSettingsPanel()
 local messages=assert(find(options,"Create / Edit / Delete Messages"))
 local nested=assert(find(messages.controls,"Scheduling (Eastern Time)"))
+eq(messages.controls[#messages.controls],nested)
+eq(messages.controls[#messages.controls-1].reference,"SCM_MessagesEditorHolder")
 for _,section in ipairs(options) do assert(section.name~="Scheduling (Eastern Time)" and section.name~="Event Scheduling (Eastern Time)") end
 scm.IsMessagesSelectionComplete=function() return true end
 scm:SetGuildRunAt("ad","Amber Traders","ON_DEMAND");eq(nested.disabled(),true)

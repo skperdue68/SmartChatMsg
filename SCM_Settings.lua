@@ -1696,7 +1696,8 @@ local function BuildMessagesEditor(parent)
         addButton:SetAnchor(TOPLEFT, addBackdrop, TOPRIGHT, 12, 0)
         resetButton:SetAnchor(LEFT, addButton, RIGHT, 8, 0)
 
-        local totalHeight = 24
+        -- Include the count label's 45px top inset in the occupied height.
+        local totalHeight = 45 + 24
         if rowsHeight > 0 then
             totalHeight = totalHeight + 8 + rowsHeight + 14
         else
@@ -2097,7 +2098,9 @@ function SmartChatMsg:CreateSettingsPanel()
                             local hasChannel = SmartChatMsg:GetSelectedMessagesChannel() ~= "Select a Chat Channel"
                             local shouldShow = SmartChatMsg:IsMessagesSelectionComplete() and hasChannel
 
-                            control:SetHeight(shouldShow and messagesEditorHolder:GetHeight() or 0)
+                            -- The editor is anchored 30px below this holder.
+                            -- Reserve that inset and a gap for the following submenu.
+                            control:SetHeight(shouldShow and (30 + messagesEditorHolder:GetHeight() + 12) or 0)
                         else
                             control:SetHeight(0)
                         end
@@ -2131,7 +2134,7 @@ function SmartChatMsg:CreateSettingsPanel()
 
     for _,section in ipairs(optionsTable) do
         if section.name=="Create / Edit / Delete Messages" then
-            table.insert(section.controls, #section.controls, {
+            table.insert(section.controls, {
                 type="submenu", name="Scheduling (Eastern Time)",
                 tooltip="Select Scheduled in Run At above to configure automatic reminders.",
                 disabled=function()
