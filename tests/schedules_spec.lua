@@ -397,6 +397,18 @@ test("scheduler switches to Starting soon, repeats at its interval and protects 
     eq(scm.pendingRestoreState.metadata.scheduledPhase,"LIVE")
 end)
 
+test("schedule editor shows command name and explains an unsaved schedule", function()
+    scm.savedVars.selectedMessagesCommand="ad"
+    local original=scm.GetSelectedGuildNameForMessages
+    scm.GetSelectedGuildNameForMessages=function() return "Amber Traders" end
+    scm:SetGuildRunAt("ad","Amber Traders","SCHEDULED")
+    local text=scm:BuildScheduleOptionControls()[2].text()
+    scm.GetSelectedGuildNameForMessages=original
+    assert(text:find(scm:GetCommandNameById("ad").." / Amber Traders",1,true))
+    assert(text:find("No schedule saved yet",1,true))
+    assert(text:find("Save and activate",1,true))
+    assert(not text:find("UNCONFIGURED",1,true))
+end)
 local failures=0
 for _,case in ipairs(tests) do
     local ok,reason=pcall(function() setup(); case[2]() end)
