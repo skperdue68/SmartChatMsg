@@ -546,7 +546,7 @@ function SmartChatMsg.settings:ExportSettings()
     end
 
     local message = "Export completed successfully."
-    d(message)
+    SmartChatMsg:AddLocalChatMessage(message)
 
     if CENTER_SCREEN_ANNOUNCE then
         CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
@@ -580,7 +580,7 @@ function SmartChatMsg.settings:ImportSettings()
             SmartChatMsg:RefreshSettingsUI()
 
             local message = "Import completed successfully."
-            d(message)
+            SmartChatMsg:AddLocalChatMessage(message)
 
             if CENTER_SCREEN_ANNOUNCE then
                 CENTER_SCREEN_ANNOUNCE:AddMessage(EVENT_SKILL_RANK_UPDATE, CSA_EVENT_SMALL_TEXT, SOUNDS.DEFAULT_CLICK, message)
