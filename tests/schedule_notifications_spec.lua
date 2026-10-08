@@ -30,7 +30,7 @@ now=deadline;s:ProcessChatPopulationQueue();assert(s.pendingRestoreState)
 print("PASS local transition notices, cooldown deduplication and passive cooldown on later activation")
 
 -- Starting a startup command also waits for a previously observed message.
-s:ClearPendingRestoreState("test");CHAT_SYSTEM.textEntry.EditControl.text=""
+s:ClearPendingRestoreState("test");CHAT_SYSTEM.textEntry.editControl.text=""
 f.reset();f.entry("p","ad","Amber Traders","Amber Traders is recruiting!")
 s:SetGuildReminderMinutes("ad","Amber Traders",5)
 f.incoming(CHAT_CHANNEL_ZONE,"Amber Traders is recruiting!")
@@ -43,3 +43,14 @@ local queued=assert(s.chatPopulationQueue[s:GetReminderStateKey("ad","Amber Trad
 now=queued.metadata.observedDueAt;s:ProcessChatPopulationQueue()
 assert(s.pendingRestoreState);eq(s.pendingRestoreState.metadata.queueItemId,current.id)
 print("PASS startup respects previously observed cooldown and preserves ownership")
+
+f.reset()
+assert(s:GetChatEditControl()==CHAT_SYSTEM.textEntry.editControl)
+assert(not s:IsChatPopulationBusy(),"ESO native empty input is available")
+CHAT_SYSTEM.textEntry.editControl:SetText("typed text")
+assert(s:IsChatPopulationBusy(),"ESO native typed input stays protected")
+CHAT_SYSTEM.textEntry.editControl:SetText(" ")
+assert(s:IsChatPopulationBusy(),"whitespace is still a user edit")
+CHAT_SYSTEM.textEntry.editControl:SetText("")
+assert(not s:IsChatPopulationBusy())
+print("PASS native ESO GetEditControl and lowercase editControl preserve input safety")

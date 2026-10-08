@@ -138,14 +138,14 @@ end)
 test("unchanged pending duplicate is withdrawn but edited chat is preserved", function()
     entry("a", "ad", "Amber Traders", "Amber Traders is recruiting!")
     scm:ArmPendingRestoreState({id = CHAT_CHANNEL_SAY}, "Amber Traders is recruiting!", {commandId = "ad", guildName = "Amber Traders"})
-    CHAT_SYSTEM.textEntry.EditControl.text = "Amber Traders is recruiting!"
+    CHAT_SYSTEM.textEntry.editControl.text = "Amber Traders is recruiting!"
     incoming(3, "Amber Traders is recruiting!")
-    eq(CHAT_SYSTEM.textEntry.EditControl.text, "")
+    eq(CHAT_SYSTEM.textEntry.editControl.text, "")
     eq(scm.pendingRestoreState, nil)
     scm:ArmPendingRestoreState({id = CHAT_CHANNEL_SAY}, "Amber Traders is recruiting!", {commandId = "ad", guildName = "Amber Traders"})
-    CHAT_SYSTEM.textEntry.EditControl.text = "My edited notice"
+    CHAT_SYSTEM.textEntry.editControl.text = "My edited notice"
     incoming(3, "Amber Traders is recruiting!")
-    eq(CHAT_SYSTEM.textEntry.EditControl.text, "My edited notice")
+    eq(CHAT_SYSTEM.textEntry.editControl.text, "My edited notice")
     eq(scm.pendingRestoreState, nil)
 end)
 test("edited saved templates invalidate the matching cache", function()
@@ -243,9 +243,9 @@ end)
 test("even whitespace-only user edits to a pending message are preserved", function()
     entry("a", "ad", "Amber Traders", "Amber Traders is recruiting!")
     scm:ArmPendingRestoreState({id = CHAT_CHANNEL_SAY}, "Amber Traders is recruiting!", {commandId = "ad", guildName = "Amber Traders"})
-    CHAT_SYSTEM.textEntry.EditControl.text = "Amber  Traders is recruiting!"
+    CHAT_SYSTEM.textEntry.editControl.text = "Amber  Traders is recruiting!"
     incoming(3, "Amber Traders is recruiting!")
-    eq(CHAT_SYSTEM.textEntry.EditControl.text, "Amber  Traders is recruiting!")
+    eq(CHAT_SYSTEM.textEntry.editControl.text, "Amber  Traders is recruiting!")
     eq(scm.pendingRestoreState, nil)
 end)
 test("short templates with fixed words still match supported substitutions", function()

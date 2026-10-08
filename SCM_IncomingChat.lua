@@ -237,7 +237,7 @@ function SmartChatMsg:WithdrawObservedChatDuplicate(commandId, guildName)
     local metadata = state and state.metadata
     if type(metadata) ~= "table" or metadata.commandId ~= commandId
         or not self:StringsEqualIgnoreCase(metadata.guildName or "", guildName) then return end
-    local edit = CHAT_SYSTEM and CHAT_SYSTEM.textEntry and CHAT_SYSTEM.textEntry.EditControl
+    local edit = self:GetChatEditControl()
     if edit and edit.GetText and state.rawExpectedText
         and edit:GetText() == state.rawExpectedText then
         self:ClearPendingChatBuffer()

@@ -1969,8 +1969,8 @@ function SmartChatMsg:ClearPendingChatBuffer()
 
     local cleared = false
 
-    if CHAT_SYSTEM and CHAT_SYSTEM.textEntry and CHAT_SYSTEM.textEntry.EditControl then
-        local editControl = CHAT_SYSTEM.textEntry.EditControl
+    if self:GetChatEditControl() then
+        local editControl = self:GetChatEditControl()
 
         if editControl.SetText then
             editControl:SetText("")
@@ -2515,7 +2515,7 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
         if pendingState~=armedState then return end
         local pendingTimeoutSeconds = pendingState and pendingState.timeoutSeconds or timeoutSeconds
         SmartChatMsg:DebugLog("Restore watcher timed out after " .. tostring(pendingTimeoutSeconds) .. " seconds")
-        local edit=CHAT_SYSTEM and CHAT_SYSTEM.textEntry and CHAT_SYSTEM.textEntry.EditControl
+        local edit=self:GetChatEditControl()
         local untouched=edit and edit.GetText and edit:GetText()==pendingState.rawExpectedText
         if untouched and pendingState.previousChannel then
             SmartChatMsg:DebugLog("Timeout restore attempting previous channel: " .. SmartChatMsg:FormatChatChannelInfo(pendingState.previousChannel))

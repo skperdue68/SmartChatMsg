@@ -1,8 +1,24 @@
 SmartChatMsg = SmartChatMsg or {}
 
+function SmartChatMsg:GetChatEditControl()
+    local chat=CHAT_SYSTEM
+    if not chat then return nil end
+    if chat.GetEditControl then
+        local edit=chat:GetEditControl(); if edit then return edit end
+    end
+    local entry=chat.textEntry
+    if entry then
+        if entry.GetEditControl then
+            local edit=entry:GetEditControl(); if edit then return edit end
+        end
+        if entry.editControl or entry.EditControl then return entry.editControl or entry.EditControl end
+    end
+    return ZO_ChatWindowTextEntryEditBox
+end
+
 function SmartChatMsg:IsChatPopulationBusy()
-    if self.pendingRestoreState then return true end
-    local edit=CHAT_SYSTEM and CHAT_SYSTEM.textEntry and CHAT_SYSTEM.textEntry.EditControl
+    if self:IsExecutionBusy() then return true end
+    local edit=self:GetChatEditControl()
     return not edit or not edit.GetText or edit:GetText()~=""
 end
 
@@ -89,7 +105,7 @@ function SmartChatMsg:WithdrawScheduledPending(commandId,guildName)
     local metadata=state and state.metadata
     if not metadata or not metadata.scheduledDelivery or metadata.commandId~=commandId
         or not self:StringsEqualIgnoreCase(metadata.guildName or "",guildName) then return end
-    local edit=CHAT_SYSTEM and CHAT_SYSTEM.textEntry and CHAT_SYSTEM.textEntry.EditControl
+    local edit=self:GetChatEditControl()
     if edit and edit.GetText and edit:GetText()==state.rawExpectedText then
         self:ClearPendingChatBuffer(); self:RestoreChatChannel(state.previousChannel)
     end
