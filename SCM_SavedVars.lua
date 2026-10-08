@@ -139,6 +139,7 @@ function SmartChatMsg:InitializeSavedVars()
                         lastUsedParamText = self:Trim(settings.lastUsedParamText or ""),
                         lastUsedGuildIndex = (type(settings.lastUsedGuildIndex) == "number" and settings.lastUsedGuildIndex >= 1 and settings.lastUsedGuildIndex <= 5 and settings.lastUsedGuildIndex == math.floor(settings.lastUsedGuildIndex)) and settings.lastUsedGuildIndex or nil,
                         lastAutoPopulateSentAtByZone = cleanedZoneTimestamps,
+                        observedChatCooldowns = self:NormalizeObservedChatCooldowns(settings.observedChatCooldowns),
                     }
 
                     if cleanedByGuild[normalizedGuildKey].lastUsedParamText == "" then

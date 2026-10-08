@@ -1144,7 +1144,16 @@ function SmartChatMsg:InsertCountdownIntoMessageText(text)
 
     local updatedText = source:sub(1, fullDisplayStart - 1) .. insertionText .. remainder
     self:DebugLog("Countdown debug: updated message text=" .. tostring(updatedText))
-    return updatedText
+    -- Expose the exact insertion boundary to incoming-template matching. The
+    -- original date/time stays literal; only the formatter's additions vary.
+    return updatedText, {
+        prefix = source:sub(1, fullDisplayStart - 1),
+        timeText = fullDisplayMatch,
+        suffix = remainder,
+        allowMeridiem = countdownMeta and countdownMeta.shouldUseNearestFuture12Hour == true and not explicitMeridiemMatch,
+        allowTimezone = existingTimezoneInDisplay == "" and consumedTimezone == "",
+        soonText = self:HasEndingPhraseBeforeTime(source, timeMatch) and "ending soon" or "starting soon",
+    }
 end
 
 function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName)
@@ -1581,7 +1590,7 @@ function SmartChatMsg:TriggerReminderPopulate(commandId, guildName, expectedLast
     ))
 end
 
-function SmartChatMsg:ScheduleCommandReminder(commandId, guildName)
+function SmartChatMsg:ScheduleCommandReminder(commandId, guildName, extraDelaySeconds)
     local command = self:GetCommandById(commandId)
     if not command then
         self:DebugLog("Reminder debug: schedule aborted, command not found for commandId=" .. tostring(commandId))
@@ -1623,7 +1632,7 @@ function SmartChatMsg:ScheduleCommandReminder(commandId, guildName)
         return
     end
 
-    local delayMs = reminderMinutes * 60 * 1000
+    local delayMs = (reminderMinutes * 60 + (extraDelaySeconds or 0)) * 1000
     self:DebugLog(string.format(
         "Reminder debug: scheduling repeat-after timer timerName=%s commandId=%s commandName=%s guildName=%s repeatAfterMinutes=%s delayMs=%s lastUsedAt=%s",
         tostring(timerName),
@@ -1958,10 +1967,14 @@ function SmartChatMsg:ClearPendingRestoreState(reason)
     EVENT_MANAGER:UnregisterForUpdate(self.restoreWatcherTimeoutName)
 end
 
-function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fromName, text, isCustomerService)
+function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fromName, text, isCustomerService, fromDisplayName)
     local state = self.pendingRestoreState
     if not state then
         self:DebugLog("HandleRestoreWatcherChatMessage called without pending state")
+        return
+    end
+
+    if isCustomerService or not self:IsOwnChatSender(fromName, fromDisplayName) then
         return
     end
 
@@ -2059,6 +2072,7 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
     self.pendingRestoreState = {
         previousChannel = previousChannelInfo,
         expectedText = normalizedExpected,
+        rawExpectedText = expectedText,
         metadata = type(metadata) == "table" and metadata or nil,
         timeoutSeconds = timeoutSeconds,
         armedAt = GetFrameTimeMilliseconds and GetFrameTimeMilliseconds() or nil,
@@ -2259,32 +2273,28 @@ function SmartChatMsg:GetAutoPopulateZoneDisplayName(zoneId)
 end
 
 function SmartChatMsg:ShouldSkipAutoPopulateForZone(commandId, guildName, zoneId)
-    local lastSentAt = self:GetGuildAutoPopulateLastSentAt(commandId, guildName, zoneId)
-    if type(lastSentAt) ~= "number" or lastSentAt <= 0 then
+    local endsAt = self:GetAutoPopulateCooldownEndsAt(commandId, guildName, zoneId)
+    if not endsAt then
         return false, nil, nil
     end
 
     local now = GetTimeStamp()
-    local elapsed = now - lastSentAt
     local cooldownMinutes = self:GetGuildAutoPopulateCooldownMinutes(commandId, guildName)
     local cooldownSeconds = (cooldownMinutes or 60) * 60
-
-    if elapsed < cooldownSeconds then
-        return true, elapsed, cooldownSeconds
-    end
-
-    return false, elapsed, cooldownSeconds
+    local elapsed = now - (endsAt - cooldownSeconds)
+    return now < endsAt, elapsed, cooldownSeconds
 end
 
 function SmartChatMsg:GetAutoPopulateCooldownEndsAt(commandId, guildName, zoneId)
     local lastSentAt = self:GetGuildAutoPopulateLastSentAt(commandId, guildName, zoneId)
-    if type(lastSentAt) ~= "number" or lastSentAt <= 0 then
-        return nil
-    end
-
     local cooldownMinutes = self:GetGuildAutoPopulateCooldownMinutes(commandId, guildName)
     local cooldownSeconds = (cooldownMinutes or 60) * 60
-    return lastSentAt + cooldownSeconds
+    local ownEndsAt = lastSentAt and (lastSentAt + cooldownSeconds) or nil
+    local observedEndsAt = self:GetObservedChatCooldownEndsAt(commandId, guildName, zoneId, cooldownSeconds)
+    if ownEndsAt and observedEndsAt then
+        return math.max(ownEndsAt, observedEndsAt)
+    end
+    return ownEndsAt or observedEndsAt
 end
 
 function SmartChatMsg:FormatUnixTimestampForDisplay(timestamp)
@@ -3914,6 +3924,7 @@ local function OnAddonLoaded(event, addonName)
     SmartChatMsg:CreateSettingsPanel()
     SmartChatMsg:CreateStatusPanel()
     SmartChatMsg:RegisterDynamicCommands()
+    SmartChatMsg:RegisterIncomingChatWatcher()
 
     if SmartChatMsg:GetStatusPanelVisiblePreference() then
         SmartChatMsg:SetStatusPanelVisible(true)
