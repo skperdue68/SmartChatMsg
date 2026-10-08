@@ -53,14 +53,15 @@ function SmartChatMsg:IsKnownIncomingZoneName(value)
 end
 
 function SmartChatMsg:IsGeneratedCountdownText(text, soonText)
-    if text == soonText then return true end
+    if text == soonText or text == "soon" then return true end
     local shortMinutes = text:match("^(%d+)m$")
     if shortMinutes then
         local minutes = tonumber(shortMinutes)
         return minutes >= 5 and minutes < 15
     end
-    local duration = text:match("^about (.+)$")
-    if not duration then return false end
+    -- The current formatter emits compact durations, optionally prefixed with
+    -- '~' when rounded; older versions used 'about '. Validate both grammars.
+    local duration = text:match("^about (.+)$") or text:gsub("^~", "", 1)
     local previousRank, count = 0, 0
     local units = { d = {1, 36500}, h = {2, 23}, m = {3, 59} }
     for part in duration:gmatch("%S+") do

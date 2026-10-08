@@ -268,6 +268,35 @@ test("repeated substitutions must agree within a message", function()
     eq(scm:GetGuildLastUsedAt("ad", "Amber Traders"), now)
 end)
 
+test("compact approximate countdown after 3AM ET resets zone cooldown", function()
+    entry("a", "ad", "Amber Traders", "this is a test message at 3AM ET I hope it works!!")
+    incoming(3, "this is a test message at 3AM ET (~23h)  I hope it works!!")
+    eq(scm:GetGuildLastUsedAt("ad", "Amber Traders"), now)
+end)
+
+test("current and legacy countdown grammars preserve fixed text and insertion position", function()
+    local template="this is a test message at 3AM ET I hope it works!!"
+    local saved=entry("a", "ad", "Amber Traders", template)
+    local generated=scm:ApplyMessageSubstitutions(template,"ad","Amber Traders")
+    assert(generated~=template,"real formatter should insert a countdown")
+    assert(scm:MatchesIncomingMessage(saved,"Amber Traders",scm:NormalizeIncomingChatText(generated)),generated)
+    for _,countdown in ipairs({"~23h", "23h", "~17h 30m", "17h 30m", "~1d 2h", "1d", "about 23h", "soon", "starting soon", "5m"}) do
+        local text="this is a test message at 3AM ET ("..countdown..")  I hope it works!!"
+        assert(scm:MatchesIncomingMessage(saved,"Amber Traders",scm:NormalizeIncomingChatText(text)),countdown)
+    end
+    for _,text in ipairs({
+        "this is a test message at 4AM ET (~23h) I hope it works!!",
+        "this is a test message at 3AM PT (~23h) I hope it works!!",
+        "this is a test message at 3AM ET (~23h) I hope it fails!!",
+        "this is a test message at 3AM ET I hope it works!! (~23h)",
+        "this is a test message at 3AM ET (~buy gold) I hope it works!!",
+        "this is a test message at 3AM ET (~24h) I hope it works!!",
+        "this is a test message at 3AM ET (~30m 17h) I hope it works!!",
+    }) do
+        assert(not scm:MatchesIncomingMessage(saved,"Amber Traders",scm:NormalizeIncomingChatText(text)),text)
+    end
+end)
+
 local failures = 0
 for _, case in ipairs(tests) do
     reset()
