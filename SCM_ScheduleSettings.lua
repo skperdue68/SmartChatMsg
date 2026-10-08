@@ -24,7 +24,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
     local function selected() local _,id,guild=draft(); return self:GetCommandById(id) and self:GetGuildSlotByName(guild) end
     local controls={
         {type="description",text="Select a command and guild in Messages Settings first. All dates use Eastern Time (ET), including daylight saving time. Save applies the complete schedule. Messages are placed in chat; you still press Enter to send."},
-        {type="description",text=function() local _,id,guild=draft(); return tostring(id or "No command").." / "..tostring(guild or "No guild").."\n"..self:GetScheduleStatusText(id,guild) end},
+        {type="description",text=function() local _,id,guild=draft(); return tostring(self:GetCommandNameById(id) or "No command selected").." / "..tostring(guild or "No guild").."\n"..self:GetScheduleStatusText(id,guild) end},
         {type="checkbox",name="Enable scheduled window",getFunc=function() return draft().enabled end,setFunc=function(v) draft().enabled=v end},
         {type="dropdown",name="Delivery",choices={"REPEAT","ZONE"},getFunc=function() return draft().delivery end,setFunc=function(v) draft().delivery=v end,
             tooltip="REPEAT uses the interval. ZONE fills chat on eligible zone arrivals and uses the interval as its per-zone cooldown."},

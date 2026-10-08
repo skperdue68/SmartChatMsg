@@ -272,7 +272,10 @@ end
 function SmartChatMsg:GetScheduleStatusText(commandId,guildName)
     local state,phase=self:GetGuildScheduleState(commandId,guildName)
     local schedule=self:GetGuildSchedule(commandId,guildName)
-    local text=state..(phase and " / "..phase or "")
+    local labels={UNCONFIGURED="No schedule saved yet. Enter the dates and times below, then click Save schedule.",
+        ON_DEMAND="Scheduling is not active for this command.",DISABLED="Schedule disabled",WAITING="Waiting for scheduled start",
+        RUNNING="Schedule engaged",PAUSED="Schedule paused",FINISHED="Scheduled window finished"}
+    local text=(labels[state] or state)..(phase and " / "..phase or "")
     local runtime=self.scheduleRuntime and self.scheduleRuntime[self:GetReminderStateKey(commandId,guildName)]
     if runtime and runtime.reason then text=text.." — "..runtime.reason end
     if state=="RUNNING" and self:IsChatPopulationBusy() then text=text.." — Chat input busy" end
