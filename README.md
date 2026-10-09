@@ -1,4 +1,4 @@
-# SmartChatMsg (v1.11.5)
+# SmartChatMsg (v1.11.6)
 
 SmartChatMsg is an Elder Scrolls Online addon for reusable chat messages: guild
 recruitment, trial reminders, auctions, officer notices, and other announcements.
@@ -26,8 +26,8 @@ from protected player text. More than one schedule may be active, but they share
 one chat input and only eligible current-phase messages are prepared.
 
 The actionable status cards show scheduled commands **only during their current
-window**. Their button cycles **Off -> Paused -> On -> Paused -> Off**, displaying
-the next action: Pause, Turn On, or Turn Off. On/Paused/Off uses the saved schedule
+window**. Their button cycles **Disabled -> Enabled -> Paused -> Disabled**, displaying
+the next action: Enable, Pause, or Disable. On/Paused/Off uses the saved schedule
 state, so a paused schedule cannot be accidentally reactivated by the next tick.
 While On, the status includes the current wait: startup, cooldown, shared pause,
 zone arrival, or a message ready for Enter. Pausing or switching Off withdraws
@@ -42,7 +42,7 @@ contains zone tracking, while Repeat Commands contains current schedule cards an
 running/paused ordinary repeats. Upcoming schedules remain in settings rather
 than duplicating all their details above the cards. Each current scheduled card
 shows its readable ET promotion start/end below status. **Next Send** appears only
-while the card is Active. Pause/Turn On/Turn Off use ESO's textured button style,
+while the card is Active. Enable/Pause/Disable use ESO's textured button style,
 and the cards reserve scrollbar space and fit above the main window's bottom edge.
 
 Schedule-only message groups retain their saved names and IDs for configuration,
@@ -302,7 +302,7 @@ coordination, persistence, sharing, and settings callbacks. Actual ESO UI layout
 loading screens, channel restoration, and two-player operation still need in-game
 verification. There is no recurring event scheduler or offline posting.
 
-### Message list and command identity (1.11.5)
+### Message list and command identity (1.11.6)
 
 Repeat cards show (Scheduled), (On Demand), or (Startup). Scheduled cards show
 the countdown to the current occurrence's event time, changing to Started at
@@ -318,7 +318,7 @@ On Demand messages can use countdowns from supported literal dates/times.
 the command/guild; without one the tokens remain unchanged. An On Demand repeat
 interval does not itself supply an event date/time.
 
-### Personal messages and complete settings exports (1.11.5)
+### Personal messages and complete settings exports (1.11.6)
 
 Use **Lock** beside a saved message to keep it personal. **Unlock** includes it
 in the next export. A Locked caption also appears in schedule message pools.
@@ -341,3 +341,20 @@ editor's current selection are not transferred.
 Changing Run At updates slash registration immediately. A scheduled-only name
 has no slash command; an On Demand or Startup combination restores it. Names
 shared with another ordinary guild configuration remain registered.
+
+### Status controls and matching (1.11.6)
+
+The button always shows the next action: Enable makes the command active; Pause
+stops delivery while keeping it paused; Disable switches it off. The next click
+on a disabled current schedule enables it directly, without an intermediate pause.
+Ordinary repeats retain their existing visibility rules: after disabling they
+leave the running list and can be restarted using their slash command.
+
+Incoming matching normalizes capitalization, whitespace, chat colors and supported
+link presentation. Template substitutions and generated countdowns are recognized
+at their proper positions. Fixed wording/punctuation and channel/guild identity
+remain required. Arbitrary typo/wording fuzzy matching is not enabled.
+
+Import tests verify that a same-name command with a different imported ID maps
+locked messages to the new command while preserving local phase assignments and
+the imported channel and schedule. Old command/guild keys do not remain.

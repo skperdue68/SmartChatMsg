@@ -1,4 +1,4 @@
-SmartChatMsg 1.11.5 — quick user guide
+SmartChatMsg 1.11.6 — quick user guide
 
 Store reusable recruitment, trial, auction and other announcements. SmartChatMsg
 fills your chat box; you still press Enter to send. See README.md for the full guide.
@@ -23,7 +23,7 @@ do. Ordinary repeats start by slash command and appear while running or paused.
 Scheduled %eventtime% countdowns use the saved occurrence timestamp directly,
 fixing an extra day caused by UTC midnight during the previous Eastern evening.
 Cards show scheduled commands only within their current window. Buttons cycle
-Off -> Paused -> On -> Paused -> Off and show the next action. Paused/Off stops
+Disabled -> Enabled -> Paused -> Disabled and show the next action. Paused/Off stops
 delivery without losing templates or dates, and protects edited chat. All four
 card lines fit within the border.
 /scm resetcooldowns clears existing cooldowns and retry/once markers for testing.
@@ -140,7 +140,7 @@ Used identifies the selected phases; Before event day can cover multiple days.
 On Demand supports literal date/time countdowns. Event substitutions need a
 saved event configuration; repeat intervals alone do not define event times.
 
-PERSONAL MESSAGE LOCKS (1.11.5)
+PERSONAL MESSAGE LOCKS (1.11.6)
 Click Lock beside a message to exclude it from export and protect it on import.
 Unlock reverses this. Locked appears below the message and in schedule pools.
 The message still sends and matches normally. Its phase choices are preserved.
@@ -149,3 +149,10 @@ the imported setup removes the message. Command settings themselves are not lock
 Exports also capture status window saved visibility and position, in addition to
 Open Status Panel on Run, Notify Sound, Run At and other behavior/schedule settings.
 On Demand and Startup restore slash commands; scheduled-only names remove them.
+
+SIMPLE STATUS CYCLE (1.11.6)
+Disabled -> Enabled -> Paused -> Disabled; buttons show Enable, Pause, Disable.
+Disabled ordinary repeats leave the list; restart them through their command.
+Matching tolerates case, spacing, formatting, substitutions and countdown changes,
+but not arbitrary typos or different fixed wording/punctuation.
+Same-name command imports with new IDs preserve and remap local locked messages.
