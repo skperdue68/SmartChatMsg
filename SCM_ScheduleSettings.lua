@@ -92,7 +92,7 @@ function SmartChatMsg:GetScheduleMessageChecklist(phase)
     for _,entry in ipairs(self:GetMessageEntriesForCommandAndGuild(id,guild)) do
         local messageId=entry.id
         local d=self:GetScheduleEditorDraft()
-        local variantChoices=d.specialPattern=="MONTH_FINAL" and {"REGULAR","FINAL","ALL"} or nil
+        local variantChoices=d.specialPattern=="MONTH_FINAL" and {"REGULAR","FINAL"} or nil
         if d.specialPattern=="FACTION_ROTATION" then
             variantChoices={"ALL"};local seen={}
             for i=1,3 do
@@ -330,8 +330,8 @@ function SmartChatMsg:BuildScheduleOptionControls()
     controls[#controls+1]={type="submenu",name="Faction rotation",controls=rotation,disabled=function() return draft().specialPattern~="FACTION_ROTATION" or draft().mode~="EVENT" end}
     controls[#controls+1]={type="description",text=function()
         local d=draft()
-        if d.specialPattern=="FACTION_ROTATION" then return "In each message row, choose All events or a faction. Keep using the phase checkboxes for when it runs." end
-        if d.specialPattern=="MONTH_FINAL" then return "Keep the raffle's every-other-week schedule. In each message row, choose Regular drawings, Month-final raffle + 50/50, or All events. The final actual drawing of each Eastern calendar month uses the special pool." end
+        if d.specialPattern=="FACTION_ROTATION" then return "In each message row, choose All selected factions or a faction. Keep using the phase checkboxes for when it runs." end
+        if d.specialPattern=="MONTH_FINAL" then return "Existing messages automatically use Regular drawings. Mark only your special announcements Month-final drawings. The final actual drawing of each Eastern calendar month uses that pool, throughout its promotion period." end
         return "Special patterns are optional. Message group choices appear in each phase's message list when enabled."
     end}
     controls[#controls+1]={type="description",reference="SCM_NextScheduleOccurrence",text=function() return self:GetNextScheduleOccurrenceText(draft()) end}

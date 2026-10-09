@@ -30,8 +30,9 @@ local changed=s:NormalizeIncomingChatText(s:ApplyMessageSubstitutions(template.t
 assert(s:MatchesIncomingMessage(template,'Amber Traders',changed))
 
 d.specialPattern='MONTH_FINAL';d.recurrence='BIWEEKLY';d.eventDate='2026-10-10';d.eventTime='08:00 PM'
-d.messageVariants={all='REGULAR',ep='FINAL'}
+d.messageVariants={ep='FINAL'}
 assert(s:SaveGuildSchedule('ad','Amber Traders',d));c=s:GetGuildSchedule('ad','Amber Traders')
+eq(s:GetScheduleMessageVariant(c,'all'),'REGULAR','unmarked messages default to regular')
 eq(s:GetScheduleEventVariant(c,s:ParseEasternDateTime('2026-10-10','08:00 PM')),'REGULAR')
 eq(s:GetScheduleEventVariant(c,s:ParseEasternDateTime('2026-10-24','08:00 PM')),'FINAL')
 eq(s:GetScheduleEventVariant(c,s:ParseEasternDateTime('2027-01-02','08:00 PM')),'REGULAR')
@@ -76,9 +77,9 @@ eq(s:GetScheduleEventVariant(one,one.eventAtUtc+100*86400),'DC')
 local checklist=s:GetScheduleMessageChecklist('DAY');eq(#checklist[1].variantChoices,2)
 checklist[1].setVariant('DC');eq(draft.messageVariants.all,'DC')
 pattern.setFunc('Last raffle of the month + 50/50')
-checklist=s:GetScheduleMessageChecklist('DAY');eq(#checklist[1].variantChoices,3)
+checklist=s:GetScheduleMessageChecklist('DAY');eq(#checklist[1].variantChoices,2)
 checklist[1].setVariant('FINAL');assert(checklist[1].phaseText)
-assert(s:GetScheduleMessagePhaseText('all',draft):find('Month-final raffle + 50/50',1,true))
+assert(s:GetScheduleMessagePhaseText('all',draft):find('Month-final drawings',1,true))
 local function control()
     local c={width=520,height=0,children={},handlers={}}
     function c:GetWidth() return self.width end
@@ -104,8 +105,8 @@ ZO_ComboBox_ObjectFromContainer=function(c)
     return combo
 end
 local pool=control();s:RefreshScheduleMessagePool(pool,'DAY')
-local row=pool.scheduleRows[1];eq(#row.variantCombo.items,3)
-eq(row.variantCombo.selected,'Month-final raffle + 50/50')
+local row=pool.scheduleRows[1];eq(#row.variantCombo.items,2)
+eq(row.variantCombo.selected,'Month-final drawings')
 row.variantCombo.items[1].callback();eq(draft.messageVariants.all,'REGULAR')
 s:RefreshScheduleMessagePool(pool,'DAY');eq(row.variantCombo.selected,'Regular drawings')
 assert(row.height>=row.label.height+36,'message group dropdown must fit below the wrapped text')

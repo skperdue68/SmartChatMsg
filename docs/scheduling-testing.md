@@ -186,15 +186,15 @@ time offline or daylight-saving changes. The schedule still controls event days.
 for the occurrence being promoted; it is independent of your character's faction.
 The next-event preview shows the calculated faction.
 
-Each phase's message row has an event-group dropdown. Choose All events to
+Each phase's message row has an event-group dropdown. Choose All selected factions to
 reuse a template with %eventfaction%, or choose one faction for special wording.
 Phase checkboxes and interval overrides still decide when messages are eligible.
 Multiple eligible messages are chosen randomly as before.
 
 For raffles, keep Every other week and the original first drawing date. Choose
 Last raffle of the month + 50/50. Add both regular and combined raffle/50-50
-announcements under the same command. In each message row choose Regular drawings,
-Month-final raffle + 50/50, or All events. Unassigned messages default to Regular
+announcements under the same command. In each message row choose Regular drawings
+or Month-final drawings. Unassigned messages default to Regular
 drawings in this pattern. Select each message's desired promotion phases.
 The pool is determined by the drawing's Eastern date, throughout its promotion:
 if the next scheduled drawing falls in another month, this drawing is month-final.
@@ -202,7 +202,7 @@ It is the last actual biweekly drawing, not the calendar's last Saturday. For an
 October 10 anchor, October 10 is regular and October 24 is month-final; January
 2, 16 and 30 likewise use regular, regular, month-final pools.
 No regular-only fallback occurs if the month-final phase has no eligible messages.
-Use All events for text that is valid for both types.
+Mark only the special messages, once per message; the choice is shared across phases.
 
 Save and activate after reviewing the next events and their faction/group labels.
 Pattern settings, order, block length and message groups are included in settings
