@@ -1180,7 +1180,7 @@ function SmartChatMsg:GetCountdownUntilEmbeddedTimeText(text)
     return countdownText, metadata
 end
 
-function SmartChatMsg:InsertCountdownPreservingTemplate(text)
+function SmartChatMsg:InsertCountdownPreservingTemplate(text,eventAtUtc)
     local source = tostring(text or "")
     local timeMatch, _, _, sourceTz = self:FindEmbeddedTimeDetails(source)
     if not timeMatch or timeMatch == "" then
@@ -1188,7 +1188,7 @@ function SmartChatMsg:InsertCountdownPreservingTemplate(text)
         return source
     end
 
-    local countdownText, countdownMeta = self:GetCountdownUntilEmbeddedTimeText(source)
+    local countdownText, countdownMeta = self:GetCountdownUntilEmbeddedTimeText(source,eventAtUtc)
     if not countdownText or countdownText == "" then
         self:DebugLog("Countdown debug: message text left unchanged because countdown text could not be computed")
         return source
@@ -3280,7 +3280,8 @@ function SmartChatMsg:RegisterDynamicCommands()
     local seenCommands = {}
 
     for _, command in ipairs(self:GetCommands()) do
-        if type(command) == "table" and type(command.id) == "string" and type(command.name) == "string" then
+        if type(command) == "table" and type(command.id) == "string" and type(command.name) == "string"
+            and self:ShouldRegisterCommand(command.id) then
             local slashCommandName = self:BuildSlashCommandName(command.name)
 
             if slashCommandName and not seenCommands[slashCommandName] then
@@ -4731,8 +4732,12 @@ function SmartChatMsg:GetEmbeddedDayOffset(text, nowEpoch, timeMatch)
     return 0
 end
 
-function SmartChatMsg:GetCountdownUntilEmbeddedTimeText(text)
+function SmartChatMsg:GetCountdownUntilEmbeddedTimeText(text,eventAtUtc)
     local best = self:AnalyzeEmbeddedTime(text)
+    if best and type(eventAtUtc)=="number" then
+        best.suppressCountdown=false
+        best.aboutString="("..scm_format_about_duration(math.floor((eventAtUtc-GetTimeStamp())/60))..")"
+    end
     if not best or best.suppressCountdown then return nil, nil end
     local countdownText = best.aboutString and best.aboutString:gsub("^%(", ""):gsub("%)$", "") or nil
     local metadata = {
@@ -4746,7 +4751,7 @@ function SmartChatMsg:GetCountdownUntilEmbeddedTimeText(text)
     return countdownText, metadata
 end
 
-function SmartChatMsg:InsertCountdownIntoMessageText(text)
+function SmartChatMsg:InsertCountdownIntoMessageText(text,eventAtUtc)
     local source = tostring(text or "")
     local best, all = self:AnalyzeEmbeddedTime(source)
     if self.debugEnabled then
@@ -4754,10 +4759,16 @@ function SmartChatMsg:InsertCountdownIntoMessageText(text)
     end
     -- Use main's improved parser, but preserve the template's literal wording
     -- and expose countdown insertion metadata for incoming peer matching.
-    return self:InsertCountdownPreservingTemplate(source)
+    return self:InsertCountdownPreservingTemplate(source,eventAtUtc)
 end
 
 function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName)
+    local eventAtUtc
+    if zo_strlower(tostring(text or "")):find("%eventtime%",1,true) then
+        local schedule=self:GetGuildSchedule(commandId,guildName)
+        local occurrence=schedule and self:GetScheduleOccurrence(schedule,GetTimeStamp())
+        eventAtUtc=occurrence and occurrence.eventAtUtc
+    end
     local result = self:ResolveScheduledEventTokens(text,commandId,guildName)
     local timeOfDay = self:GetCurrentTimeTokenValue()
     local substitutions = {
@@ -4774,7 +4785,7 @@ function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName)
         if replacement ~= nil and replacement ~= "" then return replacement end
         return "%" .. tostring(tokenName or "") .. "%"
     end)
-    result = self:InsertCountdownIntoMessageText(result)
+    result = self:InsertCountdownIntoMessageText(result,eventAtUtc)
     return result
 end
 

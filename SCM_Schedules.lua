@@ -102,6 +102,7 @@ function SmartChatMsg:SaveGuildSchedule(commandId,guildName,draft)
     local active=self.GetActiveAutoPopulate and self:GetActiveAutoPopulate()
     if active and active.commandId==commandId and self:StringsEqualIgnoreCase(active.guildName,guildName) then self:ClearActiveAutoPopulate() end
     settings.schedule,settings.runAt=schedule,"SCHEDULED"
+    if self.RegisterDynamicCommands then self:RegisterDynamicCommands() end
     if self.TickSchedules then self:TickSchedules() end
     return true
 end

@@ -1,5 +1,16 @@
 # Try simple scheduling in ESO
 
+Version 1.11.3: confirm Auto and Repeat Commands collapse when empty and can be
+toggled by their headers. Promotion start/end should appear in current cards,
+without the duplicate summary above. Next Send must be absent while Paused/Off.
+Check native button styling, scrollbar clearance, and the section's bottom fit.
+Schedule-only slash names are no longer registered. Start an ordinary On Demand
+repeat by its command, send it, confirm its next interval, then test card pause/off.
+Mixed names retain their slash command for ordinary guild configurations.
+For countdown regression: an event at 9 PM ET viewed at 8 PM ET must display 1h,
+including when the UTC date has already changed; verify the next recurring event
+and both EST/EDT. Incoming copies with that countdown must still reset cooldowns.
+
 Version 1.11.2 status checks: after the startup wait, run `/scm resetcooldowns`.
 An enabled current schedule should prepare chat and announce Press Enter locally.
 Leave one unsent and confirm the timeout notice explains the next attempt time.

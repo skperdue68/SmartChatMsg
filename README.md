@@ -1,4 +1,4 @@
-# SmartChatMsg (v1.11.2)
+# SmartChatMsg (v1.11.3)
 
 SmartChatMsg is an Elder Scrolls Online addon for reusable chat messages: guild
 recruitment, trial reminders, auctions, officer notices, and other announcements.
@@ -34,6 +34,30 @@ zone arrival, or a message ready for Enter. Pausing or switching Off withdraws
 untouched generated text while preserving player edits. Larger cards keep all
 four lines inside their border. Ordinary repeat cards use the same toggle cycle;
 their pause state lasts for the current session, like their ordinary automation.
+
+Click **Auto** or **Repeat Commands** to collapse/expand that section. Empty
+sections collapse automatically; newly available content opens them. Your manual
+collapse choice stays respected while the same content remains available. Auto
+contains zone tracking, while Repeat Commands contains current schedule cards and
+running/paused ordinary repeats. Upcoming schedules remain in settings rather
+than duplicating all their details above the cards. Each current scheduled card
+shows its readable ET promotion start/end below status. **Next Send** appears only
+while the card is Active. Pause/Turn On/Turn Off use ESO's textured button style,
+and the cards reserve scrollbar space and fit above the main window's bottom edge.
+
+Schedule-only message groups retain their saved names and IDs for configuration,
+but no longer register slash commands. They run through their schedules and card
+controls. If the same name also has an On Demand or Startup guild configuration,
+its slash command remains available for that combination. Ordinary repeats are
+started by their slash command; inactive ordinary entries are not listed in the
+running-repeat section. Previously a scheduled slash request could do nothing
+visible because it still honored the schedule's startup/cooldown limits.
+
+For messages containing **`%eventtime%`**, the countdown now uses the current
+scheduled occurrence's UTC event timestamp directly. It does not infer an event
+date from a standalone clock time. This fixes the extra-day countdown after UTC
+midnight while it is still the prior evening in Eastern Time. The normal embedded
+time parser remains in use for messages without that event token.
 
 For testing, **`/scm resetcooldowns`** clears command/guild usage cooldowns, observed
 peer cooldowns, per-zone cooldowns, retry deadlines, once-per-occurrence markers,
