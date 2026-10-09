@@ -84,6 +84,10 @@ local function nativeControl()
     function c:ClearAnchors() end
     function c:SetFont() end
     function c:SetMouseEnabled() end
+    function c:SetAnchorFill() end
+    function c:SetCenterColor() end
+    function c:SetEdgeColor() end
+    function c:SetEdgeTexture() end
     return c
 end
 WINDOW_MANAGER={CreateControl=function(_,_,parent) local c=nativeControl(); c.parent=parent; return c end,CreateControlFromVirtual=function(_,_,parent) local c=nativeControl(); c.parent=parent; return c end}
@@ -96,7 +100,8 @@ function ZO_CheckButton_SetToggleFunction(c,fn) c.toggle=fn end
 local holder=nativeControl()
 pool.createFunc(holder)
 eq(#holder.scheduleRows,2)
-eq(holder.scheduleRows[1].label.text,"First actual message preview")
+assert(holder.scheduleRows[1].label.text:find("First actual message preview",1,true))
+assert(holder.scheduleRows[1].label.text:find("Used:",1,true))
 holder.scheduleRows[1].check.checked=false
 holder.scheduleRows[1].check.toggle(holder.scheduleRows[1].check)
 eq(scm:GetScheduleEditorDraft().messagePhases.a.BEFORE,false)
@@ -105,7 +110,7 @@ eq(scm:GetScheduleEditorDraft().messagePhases.b.BEFORE,false)
 f.entry("c","ad","Amber Traders","Added after settings opened")
 pool.refreshFunc(holder)
 eq(#holder.scheduleRows,3)
-eq(holder.scheduleRows[3].label.text,"Added after settings opened")
+assert(holder.scheduleRows[3].label.text:find("Added after settings opened",1,true))
 eq(holder.height,230)
 eq(pool.minHeight,230); eq(pool.maxHeight,230)
 eq(holder.scheduleRows[1].parent,holder.scheduleContent)

@@ -141,7 +141,7 @@ end
 
 
 function SmartChatMsg:GetStatusPanelRepeatCardHeight()
-    return 124
+    return 144
 end
 
 function SmartChatMsg:GetStatusSectionExpanded(section,hasContent)
@@ -270,12 +270,18 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                         isActive=controlState=="ON"
                         local schedule=scheduled and self:GetGuildSchedule(command.id,guildName)
                         local occurrence=schedule and self:GetScheduleOccurrence(schedule,now)
+                        local displayName=scheduled and (command.name or "Scheduled message") or (self:BuildSlashCommandName(command.name or "command") or "/command")
+                        local runAt=self:GetGuildRunAt(command.id,guildName)
+                        displayName=displayName..(scheduled and " (Scheduled)" or runAt=="STARTUP" and " (Startup)" or " (On Demand)")
+                        if occurrence and type(occurrence.eventAtUtc)=="number" then
+                            displayName=displayName.."\n"..(occurrence.eventAtUtc>now and ("Starts in "..self:FormatStatusDuration(occurrence.eventAtUtc-now)) or "Started")
+                        end
 
                         table.insert(rows, {
                             commandId = command.id,
                             commandName = command.name or "command",
                             slashCommand = self:BuildSlashCommandName(command.name or "command") or "/command",
-                            displayName = scheduled and (command.name or "Scheduled message") or (self:BuildSlashCommandName(command.name or "command") or "/command"),
+                            displayName = displayName,
                             promotionText = occurrence and (self:FormatEasternDateTime(occurrence.startsAtUtc).." → "..self:FormatEasternDateTime(occurrence.endsAtUtc)) or nil,
                             guildName = guildName,
                             channelText = self:GetAutoPopulateChannelStatusText(command.id, guildName),
@@ -950,7 +956,7 @@ function SmartChatMsg:ApplyStatusPanelLayout(panel, width)
         row.toggleButton:ClearAnchors()
         row.toggleButton:SetAnchor(TOPRIGHT, row, TOPRIGHT, -8, 8)
 
-        row.commandLabel:SetDimensions(textWidth, 20)
+        row.commandLabel:SetDimensions(textWidth, 40)
         row.commandLabel:ClearAnchors()
         row.commandLabel:SetAnchor(TOPLEFT, row, TOPLEFT, 8, 8)
 
@@ -971,7 +977,7 @@ function SmartChatMsg:ApplyStatusPanelLayout(panel, width)
         row.detailsLabel:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
         row.timingLabel:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
 
-        if row.commandLabel.SetMaxLineCount then row.commandLabel:SetMaxLineCount(1) end
+        if row.commandLabel.SetMaxLineCount then row.commandLabel:SetMaxLineCount(2) end
         if row.statusLabel.SetMaxLineCount then row.statusLabel:SetMaxLineCount(2) end
         if row.detailsLabel.SetMaxLineCount then row.detailsLabel:SetMaxLineCount(1) end
         if row.timingLabel.SetMaxLineCount then row.timingLabel:SetMaxLineCount(1) end

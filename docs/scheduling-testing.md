@@ -1,6 +1,6 @@
 # Try simple scheduling in ESO
 
-Version 1.11.3: confirm Auto and Repeat Commands collapse when empty and can be
+Version 1.11.4: confirm Auto and Repeat Commands collapse when empty and can be
 toggled by their headers. Promotion start/end should appear in current cards,
 without the duplicate summary above. Next Send must be absent while Paused/Off.
 Check native button styling, scrollbar clearance, and the section's bottom fit.
@@ -109,3 +109,13 @@ lines. Every phase checklist should remain inside its scroll area. Use the wheel
 over text or a checkbox, or drag the scrollbar, to reach and select the last row.
 Changing a selection must preserve the scroll position. Check that the interval
 and once-only controls below the list remain visible and do not overlap it.
+
+## Message visibility and identity (1.11.4)
+
+- Confirm a scheduled card shows (Scheduled) and Starts in until the event time,
+  then Started. On Demand repeats should display (On Demand).
+- Resize/open the schedule message selection. Long messages and the Used phase
+  line should wrap fully within each bordered checkbox row, without overlap.
+- Toggle phase assignments, save, and inspect the phase captions in the saved
+  message editor. Starting soon should appear only when enabled.
+- Confirm Share Messages is absent and Import / Export Settings remains.

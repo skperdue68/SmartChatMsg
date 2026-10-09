@@ -1,4 +1,4 @@
-SmartChatMsg 1.11.3 — quick user guide
+SmartChatMsg 1.11.4 — quick user guide
 
 Store reusable recruitment, trial, auction and other announcements. SmartChatMsg
 fills your chat box; you still press Enter to send. See README.md for the full guide.
@@ -106,23 +106,12 @@ An active Repeat is delayed, but peers cannot start inactive automation, resume
 paused schedules or extend their end. Untouched pending duplicates withdraw;
 edited text stays. The extra cooldown survives UI reloads.
 
-SHARE MESSAGES
-Select a command/guild/channel, open Share Messages, and Export Messages. Give
-the text to another player. They select their destination command and the same
-guild/channel, paste into Shared message text, and Import Messages (merge).
-Command names and local guild slots may differ. New templates are added; exact
-duplicates skipped. Existing messages, IDs, usage and personal settings remain.
-
-Sharing copies templates only, not event dates, schedules, phases or cooldowns.
-Configure matching events separately for event tokens. New scheduled templates
-use ANY until assigned. Imported templates participate in incoming matching.
-
 FULL SETTINGS BACKUP/RESTORE
 Import / Export Settings includes commands, messages, channels, behavior, schedule
 dates/times, intervals, message phases, pauses and general settings. Full import
 replaces all settings after confirmation; review imported enabled schedules.
 After import, edit dates/times and phase assignments and Save schedule. Changes
-affect only your copy. Message shares use a different format from full backups.
+affect only your copy. The separate Share Messages settings panel is removed.
 
 ORDINARY AUTOMATION
 On Demand starts through your command; Startup queues after login. Repeat Every
@@ -141,3 +130,11 @@ SCM_MessageSharing Lua modules. Reload UI after updating.
 See README.md and docs/scheduling-testing.md, docs/incoming-chat-testing.md and
 docs/message-sharing-testing.md. Automated tests do not replace in-game UI,
 loading-screen and two-player trials.
+
+MESSAGE VISIBILITY AND CARD LABELS
+Repeat cards identify Scheduled, On Demand, or Startup. Scheduled cards show
+Starts in and the countdown to the current occurrence, then Started.
+Scheduling checkboxes and complete message previews share bordered rows.
+Used identifies the selected phases; Before event day can cover multiple days.
+On Demand supports literal date/time countdowns. Event substitutions need a
+saved event configuration; repeat intervals alone do not define event times.

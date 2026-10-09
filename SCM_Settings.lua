@@ -1500,7 +1500,9 @@ local function BuildMessagesEditor(parent)
                 rowData.statusLabel:SetText("Pending Update")
                 rowData.statusLabel:SetColor(0.95, 0.78, 0.18, 1)
             else
-                rowData.statusLabel:SetText("")
+                local schedule=SmartChatMsg:GetGuildRunAt(currentEntry.commandId,currentEntry.guildName)=="SCHEDULED" and SmartChatMsg:GetGuildSchedule(currentEntry.commandId,currentEntry.guildName)
+                rowData.statusLabel:SetText(schedule and SmartChatMsg:GetScheduleMessagePhaseText(currentEntry.id,schedule) or "")
+                rowData.statusLabel:SetColor(0.77,0.76,0.62,1)
             end
         end
 
@@ -1522,7 +1524,7 @@ local function BuildMessagesEditor(parent)
         SmartChatMsg.settings.nextSavedMessageRowControlId = controlId + 1
 
         local row = WINDOW_MANAGER:CreateControl(string.format("SCM_SavedMessageRow%d", controlId), rowsContainer, CT_CONTROL)
-        row:SetDimensions(ROW_WIDTH, MESSAGE_BOX_HEIGHT + 24)
+        row:SetDimensions(ROW_WIDTH, MESSAGE_BOX_HEIGHT + 44)
 
         if anchorTarget then
             row:SetAnchor(TOPLEFT, anchorTarget, anchorPoint or BOTTOMLEFT, 0, index == 1 and 0 or 10)
@@ -1541,7 +1543,7 @@ local function BuildMessagesEditor(parent)
 
         local statusLabel = WINDOW_MANAGER:CreateControl(string.format("SCM_SavedMessageStatusLabel%d", controlId), row, CT_LABEL)
         statusLabel:SetFont("ZoFontGame")
-        statusLabel:SetDimensions(MESSAGE_BOX_WIDTH, 20)
+        statusLabel:SetDimensions(MESSAGE_BOX_WIDTH, 40)
         statusLabel:SetAnchor(TOPLEFT, backdrop, BOTTOMLEFT, 0, 4)
 
         local updateButton = WINDOW_MANAGER:CreateControlFromVirtual(string.format("SCM_SavedMessageUpdateButton%d", controlId), row, "ZO_DefaultButton")
@@ -1678,7 +1680,7 @@ local function BuildMessagesEditor(parent)
         for index, entry in ipairs(entries) do
             local row = CreateSavedMessageRow(index, entry, lastRow, BOTTOMLEFT)
             lastRow = row
-            rowsHeight = rowsHeight + MESSAGE_BOX_HEIGHT + 24
+            rowsHeight = rowsHeight + MESSAGE_BOX_HEIGHT + 44
             if index > 1 then
                 rowsHeight = rowsHeight + 10
             end
@@ -1920,7 +1922,6 @@ function SmartChatMsg:CreateSettingsPanel()
     local importExportHolder
 
     local optionsTable = {
-        {type="submenu",name="Share Messages",controls=self:BuildMessageSharingOptionControls()},
         {
             type = "description",
             text = "Allows you to create custom command(s) that can be filtered by guild and used to output one of several random messages to the appropriate chat type.",
