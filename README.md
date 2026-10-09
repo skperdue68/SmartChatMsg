@@ -1,5 +1,7 @@
 # SmartChatMsg (v2.0.2)
 
+**[Open the standalone HTML help guide v2.0.2](SmartChatMsg_Help_Guide_v2.0.2.html)** (included with the addon).
+
 **[Read the complete SmartChatMsg 2.0 user guide](docs/SmartChatMsg-2.0.md)** for all configuration options, examples, timezone changes, recurrence, message groups, and phase behavior.
 
 **2.0.2:** Scheduled message views sort by earliest selected phase, ending with unused messages. Live checkbox edits update the order while preserving scroll position and existing sections.
