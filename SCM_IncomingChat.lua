@@ -27,6 +27,7 @@ end
 function SmartChatMsg:GetIncomingChatScope(messageType)
     if type(messageType) ~= "number" then return nil end
     if messageType == CHAT_CHANNEL_ZONE then return "Zone", nil end
+    if messageType == CHAT_CHANNEL_PARTY then return "Group", nil end
     if messageType >= CHAT_CHANNEL_GUILD_1 and messageType <= CHAT_CHANNEL_GUILD_5 then
         return "Guild", self:GetGuildNameByIndex(messageType - CHAT_CHANNEL_GUILD_1 + 1)
     end
@@ -288,7 +289,7 @@ function SmartChatMsg:HandleIncomingChatMessage(eventCode, messageType, fromName
     if not self.savedVars or isCustomerService or self:IsOwnChatSender(fromName, fromDisplayName) then return end
     if self:Trim(fromName or "") == "" and self:Trim(fromDisplayName or "") == "" then return end
     local channel, receivingGuild = self:GetIncomingChatScope(messageType)
-    if not channel or (channel ~= "Zone" and not receivingGuild) then return end
+    if not channel or (channel ~= "Zone" and channel ~= "Group" and not receivingGuild) then return end
     local normalizedText = self:NormalizeIncomingChatText(text)
     if normalizedText == "" then return end
     local matched = {}
@@ -297,7 +298,7 @@ function SmartChatMsg:HandleIncomingChatMessage(eventCode, messageType, fromName
             local guildName = entry.guildName
             if not guildName or guildName == "" then guildName = self:GetGuildNameByIndex(entry.guildIndex) end
             if guildName and self:GetSavedChatChannel(entry.commandId, guildName) == channel
-                and (channel == "Zone" or self:StringsEqualIgnoreCase(guildName, receivingGuild)) then
+                and (channel == "Zone" or channel == "Group" or self:StringsEqualIgnoreCase(guildName, receivingGuild)) then
                 local key = self:GetReminderStateKey(entry.commandId, guildName)
                 if key and not matched[key] and self:MatchesIncomingMessage(entry, guildName, normalizedText) then
                     matched[key] = true

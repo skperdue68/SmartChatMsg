@@ -1,6 +1,6 @@
 SmartChatMsg = SmartChatMsg or {}
 
-local function validChannel(channel) return channel=="Zone" or channel=="Guild" or channel=="Officer" end
+local function validChannel(channel) return channel=="Zone" or channel=="Guild" or channel=="Officer" or channel=="Group" end
 
 function SmartChatMsg:BuildMessageShareString(commandId,guildName)
     if not self:GetCommandById(commandId) or not self:GetGuildSlotByName(guildName) then

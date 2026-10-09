@@ -2989,6 +2989,12 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
         return true
     end
 
+    if channel == "Group" then
+        StartChatInput(resolvedMessageText,CHAT_CHANNEL_PARTY)
+        self:PlayPopulateSound(commandId,guildName)
+        return true
+    end
+
     if channel == "Guild" or channel == "Officer" then
         local guildSlot = self:GetGuildSlotByName(guildName)
         self:DebugLog("PopulateChatBufferForCommand guildSlot=" .. tostring(guildSlot))
@@ -3509,6 +3515,8 @@ function SmartChatMsg:GetAutoPopulateChannelStatusText(commandId, guildName)
         return string.format("Officer (/o%d)", guildSlot)
     elseif channel == "Zone" then
         return "Zone"
+    elseif channel == "Group" then
+        return "Group (/g)"
     end
 
     return channel or "Unknown"

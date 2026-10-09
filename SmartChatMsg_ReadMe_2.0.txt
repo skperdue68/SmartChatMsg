@@ -8,7 +8,7 @@ Install the SmartChatMsg addon folder and enable **LibAddonMenu-2.0** and **LibA
 
 ## Commands, guilds, and messages
 
-Create a command name, then select that command and a guild under **Create / Edit / Delete Messages**. A command can have different settings and messages for different guilds. Choose **Guild**, **Officer**, or **Zone** as its output channel. Enter a message and click **Add**; add several variations to have the addon choose randomly. Existing messages can be updated or deleted.
+Create a command name, then select that command and a guild under **Create / Edit / Delete Messages**. A command can have different settings and messages for different guilds. Choose **Guild**, **Officer**, **Zone**, or **Group (/g)** as its output channel. Group prepares messages for your current ESO group; the selected guild still identifies the configuration and substitutions, rather than the recipients. Enter a message and click **Add**; add several variations to have the addon choose randomly. Existing messages can be updated or deleted.
 
 The selected **command + guild** is the unit of scheduling and cooldown coordination. Zone messages still belong to that selected combination, but their output and incoming matching use Zone chat.
 
@@ -148,7 +148,7 @@ Event substitutions require an event schedule for the command/guild. Ordinary me
 
 ## Other players' announcements and cooldowns
 
-The addon monitors incoming messages even when your command is stopped or paused. It ignores your own messages. Guild and Officer announcements must arrive in that same channel for the same guild; Zone announcements must arrive in Zone chat. When a recognized template matches, the entire command + guild is recorded as used, and a random 30–90 seconds is added to its cooldown to stagger users.
+The addon monitors incoming messages even when your command is stopped or paused. It ignores your own messages. Guild and Officer announcements must arrive in that same channel for the same guild; Zone announcements must arrive in Zone chat; Group announcements must arrive in Group chat. Group chat has no guild identity, so matching applies only to matching templates configured for Group output. When a recognized template matches, the entire command + guild is recorded as used, and a random 30–90 seconds is added to its cooldown to stagger users.
 
 Matching tolerates supported substitution values, formatting, spacing, and generated countdown annotations such as `(~23h)`. It does not accept arbitrary word changes or typos as a general fuzzy match. Unchecked phase messages are still saved templates available for monitoring; excluding one from your delivery pool does not delete it. A match does not enable a stopped command or unpause a schedule.
 
