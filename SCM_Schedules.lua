@@ -159,9 +159,11 @@ function SmartChatMsg:ExportScheduleRecords()
                 local once={};for _,phase in ipairs(phases) do once[#once+1]=s.phaseOnce and s.phaseOnce[phase] and "1" or "0" end
                 lines[#lines+1]=encode({"SCHEDULEOPTIONS_V1",id,guild,s.mode or "EVENT",s.recurrence or "NONE",tostring(s.recurrenceInterval or 1),table.concat(days),tostring(s.promotionDays or ""),tostring(s.endDelayMinutes or ""),table.concat(once),s.startingSoonEnabled and "1" or "0",tostring(s.startingSoonMinutes or 120),tostring(s.phaseIntervals.SOON or "")})
                 for messageId,assigned in pairs(s.messagePhases) do
+                    if not self:IsMessageLocked(messageId) then
                     local row={"SCHEDULEMESSAGE_V1",id,guild,messageId}
                     for _,phase in ipairs(phases) do row[#row+1]=assigned[phase] and "1" or "0" end
                     lines[#lines+1]=encode(row)
+                    end
                 end
             end
         end

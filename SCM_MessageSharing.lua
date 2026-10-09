@@ -11,7 +11,10 @@ function SmartChatMsg:BuildMessageShareString(commandId,guildName)
     local entries=self:GetMessageEntriesForCommandAndGuild(commandId,guildName)
     if #entries==0 then return nil,"No messages to share for this command/guild." end
     local lines={"SCM_MESSAGES_V1","SET|"..self:EscapeImportExportField(guildName).."|"..channel}
-    for _,entry in ipairs(entries) do lines[#lines+1]="TEXT|"..self:EscapeImportExportField(entry.text) end
+    for _,entry in ipairs(entries) do
+        if entry.locked~=true then lines[#lines+1]="TEXT|"..self:EscapeImportExportField(entry.text) end
+    end
+    if #lines==2 then return nil,"No unlocked messages to share for this command/guild." end
     lines[#lines+1]="END"
     local text=table.concat(lines,"\n")
     if #text>30000 then return nil,"This message set is too large to share in one paste (30,000 bytes)." end

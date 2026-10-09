@@ -416,6 +416,8 @@ function SmartChatMsg:BuildExportString()
 
     table.insert(lines, string.format("DEFAULT|%s", self:EscapeImportExportField(self.savedVars.defaultGuildIndex or "")))
     table.insert(lines, string.format("GENERALREVERT|%s", self:EscapeImportExportField(self.savedVars.revertChatSeconds or 60)))
+    local panel=self.savedVars.statusPanelState or self.defaults.statusPanelState
+    table.insert(lines,string.format("STATUSPANEL|%s|%s|%s",panel.visible==true and "1" or "0",self:EscapeImportExportField(panel.offsetX or -40),self:EscapeImportExportField(panel.offsetY or 180)))
 
     for _, command in ipairs(self.savedVars.commands or {}) do
         if type(command) == "table" then
@@ -430,7 +432,7 @@ function SmartChatMsg:BuildExportString()
     end
 
     for _, entry in ipairs(self.savedVars.messages or {}) do
-        if type(entry) == "table" then
+        if type(entry) == "table" and entry.locked~=true then
             table.insert(lines, table.concat({
                 "MESSAGE",
                 self:EscapeImportExportField(entry.id or ""),
@@ -505,17 +507,68 @@ function SmartChatMsg:BuildExportString()
     return table.concat(lines, string.char(10))
 end
 
+function SmartChatMsg:IsMessageLocked(messageId)
+    for _,entry in ipairs(self.savedVars.messages or {}) do
+        if entry.id==messageId then return entry.locked==true end
+    end
+    return false
+end
+
+function SmartChatMsg:SetMessageLocked(messageId,locked)
+    for _,entry in ipairs(self.savedVars.messages or {}) do
+        if entry.id==messageId then entry.locked=locked==true;return true end
+    end
+    return false,"Message not found."
+end
+
+function SmartChatMsg:PreserveLockedMessages(imported)
+    local function clone(value)
+        if type(value)~="table" then return value end
+        local result={};for key,item in pairs(value) do result[key]=clone(item) end;return result
+    end
+    local byId,byName={},{}
+    for _,command in ipairs(imported.commands or {}) do byId[command.id]=command;byName[zo_strlower(command.name)]=command end
+    imported.messages=imported.messages or {}
+    for _,entry in ipairs(self.savedVars.messages or {}) do
+        if entry.locked==true then
+            local name=self:GetCommandNameById(entry.commandId)
+            local command=byId[entry.commandId] or (name and byName[zo_strlower(name)])
+            if command then
+                local kept=clone(entry);kept.commandId=command.id
+                for index=#imported.messages,1,-1 do
+                    if imported.messages[index].id==kept.id then table.remove(imported.messages,index) end
+                end
+                imported.messages[#imported.messages+1]=kept
+                -- A local lock protects its phase assignments as well as its text.
+                for _,guilds in pairs(imported.commandGuildSettings or {}) do
+                    for _,settings in pairs(guilds) do
+                        if settings.schedule then settings.schedule.messagePhases[kept.id]=nil end
+                    end
+                end
+                local guild=self:NormalizeKey(entry.guildName or self:GetGuildNameByIndex(entry.guildIndex))
+                local localSchedule=guild and self:GetGuildSchedule(entry.commandId,guild)
+                local newSettings=guild and imported.commandGuildSettings and imported.commandGuildSettings[command.id] and imported.commandGuildSettings[command.id][guild]
+                if localSchedule and newSettings and newSettings.schedule then
+                    newSettings.schedule.messagePhases[kept.id]=clone(localSchedule.messagePhases[entry.id])
+                end
+            end
+        end
+    end
+end
+
 function SmartChatMsg:ApplyImportedSettings(imported)
     if type(imported) ~= "table" then
         return false, "Import data is invalid."
     end
 
+    self:PreserveLockedMessages(imported)
     self.savedVars.commands = imported.commands or {}
     self.savedVars.messages = imported.messages or {}
     self.savedVars.chatChannels = imported.chatChannels or {}
     self.savedVars.commandGuildSettings = imported.commandGuildSettings or {}
     self.savedVars.defaultGuildIndex = imported.defaultGuildIndex
     self.savedVars.revertChatSeconds = self:NormalizeRevertChatSeconds(imported.revertChatSeconds)
+    self.savedVars.statusPanelState = imported.statusPanelState or self.savedVars.statusPanelState
     self.savedVars.activeAutoPopulate = imported.activeAutoPopulate
     self.savedVars.selectedCommand = nil
     self.savedVars.selectedMessagesCommand = nil
@@ -586,6 +639,11 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
             end
         elseif recordType == "GENERALREVERT" then
             imported.revertChatSeconds = self:NormalizeRevertChatSeconds(self:UnescapeImportExportField(parts[1] or ""))
+        elseif recordType == "STATUSPANEL" then
+            local x=tonumber(self:UnescapeImportExportField(parts[2] or ""))
+            local y=tonumber(self:UnescapeImportExportField(parts[3] or ""))
+            if not x or not y or x~=x or y~=y or math.abs(x)==math.huge or math.abs(y)==math.huge then return false,"Imported status panel position is invalid." end
+            imported.statusPanelState={visible=parts[1]=="1",offsetX=math.floor(x),offsetY=math.floor(y)}
         elseif recordType == "COMMAND" then
             local id = self:UnescapeImportExportField(parts[1] or "")
             local name = self:SanitizeCommandName(self:UnescapeImportExportField(parts[2] or ""))

@@ -164,7 +164,7 @@ local function RegisterDeleteDialogs()
     if not SmartChatMsg.settings.importDialogRegistered then
         ZO_Dialogs_RegisterCustomDialog(IMPORT_SETTINGS_DIALOG_NAME, {
             title = { text = "Import Settings" },
-            mainText = { text = "Importing will replace all existing SmartChatMsg settings. Are you sure?" },
+            mainText = { text = "Import replaces settings and unlocked messages. Locked messages stay only if their commands remain. Continue?" },
             buttons = {
                 {
                     text = SI_DIALOG_CONFIRM,
@@ -1373,7 +1373,7 @@ local function BuildMessagesEditor(parent)
     local countLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesEditorCountLabel", container, CT_LABEL)
     countLabel:SetFont("ZoFontGame")
     countLabel:SetDimensions(ROW_WIDTH, 24)
-    countLabel:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 45)
+    countLabel:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 0)
 
     local rowsContainer = WINDOW_MANAGER:CreateControl("SCM_ExistingMessagesRows", container, CT_CONTROL)
     rowsContainer:SetAnchor(TOPLEFT, countLabel, BOTTOMLEFT, 0, 8)
@@ -1504,6 +1504,7 @@ local function BuildMessagesEditor(parent)
                 rowData.statusLabel:SetText(schedule and SmartChatMsg:GetScheduleMessagePhaseText(currentEntry.id,schedule) or "")
                 rowData.statusLabel:SetColor(0.77,0.76,0.62,1)
             end
+            if currentEntry.locked==true then rowData.statusLabel:SetText("Locked · "..rowData.statusLabel:GetText()) end
         end
 
         if rowData.updateButton then
@@ -1571,6 +1572,15 @@ local function BuildMessagesEditor(parent)
             revertButton = revertButton,
             deleteButton = deleteButton,
         }
+        local lockButton=WINDOW_MANAGER:CreateControlFromVirtual(string.format("SCM_SavedMessageLockButton%d",controlId),row,"ZO_DefaultButton")
+        lockButton:SetDimensions(70,24)
+        lockButton:SetAnchor(TOPLEFT,updateButton,BOTTOMLEFT,0,4)
+        lockButton:SetText(entry.locked==true and "Unlock" or "Lock")
+        lockButton:SetHandler("OnClicked",function()
+            SmartChatMsg:SetMessageLocked(entry.id,entry.locked~=true)
+            lockButton:SetText(entry.locked==true and "Unlock" or "Lock")
+            RefreshRowState(rowData)
+        end)
 
         editBox:SetHandler("OnTextChanged", function(self)
             local text = self:GetText() or ""
@@ -1698,8 +1708,7 @@ local function BuildMessagesEditor(parent)
         addButton:SetAnchor(TOPLEFT, addBackdrop, TOPRIGHT, 12, 0)
         resetButton:SetAnchor(LEFT, addButton, RIGHT, 8, 0)
 
-        -- Include the count label's 45px top inset in the occupied height.
-        local totalHeight = 45 + 24
+        local totalHeight = 24
         if rowsHeight > 0 then
             totalHeight = totalHeight + 8 + rowsHeight + 14
         else
@@ -1728,8 +1737,8 @@ local function BuildImportExportEditor(parent)
     description:ClearAnchors()
     description:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 0)
     description:SetAnchor(TOPRIGHT, container, TOPRIGHT, -130, 0)
-    description:SetHeight(24)
-    description:SetText("Use Export to generate a backup string for all SmartChatMsg settings.")
+    description:SetHeight(44)
+    description:SetText("Export omits locked messages; import keeps them if their command remains.")
 
     local backdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_ImportExportBackdrop", container, "ZO_EditBackdrop")
     backdrop:ClearAnchors()
@@ -2071,9 +2080,9 @@ function SmartChatMsg:CreateSettingsPanel()
                 {
                     type = "custom",
                     reference = "SCM_MessagesBehaviorSettingsHolder",
-                    minHeight = 0, maxHeight = 335,
+                    minHeight = 0, maxHeight = 235,
                     createFunc = function(control)
-                        control:SetHeight(335)
+                        control:SetHeight(235)
                         messagesBehaviorSettingsHolder = BuildMessagesBehaviorSettings(control)
                         messagesBehaviorSettingsHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
                     end,
@@ -2082,7 +2091,7 @@ function SmartChatMsg:CreateSettingsPanel()
                             messagesBehaviorSettingsHolder:RefreshEditor()
                         end
 
-                        control:SetHeight(SmartChatMsg:IsMessagesSelectionComplete() and 335 or 0)
+                        control:SetHeight(SmartChatMsg:IsMessagesSelectionComplete() and 235 or 0)
                     end,
                 },
                 {

@@ -1,4 +1,4 @@
-SmartChatMsg 1.11.4 — quick user guide
+SmartChatMsg 1.11.5 — quick user guide
 
 Store reusable recruitment, trial, auction and other announcements. SmartChatMsg
 fills your chat box; you still press Enter to send. See README.md for the full guide.
@@ -109,7 +109,8 @@ edited text stays. The extra cooldown survives UI reloads.
 FULL SETTINGS BACKUP/RESTORE
 Import / Export Settings includes commands, messages, channels, behavior, schedule
 dates/times, intervals, message phases, pauses and general settings. Full import
-replaces all settings after confirmation; review imported enabled schedules.
+replaces settings and unlocked messages after confirmation. Locked messages
+remain if their commands survive; review imported enabled schedules.
 After import, edit dates/times and phase assignments and Save schedule. Changes
 affect only your copy. The separate Share Messages settings panel is removed.
 
@@ -138,3 +139,13 @@ Scheduling checkboxes and complete message previews share bordered rows.
 Used identifies the selected phases; Before event day can cover multiple days.
 On Demand supports literal date/time countdowns. Event substitutions need a
 saved event configuration; repeat intervals alone do not define event times.
+
+PERSONAL MESSAGE LOCKS (1.11.5)
+Click Lock beside a message to exclude it from export and protect it on import.
+Unlock reverses this. Locked appears below the message and in schedule pools.
+The message still sends and matches normally. Its phase choices are preserved.
+Import keeps it if the command remains by ID or name; deleting its command from
+the imported setup removes the message. Command settings themselves are not locked.
+Exports also capture status window saved visibility and position, in addition to
+Open Status Panel on Run, Notify Sound, Run At and other behavior/schedule settings.
+On Demand and Startup restore slash commands; scheduled-only names remove them.

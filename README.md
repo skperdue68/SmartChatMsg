@@ -1,4 +1,4 @@
-# SmartChatMsg (v1.11.4)
+# SmartChatMsg (v1.11.5)
 
 SmartChatMsg is an Elder Scrolls Online addon for reusable chat messages: guild
 recruitment, trial reminders, auctions, officer notices, and other announcements.
@@ -278,7 +278,8 @@ and clearing occur only while pending text is unchanged; player edits survive.
 
 **Import / Export Settings** includes commands, messages, channels, behavior,
 schedule dates/times, intervals, phase assignments, pauses, and general settings.
-Import replaces addon settings after confirmation. The separate Share Messages
+Import replaces addon settings and unlocked messages after confirmation; local
+locked messages survive while their command remains. The separate Share Messages
 settings panel has been removed.
 
 ### Customize an imported schedule
@@ -301,7 +302,7 @@ coordination, persistence, sharing, and settings callbacks. Actual ESO UI layout
 loading screens, channel restoration, and two-player operation still need in-game
 verification. There is no recurring event scheduler or offline posting.
 
-### Message list and command identity (1.11.4)
+### Message list and command identity (1.11.5)
 
 Repeat cards show (Scheduled), (On Demand), or (Startup). Scheduled cards show
 the countdown to the current occurrence's event time, changing to Started at
@@ -316,3 +317,27 @@ On Demand messages can use countdowns from supported literal dates/times.
 %eventdate%, %eventtime%, and %eventwhen% need a saved event configuration for
 the command/guild; without one the tokens remain unchanged. An On Demand repeat
 interval does not itself supply an event date/time.
+
+### Personal messages and complete settings exports (1.11.5)
+
+Use **Lock** beside a saved message to keep it personal. **Unlock** includes it
+in the next export. A Locked caption also appears in schedule message pools.
+Locking affects transfer only: sending, editing, deletion, and incoming matching
+continue normally. A lock is per message, not per command.
+
+Exports omit locked message text and its phase-assignment records. Imports keep
+local locked messages, usage and phase assignments when the parent command
+survives by ID, or by the same name ignoring case if its ID changed. A matching
+imported message ID cannot overwrite a local lock. If the command is gone after
+import, its locked messages are removed too. Imported schedule dates and other
+settings still apply; locking a message does not lock its command settings.
+
+Export/import includes Run At, Open Status Panel on Run, Notify Sound, repeat,
+retry and cooldown settings, channels, schedules, phase intervals/assignments,
+and status window saved visibility/position. Old exports without window-state
+records retain your current window preferences. Runtime queues/timers and the
+editor's current selection are not transferred.
+
+Changing Run At updates slash registration immediately. A scheduled-only name
+has no slash command; an On Demand or Startup combination restores it. Names
+shared with another ordinary guild configuration remain registered.
