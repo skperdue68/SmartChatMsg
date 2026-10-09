@@ -2,7 +2,7 @@ local f=dofile('tests/eso_fixture.lua');local s,eq=f.scm,f.eq
 f.reset();f.entry('a','ad','Amber Traders','Group test announcement','Group')
 eq(s:GetSavedChatChannel('ad','Amber Traders'),'Group')
 s.savedVars.selectedMessagesCommand='ad';s.savedVars.selectedMessagesGuildIndex=1
-s:SetSelectedMessagesChannel('Group (/p)');eq(s:GetSelectedMessagesChannel(),'Group (/p)')
+s:SetSelectedMessagesChannel('Group (/g)');eq(s:GetSelectedMessagesChannel(),'Group (/g)')
 assert(s:PopulateChatBufferForCommand('ad','Amber Traders'))
 eq(CHAT_SYSTEM.channel,CHAT_CHANNEL_PARTY)
 local expected=s.pendingRestoreState.rawExpectedText;CHAT_SYSTEM:GetEditControl():SetText('')
@@ -18,5 +18,5 @@ assert(s:ImportSettingsFromString(s:BuildExportString()));eq(s:GetSavedChatChann
 assert(s:SaveGuildSchedule('ad','Amber Traders',{mode='WINDOW',enabled=true,startDate='2026-10-09',startTime='08:00 PM',endDate='2026-10-09',endTime='09:00 PM',intervalMinutes=5}))
 now=s:GetGuildSchedule('ad','Amber Traders').startsAtUtc;s:ResetAllCooldowns();s:TickSchedules()
 eq(CHAT_SYSTEM.channel,CHAT_CHANNEL_PARTY);assert(s.pendingRestoreState.metadata.scheduledDelivery)
-eq(s:GetAutoPopulateChannelStatusText('ad','Amber Traders'),'Group (/p)')
+eq(s:GetAutoPopulateChannelStatusText('ad','Amber Traders'),'Group (/g)')
 print('Group output, matching, scheduled delivery and export checks passed')

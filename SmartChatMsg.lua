@@ -3516,7 +3516,7 @@ function SmartChatMsg:GetAutoPopulateChannelStatusText(commandId, guildName)
     elseif channel == "Zone" then
         return "Zone"
     elseif channel == "Group" then
-        return "Group (/p)"
+        return "Group (/g)"
     end
 
     return channel or "Unknown"

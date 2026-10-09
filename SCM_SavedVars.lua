@@ -1691,7 +1691,7 @@ function SmartChatMsg:GetChatChannelOptions()
     end
 
     table.insert(options, "Zone")
-    table.insert(options, "Group (/p)")
+    table.insert(options, "Group (/g)")
 
     return options
 end
@@ -1767,7 +1767,7 @@ function SmartChatMsg:GetSelectedMessagesChannel()
             return string.format("Officer (/o%d)", guildIndex)
         end
 
-        return savedChannel=="Group" and "Group (/p)" or savedChannel
+        return savedChannel=="Group" and "Group (/g)" or savedChannel
     end
 
     return "Select a Chat Channel"
@@ -1777,7 +1777,7 @@ function SmartChatMsg:SetSelectedMessagesChannel(channel)
     local normalizedChannel = nil
 
     if type(channel) == "string" then
-        if channel == "Group" or channel == "Group (/p)" then
+        if channel == "Group" or channel == "Group (/g)" or channel == "Group (/p)" then
             normalizedChannel = "Group"
         elseif channel == "Zone" then
             normalizedChannel = "Zone"

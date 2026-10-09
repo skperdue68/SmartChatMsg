@@ -8,7 +8,7 @@ Install the SmartChatMsg addon folder and enable **LibAddonMenu-2.0** and **LibA
 
 ## Commands, guilds, and messages
 
-Create a command name, then select that command and a guild under **Create / Edit / Delete Messages**. A command can have different settings and messages for different guilds. Choose **Guild**, **Officer**, **Zone**, or **Group (/p)** as its output channel. Group prepares messages for your current ESO group; the selected guild still identifies the configuration and substitutions, rather than the recipients. Enter a message and click **Add**; add several variations to have the addon choose randomly. Existing messages can be updated or deleted.
+Create a command name, then select that command and a guild under **Create / Edit / Delete Messages**. A command can have different settings and messages for different guilds. Choose **Guild**, **Officer**, **Zone**, or **Group (/g)** as its output channel. Group prepares messages for your current ESO group; the selected guild still identifies the configuration and substitutions, rather than the recipients. Enter a message and click **Add**; add several variations to have the addon choose randomly. Existing messages can be updated or deleted.
 
 The selected **command + guild** is the unit of scheduling and cooldown coordination. Zone messages still belong to that selected combination, but their output and incoming matching use Zone chat.
 
