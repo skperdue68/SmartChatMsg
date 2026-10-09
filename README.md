@@ -1,4 +1,4 @@
-# SmartChatMsg (v1.11.7)
+# SmartChatMsg (v1.11.8)
 
 SmartChatMsg is an Elder Scrolls Online addon for reusable chat messages: guild
 recruitment, trial reminders, auctions, officer notices, and other announcements.
@@ -113,7 +113,7 @@ The runtime files are `SCM_MessageSharing.lua`, `SCM_SavedVars.lua`,
 | `/recruit 1` | Run your custom command for local guild slot 1. |
 | `/recruit 1 off` | Stop ordinary automation, or persistently pause a schedule. |
 
-Guild parameters `1`–`5`, `g1`–`g5`, and `o1`–`o5` resolve the corresponding local
+Guild parameters `1`â€“`5`, `g1`â€“`g5`, and `o1`â€“`o5` resolve the corresponding local
 guild slots. For example, `2`, `g2`, and `o2` select the same guild. Set Default
 Guild to run without a guild parameter. Select the saved output channel in settings.
 
@@ -199,7 +199,7 @@ scheduled interval delivery.
 
 Pause/resume in scheduling settings. `/yourcommand 1 off` pauses that guild's
 schedule until resumed. Peer messages reset the matching command/guild cooldown
-with an extra random 30–90 seconds; they do not resume paused schedules.
+with an extra random 30â€“90 seconds; they do not resume paused schedules.
 The status panel reports engagement, waiting, and the next eligible time in ET.
 Local notifications announce schedule starts/ends and cooldown delays once per
 change. These notices are visible only to you. Matching peer messages are
@@ -233,7 +233,7 @@ distinguish your announcements from different events.
 
 The other player does not need SmartChatMsg. Their matching Zone, Guild, or
 Officer message records usage for your entire **Command + Guild** combination
-and adds a random **30–90 seconds** to its cooldown. An active Repeat cycle is
+and adds a random **30â€“90 seconds** to its cooldown. An active Repeat cycle is
 deferred. Your own messages and customer-service messages are excluded.
 
 Guild/Officer matching uses the actual receiving guild and configured channel,
@@ -302,7 +302,7 @@ coordination, persistence, sharing, and settings callbacks. Actual ESO UI layout
 loading screens, channel restoration, and two-player operation still need in-game
 verification. There is no recurring event scheduler or offline posting.
 
-### Message list and command identity (1.11.7)
+### Message list and command identity (1.11.8)
 
 Repeat cards show (Scheduled), (On Demand), or (Startup). Scheduled cards show
 the countdown to the current occurrence's event time, changing to Started at
@@ -318,7 +318,7 @@ On Demand messages can use countdowns from supported literal dates/times.
 the command/guild; without one the tokens remain unchanged. An On Demand repeat
 interval does not itself supply an event date/time.
 
-### Personal messages and complete settings exports (1.11.7)
+### Personal messages and complete settings exports (1.11.8)
 
 Use **Lock** beside a saved message to keep it personal. **Unlock** includes it
 in the next export. A Locked caption also appears in schedule message pools.
@@ -342,7 +342,7 @@ Changing Run At updates slash registration immediately. A scheduled-only name
 has no slash command; an On Demand or Startup combination restores it. Names
 shared with another ordinary guild configuration remain registered.
 
-### Status controls and matching (1.11.7)
+### Status controls and matching (1.11.8)
 
 The button always shows the next action: Enable makes the command active; Pause
 stops delivery while keeping it paused; Disable switches it off. The next click
@@ -359,14 +359,17 @@ Import tests verify that a same-name command with a different imported ID maps
 locked messages to the new command while preserving local phase assignments and
 the imported channel and schedule. Old command/guild keys do not remain.
 
-NEXT OCCURRENCE DISPLAY (1.11.7)
+NEXT OCCURRENCE DISPLAY (1.11.8)
 Below Repeat schedule, Next event shows the calculated Eastern date/time without
 changing the original recurrence anchor. Windows/reminders use Next window or
 Next reminder. After an event starts, Next event shows the following occurrence,
 even while the current promotion remains active. One-time events show None
 scheduled when no future start remains. This preview reflects unsaved edits.
 
-Promotion days: 0 starts at the event clock time, not midnight. To promote only
-from midnight on event day, use 1 day of lead, deselect every Before event day
-message and select On event day messages. Delivery still honors startup delay,
-cooldowns, shared spacing and chat availability.
+Promotion days: 0 starts at midnight Eastern on event day. Select On event day
+messages; Starting soon and live messages still follow their configured phases.
+Positive lead values start that many days before the event at its clock time.
+Delivery still honors startup delay, cooldowns, shared spacing and chat availability.
+
+The promotion-days field also shows a short explanation and a calculated
+Promotion starts date/time, reflecting unsaved edits and the next event occurrence.

@@ -30,6 +30,7 @@ function SmartChatMsg:BuildScheduleOccurrence(s,event)
     if mode=='REMINDER' then starts,ends=event,event+120
     elseif mode=='EVENT' and s.promotionDays~=nil then
         local p=os.date('!*t',(dayNumber(ep)-s.promotionDays)*86400);p.hour,p.min=ep.hour,ep.min
+        if s.promotionDays==0 then p.hour,p.min=0,0 end
         starts=civilUtc(self,p,s.eventFold);ends=event+(s.endDelayMinutes or 60)*60
     else starts,ends=shift(s.startsAtUtc,s.startFold),shift(s.endsAtUtc,s.endFold) end
     if not starts or not ends then return nil end
