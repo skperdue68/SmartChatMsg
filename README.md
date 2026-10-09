@@ -1,4 +1,4 @@
-# SmartChatMsg (v1.11.3)
+# SmartChatMsg (v1.11.4)
 
 SmartChatMsg is an Elder Scrolls Online addon for reusable chat messages: guild
 recruitment, trial reminders, auctions, officer notices, and other announcements.
@@ -274,26 +274,12 @@ The global pending-chat timeout defaults to 60 seconds, with a minimum of 30.
 The prior channel is restored after a confirmed send. At timeout, restoration
 and clearing occur only while pending text is unchanged; player edits survive.
 
-## Export/import and sharing
+## Settings backup and restore
 
-| Option | Includes | Effect of import |
-| --- | --- | --- |
-| Import / Export Settings | Commands, messages, channels, behavior, schedule dates/times, intervals, phase assignments, pauses, and general settings | Replaces addon settings after confirmation. |
-| Share Messages | Raw templates for the selected command/guild/channel | Adds missing templates, skips exact duplicates, and preserves existing messages/settings/usage. |
-
-### Share templates with another player
-
-1. Select your command, guild, and output channel in Messages settings.
-2. Open **Share Messages**, click **Export Messages**, and copy the generated text.
-3. The recipient selects their destination command and the same guild/channel.
-   Command names can differ; the guild can occupy a different local slot.
-4. They paste into **Shared message text** and click **Import Messages (merge)**.
-
-The complete payload is validated before messages are added. Sharing does not
-copy/activate schedules, change channels, or reset personal cooldowns. Imported
-templates immediately participate in incoming matching. Event-token users must
-configure the matching event separately. New scheduled templates use ANY until
-the recipient assigns their phases.
+**Import / Export Settings** includes commands, messages, channels, behavior,
+schedule dates/times, intervals, phase assignments, pauses, and general settings.
+Import replaces addon settings after confirmation. The separate Share Messages
+settings panel has been removed.
 
 ### Customize an imported schedule
 
@@ -303,16 +289,30 @@ Scheduling, change phase checkboxes, and **Save and activate**. Edits affect onl
 own copy. For example, keep Friday's event start but begin your reminders later.
 
 Full import replaces all settings and may import enabled schedules; review them
-before copying another player's setup. Message-only sharing uses a separate
-format and cannot be mistaken for a full settings backup by full import.
+before copying another player's setup.
 
 ## Testing and limitations
 
 - [Short-window scheduling and two-player trial](docs/scheduling-testing.md).
 - [Incoming-message coordination checks](docs/incoming-chat-testing.md).
-- [Message-sharing checks](docs/message-sharing-testing.md).
 
 Automated checks cover calendar/DST rules, boundaries, queues, edited input,
 coordination, persistence, sharing, and settings callbacks. Actual ESO UI layout,
 loading screens, channel restoration, and two-player operation still need in-game
 verification. There is no recurring event scheduler or offline posting.
+
+### Message list and command identity (1.11.4)
+
+Repeat cards show (Scheduled), (On Demand), or (Startup). Scheduled cards show
+the countdown to the current occurrence's event time, changing to Started at
+that time. Window/reminder schedules use their activation time.
+
+Schedule message pools place each checkbox and complete wrapped message inside
+a bordered row. Used lists its selected promotion phases; Before event day may
+cover multiple days, based on your promotion lead time. Starting soon appears
+only when that phase is enabled. Saved message editor rows also show the phases.
+
+On Demand messages can use countdowns from supported literal dates/times.
+%eventdate%, %eventtime%, and %eventwhen% need a saved event configuration for
+the command/guild; without one the tokens remain unchanged. An On Demand repeat
+interval does not itself supply an event date/time.

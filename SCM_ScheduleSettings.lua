@@ -48,12 +48,27 @@ function SmartChatMsg:GetScheduleEditorDraft()
     return self.scheduleEditor.draft,id,guild
 end
 
+function SmartChatMsg:GetScheduleMessagePhaseText(messageId,schedule)
+    if not schedule then return "" end
+    if schedule.mode~="EVENT" then return "While active" end
+    local assigned=schedule.messagePhases and schedule.messagePhases[messageId]
+    local labels={BEFORE="Before event day",DAY="Event day",SOON="Starting soon",LIVE="Until end"}
+    local result={}
+    for _,phase in ipairs({"BEFORE","DAY","SOON","LIVE"}) do
+        if (not assigned or assigned.ANY or assigned[phase]) and (phase~="SOON" or schedule.startingSoonEnabled) then
+            result[#result+1]=labels[phase]
+        end
+    end
+    return #result>0 and table.concat(result," · ") or "Not selected for any phase"
+end
+
 function SmartChatMsg:GetScheduleMessageChecklist(phase)
     local _,id,guild=self:GetScheduleEditorDraft()
     local result={}
     for _,entry in ipairs(self:GetMessageEntriesForCommandAndGuild(id,guild)) do
         local messageId=entry.id
         result[#result+1]={type="checkbox",name=entry.text,
+            phaseText=self:GetScheduleMessagePhaseText(messageId,self:GetScheduleEditorDraft()),
             getFunc=function()
                 local a=self:GetScheduleEditorDraft().messagePhases[messageId]
                 return a==nil or a[phase]==true or (phase~="ANY" and a.ANY==true)
@@ -97,6 +112,8 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
     local scroll,content=control.scheduleScroll,control.scheduleContent
     scroll:SetWidth(width)
     local contentWidth=math.max(80,width-(ZO_SCROLL_BAR_WIDTH or 16)-8)
+    local viewportWidth=scroll:GetNamedChild("Scroll"):GetWidth()
+    if viewportWidth and viewportWidth>80 then contentWidth=math.min(contentWidth,viewportWidth-8) end
     content:SetWidth(contentWidth)
     local choices=self:GetScheduleMessageChecklist(phase)
     for _,row in ipairs(control.scheduleRows) do row:SetHidden(true) end
@@ -105,11 +122,15 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
         local row=control.scheduleRows[i]
         if not row then
             row=WINDOW_MANAGER:CreateControl(nil,content,CT_CONTROL)
+            row.backdrop=WINDOW_MANAGER:CreateControlFromVirtual(nil,row,"ZO_DefaultBackdrop")
+            row.backdrop:SetAnchorFill(row)
+            row.backdrop:SetCenterColor(0,0,0,0.25)
+            row.backdrop:SetEdgeColor(0.45,0.43,0.30,0.7)
             row.check=WINDOW_MANAGER:CreateControlFromVirtual(nil,row,"ZO_CheckButton")
-            row.check:SetAnchor(TOPLEFT,row,TOPLEFT,0,0)
+            row.check:SetAnchor(TOPLEFT,row,TOPLEFT,6,6)
             row.label=WINDOW_MANAGER:CreateControl(nil,row,CT_LABEL)
             row.label:SetFont("ZoFontGame")
-            row.label:SetAnchor(TOPLEFT,row,TOPLEFT,35,0)
+            row.label:SetAnchor(TOPLEFT,row,TOPLEFT,40,6)
             row.label:SetMouseEnabled(true)
             local function wheel(_,delta) ZO_Scroll_OnMouseWheel(scroll,delta) end
             row:SetMouseEnabled(true)
@@ -119,12 +140,14 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
             control.scheduleRows[i]=row
         end
         row:SetWidth(contentWidth)
-        row.label:SetWidth(math.max(40,contentWidth-45))
+        row.label:SetWidth(math.max(40,contentWidth-50))
         row:SetHidden(false); row:ClearAnchors(); row:SetAnchor(TOPLEFT,content,TOPLEFT,0,y)
-        row.label:SetText(choice.name or "")
+        -- Clear the old height before measuring a new wrapped message/width.
+        row.label:SetHeight(10000)
+        row.label:SetText((choice.name or "").."\n|cC5C29EUsed: "..choice.phaseText.."|r")
         local height=math.max(32,row.label:GetTextHeight()+12)
         row.label:SetHeight(height-12)
-        row:SetHeight(height); y=y+height
+        row:SetHeight(height); y=y+height+6
         ZO_CheckButton_SetCheckState(row.check,choice.getFunc())
         ZO_CheckButton_SetToggleFunction(row.check,function(button) choice.setFunc(ZO_CheckButton_IsChecked(button)) end)
         row.label:SetHandler("OnMouseUp",function()
