@@ -18,7 +18,9 @@ The selected **command + guild** is the unit of scheduling and cooldown coordina
 - **Scheduling timezone:** Eastern (ET), Central (CT), Mountain (MT), or Pacific (PT). Eastern is the default. US daylight-saving rules are applied for the date, independently of your computer's timezone. Mountain follows the DST-observing Mountain rules, rather than Arizona's year-round standard time.
 - **Chat revert time:** how long an unchanged prepared message can wait before timing out. Player edits are protected.
 
-Changing the scheduling timezone moves existing schedules to the **same clock time in the new zone**. For example, 8 PM Eastern becomes 8 PM Pacific. Event recurrence, midnight boundaries, event substitutions, and faction rotation use the selected zone. The Scheduling heading changes to its name. Literal text such as `8 PM ET` inside a message keeps its explicit timezone meaning; edit that text yourself if needed. Prefer `%eventtime%` for scheduled events.
+The global timezone is a fallback. Each guild can choose its own timezone under **Scheduling → Guild timezone**, with **Use global default** selected initially. This default applies to all schedules for that guild, across commands. For example, one guild can use Eastern while another uses Pacific. Selecting a guild changes the Scheduling heading, picker labels, previews, event substitutions, and status dates to that guild's effective zone.
+
+Changing a guild timezone moves that guild's existing schedules to the **same clock time in the new zone**. For example, 8 PM Eastern becomes 8 PM Pacific. Other guilds are unchanged. Changing the global timezone moves only schedules for guilds using **Use global default**; explicit guild choices stay fixed. Choosing Use global default again moves the guild's schedules back to the current global zone. Unsaved schedule edits are retained when you change the guild choice. Event recurrence, midnight boundaries, event substitutions, faction rotation, and month-final selection use the guild's zone. Literal text such as `8 PM ET` inside a message keeps its explicit timezone meaning; edit that text yourself if needed. Prefer `%eventtime%` for scheduled events.
 
 Dates and times in settings are readable calendar values; stored UTC timestamps are internal. The spring DST hour that does not exist cannot be selected for an anchor. Repeating occurrences that land in that missing hour are skipped. During the repeated autumn hour, scheduling uses the first occurrence by default; legacy explicitly selected second-occurrence values are retained.
 
@@ -45,7 +47,7 @@ For example, Repeat Every 60 and Retry Delay 5 means a confirmed send waits 60 m
 
 ## Scheduling
 
-Select **Run At → Scheduled**, then open **Scheduling (your timezone's name Time)** beneath Enter Message. This section is disabled for On Demand or Startup combinations. There are three schedule types.
+Select **Run At → Scheduled**, then open **Scheduling (your guild's timezone name Time)** beneath Enter Message. Use **Guild timezone** near the top to choose Eastern, Central, Mountain, Pacific, or Use global default. This section is disabled for On Demand or Startup combinations. There are three schedule types.
 
 ### Run during a window
 
@@ -158,7 +160,7 @@ Ordinary repeating commands appear after you launch them and can be paused/resum
 
 ## Export, import, and personal messages
 
-Use **Import / Export Settings** for full settings transfer. It includes command names, messages, channels, Run At, Open Status Panel on Run, Notify Sound, ordinary repeat/retry/zone settings, schedules, recurrence, phase assignments/intervals/once choices, Starting soon, faction order/frequency, month-final groups, global timezone, and status-panel preferences. Import is a replacement operation; back up first. Saved last-used times and per-zone send history are included; pending chat buffers, session startup holds, shared spacing, and schedule retry/once runtime markers are not transferred.
+Use **Import / Export Settings** for full settings transfer. It includes command names, messages, channels, Run At, Open Status Panel on Run, Notify Sound, ordinary repeat/retry/zone settings, schedules, recurrence, phase assignments/intervals/once choices, Starting soon, faction order/frequency, month-final groups, global timezone, per-guild timezone defaults, and status-panel preferences. Guild defaults are identified by guild name, not the receiver's guild-slot number. Older exports without guild choices use the exported global timezone (or Eastern for older exports without any timezone). Import is a replacement operation; back up first. Saved last-used times and per-zone send history are included; pending chat buffers, session startup holds, shared spacing, and schedule retry/once runtime markers are not transferred.
 
 **Lock** keeps a message personal: locked messages are omitted from exports and preserved through imports when their parent command still exists, even if the imported same-name command has a different ID. Their personal phase/group assignments are retained. If the parent command no longer exists after import, those messages are removed too. A Locked indicator identifies them. Locking affects transfer, not sending or incoming detection.
 

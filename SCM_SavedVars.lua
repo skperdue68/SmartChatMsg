@@ -9,6 +9,7 @@ SmartChatMsg.defaults = {
 
     chatChannels = {}, -- [commandId] = { [guildKey] = "Zone"|"Guild"|"Officer" }
     schedulingTimeZone = "ET",
+    guildSchedulingTimeZones = {},
     commandGuildSettings = {}, -- [commandId] = { [guildKey] = { reminderMinutes = n|nil, reminderRetryMinutes = n, autoPopulateOnZone = bool, autoPopulateCooldownMinutes = n, runAt = "ON_DEMAND"|"STARTUP"|"SCHEDULED", openStatusPanelOnRun = bool, populateSound = "DUEL_START"|"NONE"|soundKey, lastUsedAt = unixTime|nil, lastUsedParamText = "..."|nil, lastUsedGuildIndex = n|nil, lastAutoPopulateSentAtByZone = { [zoneKey] = unixTime, ... } }, ... }
 
     selectedMessagesCommand = nil, -- commandId
@@ -28,6 +29,15 @@ SmartChatMsg.defaults = {
 
 function SmartChatMsg:InitializeSavedVars()
     self.savedVars = ZO_SavedVars:NewAccountWide("SmartChatMsgSavedVars", 1, nil, self.defaults)
+    if type(self.savedVars.guildSchedulingTimeZones)~="table" then self.savedVars.guildSchedulingTimeZones={} end
+    local guildZones={}
+    for guild,zone in pairs(self.savedVars.guildSchedulingTimeZones) do
+        if type(guild)=="string" and (zone=="ET" or zone=="CT" or zone=="MT" or zone=="PT") then
+            local key=self:NormalizeKey(guild)
+            if key and key~="" then guildZones[key]=zone end
+        end
+    end
+    self.savedVars.guildSchedulingTimeZones=guildZones
 
     if type(self.savedVars.commands) ~= "table" then
         self.savedVars.commands = {}
@@ -417,6 +427,9 @@ function SmartChatMsg:BuildExportString()
 
     table.insert(lines, string.format("DEFAULT|%s", self:EscapeImportExportField(self.savedVars.defaultGuildIndex or "")))
     table.insert(lines,"GENERALTIMEZONE|"..self:GetSchedulingTimeZone())
+    for guild,zone in pairs(self.savedVars.guildSchedulingTimeZones or {}) do
+        table.insert(lines,"GUILDTIMEZONE|"..self:EscapeImportExportField(guild).."|"..zone)
+    end
     table.insert(lines, string.format("GENERALREVERT|%s", self:EscapeImportExportField(self.savedVars.revertChatSeconds or 60)))
     local panel=self.savedVars.statusPanelState or self.defaults.statusPanelState
     table.insert(lines,string.format("STATUSPANEL|%s|%s|%s",panel.visible==true and "1" or "0",self:EscapeImportExportField(panel.offsetX or -40),self:EscapeImportExportField(panel.offsetY or 180)))
@@ -573,6 +586,7 @@ function SmartChatMsg:ApplyImportedSettings(imported)
     self.savedVars.chatChannels = imported.chatChannels or {}
     self.savedVars.commandGuildSettings = imported.commandGuildSettings or {}
     self.savedVars.schedulingTimeZone = imported.schedulingTimeZone or "ET"
+    self.savedVars.guildSchedulingTimeZones = imported.guildSchedulingTimeZones or {}
     self.savedVars.defaultGuildIndex = imported.defaultGuildIndex
     self.savedVars.revertChatSeconds = self:NormalizeRevertChatSeconds(imported.revertChatSeconds)
     self.savedVars.statusPanelState = imported.statusPanelState or self.savedVars.statusPanelState
@@ -644,6 +658,12 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
             if guildIndex and guildIndex >= 1 and guildIndex <= 5 and guildIndex == math.floor(guildIndex) then
                 imported.defaultGuildIndex = guildIndex
             end
+        elseif recordType == "GUILDTIMEZONE" then
+            local guild=self:NormalizeKey(self:UnescapeImportExportField(parts[1] or ""))
+            local zone=self:UnescapeImportExportField(parts[2] or "")
+            if not guild or guild=="" or (zone~="ET" and zone~="CT" and zone~="MT" and zone~="PT") then return false,"Invalid guild scheduling timezone." end
+            imported.guildSchedulingTimeZones=imported.guildSchedulingTimeZones or {}
+            imported.guildSchedulingTimeZones[guild]=zone
         elseif recordType == "GENERALTIMEZONE" then
             local zone=self:UnescapeImportExportField(parts[1] or "")
             if zone~="ET" and zone~="CT" and zone~="MT" and zone~="PT" then return false,"Invalid scheduling timezone." end

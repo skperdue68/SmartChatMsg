@@ -1,5 +1,11 @@
 # Try SmartChatMsg 2.0 scheduling in ESO
 
+Version 2.0.1: configure two guilds with the same event clock time but different
+Guild timezone defaults. Verify each heading, event token, phase midnight, and
+status date uses its own zone. Change one guild and confirm the other is untouched.
+Change Global Settings and confirm only inherited guild defaults follow it.
+Test Use global default, export/import, and switching zones with unsaved edits.
+
 
 Version 2.0 checks:
 - Confirm Scheduling begins below Enter Message with a clear gap, including after adding/deleting messages.

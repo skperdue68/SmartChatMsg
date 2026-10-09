@@ -1942,7 +1942,7 @@ function SmartChatMsg:CreateSettingsPanel()
             controls = {
                 {
                     type="dropdown",name="Scheduling timezone",choices={"Eastern (ET)","Central (CT)","Mountain (MT)","Pacific (PT)"},
-                    tooltip="US daylight-saving rules are applied automatically. Changing this moves existing schedules to the same clock time in the new zone (8 PM Eastern becomes 8 PM Pacific). Explicit timezone text in messages is unchanged.",
+                    tooltip="US daylight-saving rules are applied automatically. Guilds with an explicit timezone keep their choice. Changing this moves schedules for guilds using the global default to the same clock time in the new zone (8 PM Eastern becomes 8 PM Pacific). Explicit timezone text in messages is unchanged.",
                     getFunc=function() local code=SmartChatMsg:GetSchedulingTimeZone();return SmartChatMsg:GetSchedulingTimeZoneName(code).." ("..code..")" end,
                     setFunc=function(value)
                         local code=value:match("%((%u%u)%)")
@@ -2158,7 +2158,7 @@ function SmartChatMsg:CreateSettingsPanel()
     for _,section in ipairs(optionsTable) do
         if section.name=="Create / Edit / Delete Messages" then
             table.insert(section.controls, {
-                type="submenu", name=function() return "Scheduling ("..SmartChatMsg:GetSchedulingTimeZoneName().." Time)" end,
+                type="submenu", name=function() return "Scheduling ("..SmartChatMsg:GetSchedulingTimeZoneName(SmartChatMsg:GetGuildSchedulingTimeZone(SmartChatMsg:GetSelectedGuildNameForMessages())).." Time)" end,
                 tooltip="Select Scheduled in Run At above to configure automatic reminders.",
                 disabled=function()
                     local id=SmartChatMsg.savedVars.selectedMessagesCommand

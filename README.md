@@ -1,6 +1,11 @@
-# SmartChatMsg (v2.0)
+# SmartChatMsg (v2.0.1)
 
 **[Read the complete SmartChatMsg 2.0 user guide](docs/SmartChatMsg-2.0.md)** for all configuration options, examples, timezone changes, recurrence, message groups, and phase behavior.
+
+**2.0.1:** Scheduling now includes a **Guild timezone** default shared by all
+commands for that guild. Choose ET/CT/MT/PT or **Use global default**. Guild changes
+keep existing clock times and affect only that guild; global changes affect only
+guilds that inherit the default. Guild choices are included in full export/import.
 
 SmartChatMsg is an Elder Scrolls Online addon for reusable chat messages: guild
 recruitment, trial reminders, auctions, officer notices, and other announcements.

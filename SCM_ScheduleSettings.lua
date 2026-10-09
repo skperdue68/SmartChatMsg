@@ -23,7 +23,7 @@ function SmartChatMsg:GetNextScheduleOccurrenceText(draft)
     local schedule,reason=self:NormalizeSchedule(draft)
     if not schedule then return label..": "..tostring(reason) end
     local occurrence=self:GetUpcomingScheduleOccurrences(schedule,GetTimeStamp(),1,true)[1]
-    local text=label..": "..(occurrence and self:FormatScheduleDateTime(occurrence.eventAtUtc) or "None scheduled.")
+    local text=label..": "..(occurrence and self:FormatScheduleDateTime(occurrence.eventAtUtc,occurrence) or "None scheduled.")
     if occurrence and schedule.specialPattern~="NONE" then
         local variant=self:GetScheduleEventVariant(schedule,occurrence.eventAtUtc)
         text=text.."\n"..(schedule.specialPattern=="FACTION_ROTATION" and "Faction: " or "Message group: ")..self:GetScheduleVariantLabel(variant)
@@ -37,10 +37,11 @@ function SmartChatMsg:GetScheduleEditorDraft()
     local key=tostring(id)..":"..tostring(guild)
     local source=self:GetGuildSchedule(id,guild)
     if not self.scheduleEditor or self.scheduleEditor.key~=key or self.scheduleEditor.source~=source then
-        local p=self:GetScheduleParts(GetTimeStamp())
+        local p=self:GetTimeZoneParts(GetTimeStamp(),self:GetGuildSchedulingTimeZone(guild))
         local date=string.format("%04d-%02d-%02d",p.year,p.month,p.day)
         local d=source and copy(source) or {enabled=false,paused=false,delivery="REPEAT",intervalMinutes=15,
             startDate=date,startTime="08:00 PM",eventDate=date,eventTime="08:00 PM",endDate=date,endTime="09:00 PM"}
+        d.timeZone=self:GetGuildSchedulingTimeZone(guild)
         d.startingSoonMinutes=d.startingSoonMinutes or 120
         d.mode=d.mode or (source and "EVENT" or "WINDOW"); d.recurrence=d.recurrence or "NONE"
         d.messagePhases=d.messagePhases or {}; d.phaseIntervals=d.phaseIntervals or {}; d.phaseOnce=d.phaseOnce or {}; d.weekdays=d.weekdays or {}
@@ -50,7 +51,7 @@ function SmartChatMsg:GetScheduleEditorDraft()
             if not d[field.."Date"] or d[field.."Date"]=="" then
                 local utc=d[field=="start" and "startsAtUtc" or field=="end" and "endsAtUtc" or "eventAtUtc"]
                 if utc then
-                    local t=self:GetScheduleParts(utc)
+                    local t=self:GetScheduleParts(utc,d)
                     d[field.."Date"]=string.format("%04d-%02d-%02d",t.year,t.month,t.day)
                     d[field.."Time"]=string.format("%02d:%02d %s",t.hour%12==0 and 12 or t.hour%12,t.min,t.hour>=12 and "PM" or "AM")
                 else d[field.."Date"],d[field.."Time"]=date,"08:00 PM" end
@@ -284,7 +285,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
             local h,m,a=tostring(draft()[field.."Time"] or ""):match("^(%d%d?):(%d%d)%s+([AP]M)$")
             return h and string.format("%02d",tonumber(h)) or "08",m or "00",a or "PM"
         end
-        local result={{type="datepicker",name=function() return title.." date ("..self:GetSchedulingTimeZone()..")" end,datePickerType="normal",tooltip="Calendar date in your global scheduling timezone; select the time separately.",
+        local result={{type="datepicker",name=function() return title.." date ("..draft().timeZone..")" end,datePickerType="normal",tooltip="Calendar date in this guild's scheduling timezone; select the time separately.",
             getFunc=function() return self:ScheduleDateToPicker(draft()[field.."Date"]) end,
             setFunc=function(v) draft()[field.."Date"]=self:ScheduleDateFromPicker(v); refresh() end}}
         for i,entry in ipairs({{"hour",hours},{"minute",minutes},{"AM / PM",{"AM","PM"}}}) do
@@ -297,8 +298,19 @@ function SmartChatMsg:BuildScheduleOptionControls()
     end
     local function append(target,source) for _,v in ipairs(source) do target[#target+1]=v end end
     local controls={
-        {type="description",text=function() return "Uses the command, guild and output channel selected above. All times are "..self:GetSchedulingTimeZoneName().." Time ("..self:GetSchedulingTimeZone().."). Save and activate starts automatically while you are online. Press Enter to send each prepared message." end},
+        {type="description",text=function() return "Uses the command, guild and output channel selected above. All times are "..self:GetSchedulingTimeZoneName(draft().timeZone).." Time ("..draft().timeZone.."). Save and activate starts automatically while you are online. Press Enter to send each prepared message." end},
         {type="description",text=function() local _,id,guild=draft(); local command=self:GetCommandById(id); local channel=self.GetSelectedMessagesChannel and self:GetSelectedMessagesChannel() or ""; return (command and command.name or "No command").." / "..tostring(guild or "No guild").." / "..tostring(channel).."\n"..self:GetScheduleStatusText(id,guild)..(self.scheduleEditor and self.scheduleEditor.dirty and "\nUnsaved changes — review and save below." or "") end},
+        {type="dropdown",name="Guild timezone",choices={"Use global default","Eastern (ET)","Central (CT)","Mountain (MT)","Pacific (PT)"},
+            tooltip="Default timezone for ALL schedules in the selected guild, across commands. Use global default follows Global Settings. Changing it keeps each existing schedule's date and clock time and moves it to the new zone.",
+            getFunc=function()
+                local _,_,guild=draft();local zone=self:GetGuildSchedulingTimeZoneOverride(guild)
+                return zone=="GLOBAL" and "Use global default" or self:GetSchedulingTimeZoneName(zone).." ("..zone..")"
+            end,
+            setFunc=function(value)
+                local _,_,guild=draft();local zone=value=="Use global default" and "GLOBAL" or value:match("%((%u%u)%)")
+                local ok,reason=self:SetGuildSchedulingTimeZone(guild,zone)
+                if not ok then ZO_Alert(UI_ALERT_CATEGORY_ERROR,SOUNDS.NEGATIVE_CLICK,reason) end
+            end},
         dropdown("Schedule type",modeLabels,modeValues,"mode"),
     }
     -- LAM has no hidden callback. Its supported disabled callback automatically
@@ -311,7 +323,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
     event[#event+1]={type="description",reference="SCM_PromotionStartNote",text=function()
         local schedule,reason=self:NormalizeSchedule(draft())
         local occurrence=schedule and self:GetUpcomingScheduleOccurrences(schedule,GetTimeStamp(),1,true)[1]
-        local starts=occurrence and self:FormatScheduleDateTime(occurrence.startsAtUtc) or (schedule and "None scheduled." or tostring(reason))
+        local starts=occurrence and self:FormatScheduleDateTime(occurrence.startsAtUtc,occurrence) or (schedule and "None scheduled." or tostring(reason))
         return "0 = midnight on event day. 1+ = that many days earlier at the event's time.\nPromotion starts: "..starts
     end}
     event[#event+1]=number("Stop promoting (minutes after event)","endDelayMinutes")
@@ -393,21 +405,21 @@ function SmartChatMsg:BuildScheduleOptionControls()
         if not normalized then return "Preview: "..tostring(reason) end
         if not self.GetUpcomingScheduleOccurrences then return "Preview unavailable." end
         local upcoming=self:GetUpcomingScheduleOccurrences(normalized,GetTimeStamp(),3)
-        local lines={"Review your schedule ("..self:GetSchedulingTimeZone().."):"}
+        local lines={"Review your schedule ("..draft().timeZone.."):"}
         local occurrence=upcoming and upcoming[1]
         if occurrence then
-            lines[#lines+1]="Starts: "..self:FormatScheduleDateTime(occurrence.startsAtUtc)
-            lines[#lines+1]="Stops: "..self:FormatScheduleDateTime(occurrence.endsAtUtc)
+            lines[#lines+1]="Starts: "..self:FormatScheduleDateTime(occurrence.startsAtUtc,occurrence)
+            lines[#lines+1]="Stops: "..self:FormatScheduleDateTime(occurrence.endsAtUtc,occurrence)
             if normalized.mode=="EVENT" then
-                lines[#lines+1]="Event: "..self:FormatScheduleDateTime(occurrence.eventAtUtc)
-                if normalized.startingSoonEnabled then lines[#lines+1]="Starting soon: "..self:FormatScheduleDateTime(math.max(occurrence.startsAtUtc,occurrence.eventAtUtc-normalized.startingSoonMinutes*60)) end
+                lines[#lines+1]="Event: "..self:FormatScheduleDateTime(occurrence.eventAtUtc,occurrence)
+                if normalized.startingSoonEnabled then lines[#lines+1]="Starting soon: "..self:FormatScheduleDateTime(math.max(occurrence.startsAtUtc,occurrence.eventAtUtc-normalized.startingSoonMinutes*60),normalized) end
             end
         end
-        lines[#lines+1]="Upcoming occurrences ("..self:GetSchedulingTimeZone().."):"
+        lines[#lines+1]="Upcoming occurrences ("..draft().timeZone.."):"
         for _,s in ipairs(upcoming or {}) do
             local utc=normalized.mode=="EVENT" and s.eventAtUtc or s.startsAtUtc
             if utc then
-                local line=self:FormatScheduleDateTime(utc)
+                local line=self:FormatScheduleDateTime(utc,normalized)
                 if normalized.specialPattern~="NONE" then line=line.." — "..self:GetScheduleVariantLabel(self:GetScheduleEventVariant(normalized,utc)) end
                 lines[#lines+1]=line
             end
