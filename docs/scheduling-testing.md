@@ -1,5 +1,7 @@
 # Try SmartChatMsg 2.0 scheduling in ESO
 
+Version 2.0.2: check messages appear in earliest-phase order, with unused messages last. Toggle phase checkboxes while scrolled partway down a long pool; confirm the visible message and row offset stay stable, selection belongs to the correct message, open sections stay open, and unsaved text edits are retained. Confirm ordinary message lists and random selection are unchanged.
+
 Version 2.0.1: configure two guilds with the same event clock time but different
 Guild timezone defaults. Verify each heading, event token, phase midnight, and
 status date uses its own zone. Change one guild and confirm the other is untouched.

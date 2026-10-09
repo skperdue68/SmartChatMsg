@@ -1500,7 +1500,7 @@ local function BuildMessagesEditor(parent)
                 rowData.statusLabel:SetText("Pending Update")
                 rowData.statusLabel:SetColor(0.95, 0.78, 0.18, 1)
             else
-                local schedule=SmartChatMsg:GetGuildRunAt(currentEntry.commandId,currentEntry.guildName)=="SCHEDULED" and SmartChatMsg:GetGuildSchedule(currentEntry.commandId,currentEntry.guildName)
+                local schedule=SmartChatMsg:GetGuildRunAt(currentEntry.commandId,currentEntry.guildName)=="SCHEDULED" and SmartChatMsg:GetScheduleEditorDraft()
                 rowData.statusLabel:SetText(schedule and SmartChatMsg:GetScheduleMessagePhaseText(currentEntry.id,schedule) or "")
                 rowData.statusLabel:SetColor(0.77,0.76,0.62,1)
             end
@@ -1520,7 +1520,17 @@ local function BuildMessagesEditor(parent)
         end
     end
 
+    local rowCache={}
     local function CreateSavedMessageRow(index, entry, anchorTarget, anchorPoint)
+        local cached=rowCache[entry.id]
+        if cached and cached.entry==entry then
+            local row=cached.row;row:ClearAnchors();row:SetHidden(false)
+            if anchorTarget then row:SetAnchor(TOPLEFT,anchorTarget,anchorPoint or BOTTOMLEFT,0,index==1 and 0 or 10)
+            else row:SetAnchor(TOPLEFT,rowsContainer,TOPLEFT,0,0) end
+            SmartChatMsg.settings.controls.savedMessageRows[#SmartChatMsg.settings.controls.savedMessageRows+1]=row
+            RefreshRowState(cached)
+            return row
+        end
         local controlId = SmartChatMsg.settings.nextSavedMessageRowControlId
         SmartChatMsg.settings.nextSavedMessageRowControlId = controlId + 1
 
@@ -1642,6 +1652,7 @@ local function BuildMessagesEditor(parent)
             })
         end)
 
+        rowData.row=row;rowCache[entry.id]=rowData
         SmartChatMsg.settings.controls.savedMessageRows[#SmartChatMsg.settings.controls.savedMessageRows + 1] = row
         RefreshRowState(rowData)
 
@@ -1653,6 +1664,9 @@ local function BuildMessagesEditor(parent)
         local selectedChannel = SmartChatMsg:GetSelectedMessagesChannel()
         local hasChannel = selectedChannel ~= "Select a Chat Channel"
         local entries = SmartChatMsg:GetMessageEntriesForSelection()
+        if hasCompleteSelection and SmartChatMsg:GetGuildRunAt(SmartChatMsg.savedVars.selectedMessagesCommand,SmartChatMsg:GetSelectedGuildNameForMessages())=="SCHEDULED" then
+            entries=SmartChatMsg:SortScheduledMessageEntries(entries,SmartChatMsg:GetScheduleEditorDraft())
+        end
         local shouldShow = hasCompleteSelection and hasChannel
 
         if addEditBox:GetText() ~= (SmartChatMsg.settings.pendingNewMessageText or "") then
@@ -1800,6 +1814,8 @@ local function BuildImportExportEditor(parent)
 end
 
 function SmartChatMsg:RefreshSettingsUI()
+    local scrollContainer=self.settings.panel and self.settings.panel.container
+    local scrollSnapshot=self:CaptureMessageListScroll(scrollContainer)
     if self.settings.controls.commandDropdown and self.settings.controls.commandDropdown.RefreshDropdown then
         self.settings.controls.commandDropdown:RefreshDropdown()
     end
@@ -1839,6 +1855,7 @@ function SmartChatMsg:RefreshSettingsUI()
     if self.settings.panel then
         CALLBACK_MANAGER:FireCallbacks("LAM-RefreshPanel", self.settings.panel)
     end
+    self:RestoreMessageListScroll(scrollContainer,scrollSnapshot)
 end
 
 local function BuildGeneralRevertSettings(parent)

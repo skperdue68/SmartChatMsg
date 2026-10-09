@@ -44,7 +44,7 @@ eq(scm:GetScheduleEditorDraft().phaseOnce.LIVE,true)
 local pool=assert(find(controls,"Before event day").controls[1])
 local rows=scm:GetScheduleMessageChecklist("BEFORE")
 eq(#rows,2); eq(rows[1].name,"First actual message preview")
-rows[1].setFunc(true); rows[2].setFunc(true)
+for _,choice in ipairs(rows) do if choice.messageId=='a' or choice.messageId=='b' then choice.setFunc(true) end end
 eq(rows[1].getFunc(),true); eq(rows[2].getFunc(),true)
 eq(scm:GetScheduleEditorDraft().messagePhases.a.BEFORE,true)
 eq(scm:GetScheduleEditorDraft().messagePhases.b.BEFORE,true)
@@ -98,6 +98,10 @@ function ZO_CheckButton_SetCheckState(c,v) c.checked=v end
 function ZO_CheckButton_IsChecked(c) return c.checked end
 function ZO_CheckButton_SetToggleFunction(c,fn) c.toggle=fn end
 local holder=nativeControl()
+local function rowFor(id)
+    for _,row in ipairs(holder.scheduleRows or {}) do if row.messageId==id then return row end end
+    error('No row for '..id)
+end
 pool.createFunc(holder)
 eq(#holder.scheduleRows,2)
 assert(holder.scheduleRows[1].label.text:find("First actual message preview",1,true))
@@ -105,12 +109,12 @@ assert(holder.scheduleRows[1].label.text:find("Used:",1,true))
 holder.scheduleRows[1].check.checked=false
 holder.scheduleRows[1].check.toggle(holder.scheduleRows[1].check)
 eq(scm:GetScheduleEditorDraft().messagePhases.a.BEFORE,false)
-holder.scheduleRows[2].label.OnMouseUp()
+rowFor('b').label.OnMouseUp()
 eq(scm:GetScheduleEditorDraft().messagePhases.b.BEFORE,false)
 f.entry("c","ad","Amber Traders","Added after settings opened")
 pool.refreshFunc(holder)
 eq(#holder.scheduleRows,3)
-assert(holder.scheduleRows[3].label.text:find("Added after settings opened",1,true))
+assert(rowFor('c').label.text:find("Added after settings opened",1,true))
 eq(holder.height,230)
 eq(pool.minHeight,230); eq(pool.maxHeight,230)
 eq(holder.scheduleRows[1].parent,holder.scheduleContent)
@@ -122,7 +126,7 @@ find(controls,"Event hour").setFunc("08")
 find(controls,"Event minute").setFunc("00")
 find(controls,"Event AM / PM").setFunc("PM")
 rows=scm:GetScheduleMessageChecklist("BEFORE")
-rows[1].setFunc(true); rows[2].setFunc(true)
+for _,choice in ipairs(rows) do if choice.messageId=='a' or choice.messageId=='b' then choice.setFunc(true) end end
 local preview
 for _,c in ipairs(controls) do
     if c.type=="description" and type(c.text)=="function" then
@@ -197,7 +201,7 @@ end
 holder.scheduleRows[#holder.scheduleRows].label.OnMouseWheel(nil,-1)
 eq(holder.scheduleScroll.offset,40)
 pool.refreshFunc(holder); eq(holder.scheduleScroll.offset,40)
-holder.scheduleRows[#holder.scheduleRows].label.OnMouseUp()
+rowFor('long12').label.OnMouseUp()
 eq(scm:GetScheduleEditorDraft().messagePhases.long12.BEFORE,false)
 holder.width=320; holder.OnRectWidthChanged()
 eq(holder.scheduleScroll.width,320)
