@@ -68,7 +68,7 @@ function SmartChatMsg:GetScheduleMessageChecklist(phase)
     for _,entry in ipairs(self:GetMessageEntriesForCommandAndGuild(id,guild)) do
         local messageId=entry.id
         result[#result+1]={type="checkbox",name=entry.text,
-            phaseText=self:GetScheduleMessagePhaseText(messageId,self:GetScheduleEditorDraft()),
+            phaseText=(entry.locked==true and "Locked · " or "")..self:GetScheduleMessagePhaseText(messageId,self:GetScheduleEditorDraft()),
             getFunc=function()
                 local a=self:GetScheduleEditorDraft().messagePhases[messageId]
                 return a==nil or a[phase]==true or (phase~="ANY" and a.ANY==true)
