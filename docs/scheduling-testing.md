@@ -1,6 +1,6 @@
 # Try simple scheduling in ESO
 
-Version 1.11.6: confirm Auto and Repeat Commands collapse when empty and can be
+Version 1.11.7: confirm Auto and Repeat Commands collapse when empty and can be
 toggled by their headers. Promotion start/end should appear in current cards,
 without the duplicate summary above. Next Send must be absent while Paused/Off.
 Check native button styling, scrollbar clearance, and the section's bottom fit.
@@ -110,7 +110,7 @@ over text or a checkbox, or drag the scrollbar, to reach and select the last row
 Changing a selection must preserve the scroll position. Check that the interval
 and once-only controls below the list remain visible and do not overlap it.
 
-## Message visibility and identity (1.11.6)
+## Message visibility and identity (1.11.7)
 
 - Confirm a scheduled card shows (Scheduled) and Starts in until the event time,
   then Started. On Demand repeats should display (On Demand).
@@ -120,7 +120,7 @@ and once-only controls below the list remain visible and do not overlap it.
   message editor. Starting soon should appear only when enabled.
 - Confirm Share Messages is absent and Import / Export Settings remains.
 
-## Personal lock and transfer checks (1.11.6)
+## Personal lock and transfer checks (1.11.7)
 
 1. Add a personal message, assign its event phases, and click Lock. Confirm the
    Locked caption and Unlock button. Check the schedule pool caption too.
@@ -137,7 +137,7 @@ and once-only controls below the list remain visible and do not overlap it.
    restore the slash handler; Scheduled removes it unless another guild needs it.
 9. Confirm the space below Notify Sound is smaller and rows remain separated.
 
-## Three-state cycle and new IDs (1.11.6)
+## Three-state cycle and new IDs (1.11.7)
 
 - A disabled current schedule shows Enable. Click it: Active, button Pause.
   Click Pause: Paused, button Disable. Click Disable: Inactive, button Enable.
@@ -147,3 +147,15 @@ and once-only controls below the list remain visible and do not overlap it.
   After Disable it leaves the running list; restart using the slash handler.
 - Import a same-name command under a new ID. Verify its imported channel/event
   time and local locked message/phase choices remain consistent.
+
+NEXT OCCURRENCE DISPLAY (1.11.7)
+Below Repeat schedule, Next event shows the calculated Eastern date/time without
+changing the original recurrence anchor. Windows/reminders use Next window or
+Next reminder. After an event starts, Next event shows the following occurrence,
+even while the current promotion remains active. One-time events show None
+scheduled when no future start remains. This preview reflects unsaved edits.
+
+Promotion days: 0 starts at the event clock time, not midnight. To promote only
+from midnight on event day, use 1 day of lead, deselect every Before event day
+message and select On event day messages. Delivery still honors startup delay,
+cooldowns, shared spacing and chat availability.

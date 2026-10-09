@@ -18,6 +18,14 @@ function SmartChatMsg:ScheduleDateFromPicker(timestamp)
     return string.format("%04d-%02d-%02d",p.year,p.month,p.day)
 end
 
+function SmartChatMsg:GetNextScheduleOccurrenceText(draft)
+    local label=draft.mode=="EVENT" and "Next event" or draft.mode=="REMINDER" and "Next reminder" or "Next window"
+    local schedule,reason=self:NormalizeSchedule(draft)
+    if not schedule then return label..": "..tostring(reason) end
+    local occurrence=self:GetUpcomingScheduleOccurrences(schedule,GetTimeStamp(),1,true)[1]
+    return label..": "..(occurrence and self:FormatEasternDateTime(occurrence.eventAtUtc) or "None scheduled.")
+end
+
 function SmartChatMsg:GetScheduleEditorDraft()
     local id=self.savedVars.selectedMessagesCommand
     local guild=self:GetSelectedGuildNameForMessages()
@@ -235,6 +243,8 @@ function SmartChatMsg:BuildScheduleOptionControls()
         controls[#controls+1]={type="submenu",name=({WINDOW="Window dates and times",REMINDER="First reminder date and time",EVENT="Event and promotion timing"})[mode],controls=entry[2],disabled=function() return draft().mode~=mode end}
     end
     controls[#controls+1]=dropdown("Repeat schedule",repeatLabels,repeatValues,"recurrence")
+    controls[#controls+1]={type="description",reference="SCM_NextScheduleOccurrence",text=function() return self:GetNextScheduleOccurrenceText(draft()) end}
+    controls[#controls+1]={type="description",text="For repeating schedules, the original date anchors the repeat pattern. The next date is calculated automatically."}
     local repeats={number("Custom repeat interval (optional)","recurrenceInterval",
         "Blank uses the selected repeat. Otherwise enter days, weeks, or months between occurrences (every other week uses two-week units).")}
     repeats[1].disabled=function() return draft().recurrence=="NONE" end
