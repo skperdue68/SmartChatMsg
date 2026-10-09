@@ -94,31 +94,70 @@ function SmartChatMsg:GetSchedulePhase(schedule, utc)
     return utc < midnight and "BEFORE" or "DAY"
 end
 
-function SmartChatMsg:SetSchedulingTimeZone(zone)
-    if not zones[zone] then return false,"Choose ET, CT, MT or PT." end
+function SmartChatMsg:GetGuildSchedulingTimeZone(guildName,vars)
+    vars=vars or self.savedVars or {}
+    local key=guildName and self:NormalizeKey(guildName)
+    local overrides=type(vars.guildSchedulingTimeZones)=="table" and vars.guildSchedulingTimeZones or {}
+    return self:NormalizeSchedulingTimeZone(key and overrides[key] or vars.schedulingTimeZone)
+end
+function SmartChatMsg:GetGuildSchedulingTimeZoneOverride(guildName)
+    local key=guildName and self:NormalizeKey(guildName)
+    local overrides=self.savedVars and self.savedVars.guildSchedulingTimeZones
+    return type(overrides)=="table" and key and overrides[key] or "GLOBAL"
+end
+-- Validate every affected schedule before changing preferences or touching chat.
+function SmartChatMsg:RezoneGuildSchedules(affected,zoneForGuild,applyPreference)
+    local editor=self.scheduleEditor
     local replacements={}
-    for _,byGuild in pairs(self.savedVars.commandGuildSettings or {}) do
-        for _,settings in pairs(byGuild) do
-            if settings.schedule then
+    for id,byGuild in pairs(self.savedVars.commandGuildSettings or {}) do
+        for guild,settings in pairs(byGuild) do
+            if settings.schedule and affected(guild) then
                 local draft={};for key,value in pairs(settings.schedule) do draft[key]=value end
-                draft.timeZone=zone;draft.nextDueAt=nil;draft.nextDuePhase=nil;draft.nextDueOccurrence=nil
+                draft.timeZone=zoneForGuild(guild);draft.nextDueAt=nil;draft.nextDuePhase=nil;draft.nextDueOccurrence=nil
                 draft.completedOccurrences={}
                 local schedule,reason=self:NormalizeSchedule(draft)
                 if not schedule then return false,"Timezone unchanged: "..tostring(reason) end
-                replacements[#replacements+1]={settings=settings,schedule=schedule}
+                replacements[#replacements+1]={id=id,guild=guild,settings=settings,schedule=schedule}
             end
         end
     end
-    if zone==self:GetSchedulingTimeZone() then return true end
-    -- Cancel prepared scheduled requests through the existing guarded cancellation path.
-    for id,byGuild in pairs(self.savedVars.commandGuildSettings or {}) do
-        for guild,settings in pairs(byGuild) do
-            if settings.schedule and self.StopScheduledDelivery then self:StopScheduledDelivery(id,guild) end
-        end
+    for _,replacement in ipairs(replacements) do
+        if self.StopScheduledDelivery then self:StopScheduledDelivery(replacement.id,replacement.guild) end
     end
-    self.savedVars.schedulingTimeZone=zone
+    applyPreference()
     for _,replacement in ipairs(replacements) do replacement.settings.schedule=replacement.schedule end
     self.scheduleEditor=nil
+    -- Changing this preference inside Scheduling must not discard unsaved edits.
+    if editor and self.GetScheduleEditorDraft then
+        local fresh=self:GetScheduleEditorDraft()
+        if self.scheduleEditor.key==editor.key then
+            if editor.draft.timeZone~=fresh.timeZone then
+                editor.draft.nextDueAt=nil;editor.draft.nextDuePhase=nil;editor.draft.nextDueOccurrence=nil
+                editor.draft.completedOccurrences={}
+            end
+            editor.draft.timeZone=fresh.timeZone
+            self.scheduleEditor.draft=editor.draft
+            self.scheduleEditor.dirty=editor.dirty
+        end
+    end
     if self.RefreshSettingsUI and self.settings and self.settings.controls then self:RefreshSettingsUI() end
     return true
+end
+function SmartChatMsg:SetSchedulingTimeZone(zone)
+    if not zones[zone] then return false,"Choose ET, CT, MT or PT." end
+    if zone==self:GetSchedulingTimeZone() then return true end
+    return self:RezoneGuildSchedules(function(guild) return self:GetGuildSchedulingTimeZoneOverride(guild)=="GLOBAL" end,
+        function() return zone end,function() self.savedVars.schedulingTimeZone=zone end)
+end
+function SmartChatMsg:SetGuildSchedulingTimeZone(guildName,zone)
+    if zone~="GLOBAL" and not zones[zone] then return false,"Choose Use global default, ET, CT, MT or PT." end
+    if not guildName or not self:GetGuildSlotByName(guildName) then return false,"Select an available guild first." end
+    local key=self:NormalizeKey(guildName)
+    if self:GetGuildSchedulingTimeZoneOverride(guildName)==zone then return true end
+    local effective=zone=="GLOBAL" and self:GetSchedulingTimeZone() or zone
+    return self:RezoneGuildSchedules(function(guild) return self:NormalizeKey(guild)==key end,
+        function() return effective end,function()
+            self.savedVars.guildSchedulingTimeZones=self.savedVars.guildSchedulingTimeZones or {}
+            self.savedVars.guildSchedulingTimeZones[key]=zone~="GLOBAL" and zone or nil
+        end)
 end

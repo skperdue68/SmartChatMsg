@@ -86,7 +86,9 @@ function SmartChatMsg:SaveGuildSchedule(commandId,guildName,draft)
     if not self:GetCommandById(commandId) or not self:GetGuildSlotByName(guildName) then
         return false,"Select an available command and guild."
     end
-    local schedule,reason=self:NormalizeSchedule(draft)
+    local candidate={};for key,value in pairs(draft) do candidate[key]=value end
+    candidate.timeZone=self:GetGuildSchedulingTimeZone(guildName)
+    local schedule,reason=self:NormalizeSchedule(candidate)
     if not schedule then return false,reason end
     if schedule.enabled and schedule.delivery=="ZONE" then
         for id,byGuild in pairs(self.savedVars.commandGuildSettings or {}) do
@@ -226,7 +228,7 @@ function SmartChatMsg:ImportScheduleRecords(records,imported)
     local enabledZones=0
     for id,byGuild in pairs(candidates) do
         for guild,draft in pairs(byGuild) do
-            draft.timeZone=imported.schedulingTimeZone or "ET"
+            draft.timeZone=self:GetGuildSchedulingTimeZone(guild,imported)
             local schedule,reason=self:NormalizeSchedule(draft)
             if not schedule then return false,"Imported schedule: "..reason end
             if schedule.enabled and schedule.delivery=="ZONE" then enabledZones=enabledZones+1 end

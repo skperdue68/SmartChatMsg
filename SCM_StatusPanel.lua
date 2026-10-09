@@ -287,7 +287,7 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                             commandName = command.name or "command",
                             slashCommand = self:BuildSlashCommandName(command.name or "command") or "/command",
                             displayName = displayName,
-                            promotionText = occurrence and (self:FormatScheduleDateTime(occurrence.startsAtUtc).." → "..self:FormatScheduleDateTime(occurrence.endsAtUtc)) or nil,
+                            promotionText = occurrence and (self:FormatScheduleDateTime(occurrence.startsAtUtc,occurrence).." → "..self:FormatScheduleDateTime(occurrence.endsAtUtc,occurrence)) or nil,
                             guildName = guildName,
                             channelText = self:GetAutoPopulateChannelStatusText(command.id, guildName),
                             reminderMinutes = reminderMinutes,
