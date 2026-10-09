@@ -6,7 +6,7 @@ local function copy(v)
 end
 
 -- Upstream DatePicker uses local os.time/os.date. This timestamp carries a
--- calendar day, not an Eastern instant; the engine alone resolves Eastern time.
+-- calendar day, not a zoned instant; the engine alone resolves scheduling time.
 function SmartChatMsg:ScheduleDateToPicker(date)
     local y,m,d=tostring(date or ""):match("^(%d%d%d%d)%-(%d%d)%-(%d%d)$")
     if not y then return GetTimeStamp() end
@@ -23,7 +23,7 @@ function SmartChatMsg:GetNextScheduleOccurrenceText(draft)
     local schedule,reason=self:NormalizeSchedule(draft)
     if not schedule then return label..": "..tostring(reason) end
     local occurrence=self:GetUpcomingScheduleOccurrences(schedule,GetTimeStamp(),1,true)[1]
-    local text=label..": "..(occurrence and self:FormatEasternDateTime(occurrence.eventAtUtc) or "None scheduled.")
+    local text=label..": "..(occurrence and self:FormatScheduleDateTime(occurrence.eventAtUtc) or "None scheduled.")
     if occurrence and schedule.specialPattern~="NONE" then
         local variant=self:GetScheduleEventVariant(schedule,occurrence.eventAtUtc)
         text=text.."\n"..(schedule.specialPattern=="FACTION_ROTATION" and "Faction: " or "Message group: ")..self:GetScheduleVariantLabel(variant)
@@ -37,7 +37,7 @@ function SmartChatMsg:GetScheduleEditorDraft()
     local key=tostring(id)..":"..tostring(guild)
     local source=self:GetGuildSchedule(id,guild)
     if not self.scheduleEditor or self.scheduleEditor.key~=key or self.scheduleEditor.source~=source then
-        local p=self:GetEasternParts(GetTimeStamp())
+        local p=self:GetScheduleParts(GetTimeStamp())
         local date=string.format("%04d-%02d-%02d",p.year,p.month,p.day)
         local d=source and copy(source) or {enabled=false,paused=false,delivery="REPEAT",intervalMinutes=15,
             startDate=date,startTime="08:00 PM",eventDate=date,eventTime="08:00 PM",endDate=date,endTime="09:00 PM"}
@@ -50,7 +50,7 @@ function SmartChatMsg:GetScheduleEditorDraft()
             if not d[field.."Date"] or d[field.."Date"]=="" then
                 local utc=d[field=="start" and "startsAtUtc" or field=="end" and "endsAtUtc" or "eventAtUtc"]
                 if utc then
-                    local t=self:GetEasternParts(utc)
+                    local t=self:GetScheduleParts(utc)
                     d[field.."Date"]=string.format("%04d-%02d-%02d",t.year,t.month,t.day)
                     d[field.."Time"]=string.format("%02d:%02d %s",t.hour%12==0 and 12 or t.hour%12,t.min,t.hour>=12 and "PM" or "AM")
                 else d[field.."Date"],d[field.."Time"]=date,"08:00 PM" end
@@ -186,10 +186,25 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
         row.label:SetText((choice.name or "").."\n|cC5C29EUsed: "..choice.phaseText.."|r")
         local height=math.max(32,row.label:GetTextHeight()+12)
         row.label:SetHeight(height-12)
-        if choice.variantChoices then
+        if choice.variantChoices and choice.variantChoices[1]=="REGULAR" then
+            if not row.variantButton then
+                row.variantButton=WINDOW_MANAGER:CreateControlFromVirtual(nil,row,"ZO_DefaultButton")
+                row.variantButton:SetHeight(31)
+            end
+            row.variantButton:SetHidden(false);row.variantButton:ClearAnchors()
+            row.variantButton:SetAnchor(TOPLEFT,row.label,BOTTOMLEFT,0,4)
+            row.variantButton:SetWidth(math.max(100,contentWidth-50))
+            row.variantButton:SetText("Group: "..self:GetScheduleVariantLabel(choice.variant))
+            row.variantButton:SetHandler("OnClicked",function()
+                choice.setVariant(choice.variant=="FINAL" and "REGULAR" or "FINAL")
+            end)
+            if row.variantControl then row.variantControl:SetHidden(true) end
+            height=height+42
+        elseif choice.variantChoices then
+            if row.variantButton then row.variantButton:SetHidden(true) end
             if not row.variantControl then
-                row.variantControl=WINDOW_MANAGER:CreateControlFromVirtual(nil,row,"ZO_ComboBox")
-                row.variantControl:SetHeight(28)
+                row.variantControl=WINDOW_MANAGER:CreateControlFromVirtual("SCM_ScheduleVariant"..self.schedulePoolControlSerial.."Row"..i,row,"ZO_ComboBox")
+                row.variantControl:SetHeight(31)
                 row.variantCombo=ZO_ComboBox_ObjectFromContainer(row.variantControl)
                 row.variantCombo:SetSortsItems(false)
                 row.variantControl:SetHandler("OnMouseWheel",function(_,delta) ZO_Scroll_OnMouseWheel(scroll,delta) end)
@@ -203,8 +218,11 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
                 row.variantCombo:AddItem(row.variantCombo:CreateItemEntry(self:GetScheduleVariantLabel(value),function() choice.setVariant(variant) end))
             end
             row.variantCombo:SetSelectedItem(self:GetScheduleVariantLabel(choice.variant))
-            height=height+36
-        elseif row.variantControl then row.variantControl:SetHidden(true) end
+            height=height+42
+        else
+            if row.variantControl then row.variantControl:SetHidden(true) end
+            if row.variantButton then row.variantButton:SetHidden(true) end
+        end
         row:SetHeight(height); y=y+height+6
         ZO_CheckButton_SetCheckState(row.check,choice.getFunc())
         ZO_CheckButton_SetToggleFunction(row.check,function(button) choice.setFunc(ZO_CheckButton_IsChecked(button)) end)
@@ -266,7 +284,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
             local h,m,a=tostring(draft()[field.."Time"] or ""):match("^(%d%d?):(%d%d)%s+([AP]M)$")
             return h and string.format("%02d",tonumber(h)) or "08",m or "00",a or "PM"
         end
-        local result={{type="datepicker",name=title.." date (ET)",datePickerType="normal",tooltip="Eastern calendar date; select the time separately.",
+        local result={{type="datepicker",name=function() return title.." date ("..self:GetSchedulingTimeZone()..")" end,datePickerType="normal",tooltip="Calendar date in your global scheduling timezone; select the time separately.",
             getFunc=function() return self:ScheduleDateToPicker(draft()[field.."Date"]) end,
             setFunc=function(v) draft()[field.."Date"]=self:ScheduleDateFromPicker(v); refresh() end}}
         for i,entry in ipairs({{"hour",hours},{"minute",minutes},{"AM / PM",{"AM","PM"}}}) do
@@ -279,7 +297,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
     end
     local function append(target,source) for _,v in ipairs(source) do target[#target+1]=v end end
     local controls={
-        {type="description",text="Uses the command, guild and output channel selected above. All times are Eastern Time (ET). Save and activate starts automatically while you are online. Press Enter to send each prepared message."},
+        {type="description",text=function() return "Uses the command, guild and output channel selected above. All times are "..self:GetSchedulingTimeZoneName().." Time ("..self:GetSchedulingTimeZone().."). Save and activate starts automatically while you are online. Press Enter to send each prepared message." end},
         {type="description",text=function() local _,id,guild=draft(); local command=self:GetCommandById(id); local channel=self.GetSelectedMessagesChannel and self:GetSelectedMessagesChannel() or ""; return (command and command.name or "No command").." / "..tostring(guild or "No guild").." / "..tostring(channel).."\n"..self:GetScheduleStatusText(id,guild)..(self.scheduleEditor and self.scheduleEditor.dirty and "\nUnsaved changes — review and save below." or "") end},
         dropdown("Schedule type",modeLabels,modeValues,"mode"),
     }
@@ -289,11 +307,11 @@ function SmartChatMsg:BuildScheduleOptionControls()
     local reminder=dateTime("start","Reminder")
     reminder[#reminder+1]={type="description",text="Prepares one message per occurrence while online. Missed reminders are skipped; there is a two-minute grace period."}
     local event=dateTime("event","Event")
-    event[#event+1]=number("Start promoting (days before event)","promotionDays","0 starts at midnight Eastern on event day. Positive values start that many days before the event at its clock time.")
+    event[#event+1]=number("Start promoting (days before event)","promotionDays","0 starts at midnight in your scheduling timezone on event day. Positive values start that many days before the event at its clock time.")
     event[#event+1]={type="description",reference="SCM_PromotionStartNote",text=function()
         local schedule,reason=self:NormalizeSchedule(draft())
         local occurrence=schedule and self:GetUpcomingScheduleOccurrences(schedule,GetTimeStamp(),1,true)[1]
-        local starts=occurrence and self:FormatEasternDateTime(occurrence.startsAtUtc) or (schedule and "None scheduled." or tostring(reason))
+        local starts=occurrence and self:FormatScheduleDateTime(occurrence.startsAtUtc) or (schedule and "None scheduled." or tostring(reason))
         return "0 = midnight on event day. 1+ = that many days earlier at the event's time.\nPromotion starts: "..starts
     end}
     event[#event+1]=number("Stop promoting (minutes after event)","endDelayMinutes")
@@ -306,11 +324,11 @@ function SmartChatMsg:BuildScheduleOptionControls()
         controls[#controls+1]={type="submenu",name=({WINDOW="Window dates and times",REMINDER="First reminder date and time",EVENT="Event and promotion timing"})[mode],controls=entry[2],disabled=function() return draft().mode~=mode end}
     end
     controls[#controls+1]=dropdown("Repeat schedule",repeatLabels,repeatValues,"recurrence")
-    local pattern=dropdown("Special event pattern",{"None","Faction rotation","Last raffle of the month + 50/50"},{"NONE","FACTION_ROTATION","MONTH_FINAL"},"specialPattern")
+    local pattern=dropdown("Special event pattern",{"None","Faction rotation","Last event of month"},{"NONE","FACTION_ROTATION","MONTH_FINAL"},"specialPattern")
     pattern.disabled=function() return draft().mode~="EVENT" or draft().recurrence=="NONE" end
     controls[#controls+1]=pattern
     local rotation={
-        {type="description",text="The original event date starts the first faction's block. The order repeats automatically, including weeks you are offline. %eventfaction% inserts the full faction name."},
+        {type="description",text="The Event date under Event and promotion timing anchors the first faction's block. The order repeats automatically, including weeks you are offline. Use %eventfaction% in message text to show the proper full faction name for each event."},
         number("Faction frequency (weeks)","rotationWeeks","Each selected faction runs for this many calendar weeks. Total cycle = frequency × selected factions."),
     }
     for i,title in ipairs({"First faction","Second faction","Third faction"}) do
@@ -331,14 +349,15 @@ function SmartChatMsg:BuildScheduleOptionControls()
     controls[#controls+1]={type="description",text=function()
         local d=draft()
         if d.specialPattern=="FACTION_ROTATION" then return "In each message row, choose All selected factions or a faction. Keep using the phase checkboxes for when it runs." end
-        if d.specialPattern=="MONTH_FINAL" then return "Existing messages automatically use Regular drawings. Mark only your special announcements Month-final drawings. The final drawing uses that pool throughout promotion. If none are marked month-final, regular messages are used instead." end
+        if d.specialPattern=="MONTH_FINAL" then return "Works with any repeating event schedule. Existing messages automatically use Regular events. Click the Group button beneath a message to switch it between Regular events and Month-final events. Mark only your special announcements Month-final events. The last scheduled event in each month uses that pool throughout promotion. If none are marked month-final, regular messages are used instead." end
         return "Special patterns are optional. Message group choices appear in each phase's message list when enabled."
     end}
     controls[#controls+1]={type="description",reference="SCM_NextScheduleOccurrence",text=function() return self:GetNextScheduleOccurrenceText(draft()) end}
     controls[#controls+1]={type="description",text="For repeating schedules, the original date anchors the repeat pattern. The next date is calculated automatically."}
     local repeats={number("Custom repeat interval (optional)","recurrenceInterval",
-        "Blank uses the selected repeat. Otherwise enter days, weeks, or months between occurrences (every other week uses two-week units).")}
+        "Controls recurrence of the entire schedule, not chat frequency. Blank or 1 uses your Repeat schedule. Daily: days; Weekly: weeks; Every other week: two-week blocks; Monthly: months. Weekly + 2 = every two weeks; Every other week + 2 = every four weeks.")}
     repeats[1].disabled=function() return draft().recurrence=="NONE" end
+    repeats[#repeats+1]={type="description",text="Repeat on weekdays is optional. With none selected, Weekly and Every other week use the original event weekday. Selecting days adds occurrences on those days within eligible weeks. Daily schedules still honor their interval and only run on selected days."}
     local weekdays={}
     for i,name in ipairs({"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"}) do
         local day=i
@@ -351,7 +370,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
     controls[#controls+1]={type="submenu",name="Message delivery",controls={dropdown("Delivery",{"Repeat while active","On zone arrival"},{"REPEAT","ZONE"},"delivery"),number("Message interval (minutes)","intervalMinutes")},disabled=function() return draft().mode=="REMINDER" end}
     controls[#controls+1]={type="description",text=function()
         if draft().mode~="EVENT" then return "Choose several messages to select one at random." end
-        return "Choose messages for each part of promotion. One eligible message is selected at random. Event-day promotion starts at Eastern midnight; live promotion starts at the event time. %eventdate%, %eventtime%, and %eventwhen% use each occurrence."
+        return "Choose messages for each part of promotion. One eligible message is selected at random. Event-day promotion starts at midnight in your scheduling timezone; live promotion starts at the event time. %eventdate%, %eventtime%, and %eventwhen% use each occurrence."
     end}
     local phaseLabels={ANY="Messages",BEFORE="Before event day",DAY="On event day",SOON="Starting soon",LIVE="From event start until promotion ends"}
     local onceLabels={BEFORE="Prepare only once before event day",DAY="Prepare only once on event day",SOON="Prepare only once during Starting soon",LIVE="Prepare only once when event starts"}
@@ -365,7 +384,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
         end}
         if phase~="ANY" then
             pool[#pool+1]={type="editbox",name="Message interval override (optional)",getFunc=function() return tostring(draft().phaseIntervals[phase] or "") end,setFunc=function(v) draft().phaseIntervals[phase]=v; refresh() end}
-            pool[#pool+1]={type="checkbox",name=onceLabels[phase],getFunc=function() return draft().phaseOnce[phase]==true end,setFunc=function(v) draft().phaseOnce[phase]=v; refresh() end}
+            pool[#pool+1]={type="checkbox",name=onceLabels[phase],tooltip="One randomly selected announcement for this phase per event occurrence. After a confirmed send (or a matching announcement from another player), this phase is complete even if its interval comes around again. An unsent message may retry while the phase remains active. The next event starts fresh.",getFunc=function() return draft().phaseOnce[phase]==true end,setFunc=function(v) draft().phaseOnce[phase]=v; refresh() end}
         end
         controls[#controls+1]={type="submenu",name=phaseLabels[phase],controls=pool,disabled=function() return (phase=="ANY")==(draft().mode=="EVENT") or (phase=="SOON" and not draft().startingSoonEnabled) end}
     end
@@ -374,21 +393,21 @@ function SmartChatMsg:BuildScheduleOptionControls()
         if not normalized then return "Preview: "..tostring(reason) end
         if not self.GetUpcomingScheduleOccurrences then return "Preview unavailable." end
         local upcoming=self:GetUpcomingScheduleOccurrences(normalized,GetTimeStamp(),3)
-        local lines={"Review your schedule (ET):"}
+        local lines={"Review your schedule ("..self:GetSchedulingTimeZone().."):"}
         local occurrence=upcoming and upcoming[1]
         if occurrence then
-            lines[#lines+1]="Starts: "..self:FormatEasternDateTime(occurrence.startsAtUtc)
-            lines[#lines+1]="Stops: "..self:FormatEasternDateTime(occurrence.endsAtUtc)
+            lines[#lines+1]="Starts: "..self:FormatScheduleDateTime(occurrence.startsAtUtc)
+            lines[#lines+1]="Stops: "..self:FormatScheduleDateTime(occurrence.endsAtUtc)
             if normalized.mode=="EVENT" then
-                lines[#lines+1]="Event: "..self:FormatEasternDateTime(occurrence.eventAtUtc)
-                if normalized.startingSoonEnabled then lines[#lines+1]="Starting soon: "..self:FormatEasternDateTime(math.max(occurrence.startsAtUtc,occurrence.eventAtUtc-normalized.startingSoonMinutes*60)) end
+                lines[#lines+1]="Event: "..self:FormatScheduleDateTime(occurrence.eventAtUtc)
+                if normalized.startingSoonEnabled then lines[#lines+1]="Starting soon: "..self:FormatScheduleDateTime(math.max(occurrence.startsAtUtc,occurrence.eventAtUtc-normalized.startingSoonMinutes*60)) end
             end
         end
-        lines[#lines+1]="Upcoming occurrences (ET):"
+        lines[#lines+1]="Upcoming occurrences ("..self:GetSchedulingTimeZone().."):"
         for _,s in ipairs(upcoming or {}) do
             local utc=normalized.mode=="EVENT" and s.eventAtUtc or s.startsAtUtc
             if utc then
-                local line=self:FormatEasternDateTime(utc)
+                local line=self:FormatScheduleDateTime(utc)
                 if normalized.specialPattern~="NONE" then line=line.." — "..self:GetScheduleVariantLabel(self:GetScheduleEventVariant(normalized,utc)) end
                 lines[#lines+1]=line
             end

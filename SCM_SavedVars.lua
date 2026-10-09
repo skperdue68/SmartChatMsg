@@ -8,6 +8,7 @@ SmartChatMsg.defaults = {
     messages = {}, -- { { id = "...", commandId = "...", guildIndex = n, guildName = "...", text = "..." }, ... }
 
     chatChannels = {}, -- [commandId] = { [guildKey] = "Zone"|"Guild"|"Officer" }
+    schedulingTimeZone = "ET",
     commandGuildSettings = {}, -- [commandId] = { [guildKey] = { reminderMinutes = n|nil, reminderRetryMinutes = n, autoPopulateOnZone = bool, autoPopulateCooldownMinutes = n, runAt = "ON_DEMAND"|"STARTUP"|"SCHEDULED", openStatusPanelOnRun = bool, populateSound = "DUEL_START"|"NONE"|soundKey, lastUsedAt = unixTime|nil, lastUsedParamText = "..."|nil, lastUsedGuildIndex = n|nil, lastAutoPopulateSentAtByZone = { [zoneKey] = unixTime, ... } }, ... }
 
     selectedMessagesCommand = nil, -- commandId
@@ -415,6 +416,7 @@ function SmartChatMsg:BuildExportString()
     local lines = { "SCM_EXPORT_V1" }
 
     table.insert(lines, string.format("DEFAULT|%s", self:EscapeImportExportField(self.savedVars.defaultGuildIndex or "")))
+    table.insert(lines,"GENERALTIMEZONE|"..self:GetSchedulingTimeZone())
     table.insert(lines, string.format("GENERALREVERT|%s", self:EscapeImportExportField(self.savedVars.revertChatSeconds or 60)))
     local panel=self.savedVars.statusPanelState or self.defaults.statusPanelState
     table.insert(lines,string.format("STATUSPANEL|%s|%s|%s",panel.visible==true and "1" or "0",self:EscapeImportExportField(panel.offsetX or -40),self:EscapeImportExportField(panel.offsetY or 180)))
@@ -570,6 +572,7 @@ function SmartChatMsg:ApplyImportedSettings(imported)
     self.savedVars.messages = imported.messages or {}
     self.savedVars.chatChannels = imported.chatChannels or {}
     self.savedVars.commandGuildSettings = imported.commandGuildSettings or {}
+    self.savedVars.schedulingTimeZone = imported.schedulingTimeZone or "ET"
     self.savedVars.defaultGuildIndex = imported.defaultGuildIndex
     self.savedVars.revertChatSeconds = self:NormalizeRevertChatSeconds(imported.revertChatSeconds)
     self.savedVars.statusPanelState = imported.statusPanelState or self.savedVars.statusPanelState
@@ -641,6 +644,10 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
             if guildIndex and guildIndex >= 1 and guildIndex <= 5 and guildIndex == math.floor(guildIndex) then
                 imported.defaultGuildIndex = guildIndex
             end
+        elseif recordType == "GENERALTIMEZONE" then
+            local zone=self:UnescapeImportExportField(parts[1] or "")
+            if zone~="ET" and zone~="CT" and zone~="MT" and zone~="PT" then return false,"Invalid scheduling timezone." end
+            imported.schedulingTimeZone=zone
         elseif recordType == "GENERALREVERT" then
             imported.revertChatSeconds = self:NormalizeRevertChatSeconds(self:UnescapeImportExportField(parts[1] or ""))
         elseif recordType == "STATUSPANEL" then

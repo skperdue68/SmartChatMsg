@@ -12,6 +12,9 @@ test('scheduled event countdown uses event UTC timestamp after UTC midnight',fun
     assert(s:SaveGuildSchedule('ad','Amber Traders',{mode='EVENT',enabled=true,delivery='REPEAT',
         eventDate='2026-10-08',eventTime='09:00 PM',promotionDays=2,endDelayMinutes=20,intervalMinutes=5}))
     now=s:ParseEasternDateTime('2026-10-08','08:00 PM')
+    local row=s:GetRepeatStatusPanelRows()[1]
+    assert(row.displayName:find('(Scheduled) Starts in ',1,true))
+    assert(row.statusText:find('On event day (every 5 minutes)',1,true))
     local text=s:ApplyMessageSubstitutions('PvP today at %eventtime%','ad','Amber Traders')
     assert(text:find('(1h)',1,true),text);assert(not text:find('1d',1,true),text)
     f.incoming(CHAT_CHANNEL_GUILD_1,text);eq(s:GetGuildLastUsedAt('ad','Amber Traders'),now)
@@ -50,7 +53,7 @@ test('ordinary repeat begins by command, can pause and resume, then hides when o
     local timer=assert(EVENT_MANAGER.updates[s:GetReminderTimerName('ad','Amber Traders')])
     now=now+300;timer.callback();assert(s.pendingRestoreState)
     eq(s.pendingRestoreState.metadata.reminderRepeat,true)
-    s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');eq(s:GetRepeatStatusPanelRows()[1].statusText,'Paused')
+    s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');assert(s:GetRepeatStatusPanelRows()[1].statusText:find('Paused',1,true)==1)
     s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');eq(#s:GetRepeatStatusPanelRows(),0)
 end)
 test('actual panel refresh collapses empty bodies, nests dates, uses buttons and keeps viewport inside',function()

@@ -1,4 +1,6 @@
-# SmartChatMsg (v1.12.0)
+# SmartChatMsg (v2.0)
+
+**[Read the complete SmartChatMsg 2.0 user guide](docs/SmartChatMsg-2.0.md)** for all configuration options, examples, timezone changes, recurrence, message groups, and phase behavior.
 
 SmartChatMsg is an Elder Scrolls Online addon for reusable chat messages: guild
 recruitment, trial reminders, auctions, officer notices, and other announcements.
@@ -20,7 +22,7 @@ message timing out does not start the shared pause.
 Startup, schedule starts/ends, phase changes, and cooldown notices appear locally
 in chat through `CHAT_SYSTEM:AddMessage`; they are never sent to your guild.
 Phase notices name the new period (Before event day, Event day, Starting soon,
-or Event started), its frequency, and the Eastern end time. The status window
+or Event started), its frequency, and the selected-zone end time. The status window
 shows startup/shared pauses and distinguishes a prepared message awaiting Enter
 from protected player text. More than one schedule may be active, but they share
 one chat input and only eligible current-phase messages are prepared.
@@ -41,7 +43,7 @@ collapse choice stays respected while the same content remains available. Auto
 contains zone tracking, while Repeat Commands contains current schedule cards and
 running/paused ordinary repeats. Upcoming schedules remain in settings rather
 than duplicating all their details above the cards. Each current scheduled card
-shows its readable ET promotion start/end below status. **Next Send** appears only
+shows its readable selected-zone promotion start/end below status. **Next Send** appears only
 while the card is Active. Enable/Pause/Disable use ESO's textured button style,
 and the cards reserve scrollbar space and fit above the main window's bottom edge.
 
@@ -76,7 +78,7 @@ attempt time; this interval is a retry wait, not evidence of a successful send.
 - Custom commands with separate settings/cooldowns for each **Command + Guild**.
 - Multiple message variants; rotation favors less recently/frequently used messages.
 - On Demand, Startup, and Scheduled operation; Repeat and Zone-based delivery.
-- Eastern Time event windows, automatic activation/stopping, and message phases.
+- Configurable ET/CT/MT/PT event windows, automatic activation/stopping, and message phases.
 - Coordination with other players' matching messages to avoid duplicate announcements.
 - Message-only sharing that merges templates without replacing personal settings.
 - Full settings backup/restore, including schedule configuration.
@@ -106,7 +108,7 @@ The runtime files are `SCM_MessageSharing.lua`, `SCM_SavedVars.lua`,
 | Command | Purpose |
 | --- | --- |
 | `/scm` | Open settings. |
-| `/scm schedule` | Open settings; expand Create / Edit / Delete Messages, then Scheduling (Eastern Time). |
+| `/scm schedule` | Open settings; expand Create / Edit / Delete Messages, then Scheduling (selected timezone). |
 | `/scm status` | Toggle the live status window. |
 | `/scm resetcooldowns` | Clear existing cooldowns for testing; preserve schedule dates and paused/off states. |
 | `/scmdebug on`, `/scmdebug off`, `/scmdebug status` | Control debugging; `/scmdebug` toggles it. |
@@ -127,7 +129,7 @@ Guild to run without a guild parameter. Select the saved output channel in setti
 ## Set up a schedule
 
 Select a command, guild, and output channel in Messages Settings, set **Run At** to **Scheduled**, then open
-**Scheduling (Eastern Time)** inside **Create / Edit / Delete Messages**. Choose what you want to do:
+**Scheduling (selected timezone)** inside **Create / Edit / Delete Messages**. Choose what you want to do:
 
 - **Run during a window:** pick a start date/time and stop date/time, choose
   messages, and set how often to prepare one. No event date is required.
@@ -136,7 +138,7 @@ Select a command, guild, and output channel in Messages Settings, set **Run At**
 - **Promote an event:** pick the event date/time, how many days beforehand to
   begin promoting it, and how long after the start to stop.
 
-Dates use a calendar picker; times use Eastern Time (ET). Saved schedules reopen
+Dates use a calendar picker; times use your global scheduling timezone (ET by default). Saved schedules reopen
 with readable date/time values. Internal timestamps never appear as settings.
 The review shows the start, stop, event time (when applicable), and upcoming occurrences. **Save and activate** starts automatically at the scheduled time while you are online; **Save disabled** keeps your setup without running it. Changes remain a draft until saved. The Scheduling section is disabled unless Run At is Scheduled for the selected command and guild.
 
@@ -149,7 +151,7 @@ custom interval under **More repeat options** refine repeated reminders. Timed r
 eligibility window; overdue offline reminders are skipped. Schedule recurrence is separate from
 how often a message is prepared during an active window.
 
-Eastern wall-clock times remain consistent across daylight saving changes.
+Selected-zone wall-clock times remain consistent across daylight saving changes.
 Dates that do not exist in a month and times skipped by the spring clock change
 are skipped. Preview the next occurrences to check your choice.
 
@@ -160,7 +162,7 @@ has a bounded scroll area; use its scrollbar or mouse wheel to see all messages.
 Long messages wrap within their own rows. You can assign
 several messages to each phase and assign one message to several phases:
 
-- **Before event day:** promotion start until midnight on the Eastern event day.
+- **Before event day:** promotion start until midnight on the selected-zone event day.
 - **On event day:** midnight until the event starts.
 - **Starting soon (optional):** enable this in Event and promotion timing and
   enter the lead time in minutes (120 means two hours). It takes over from the
@@ -179,7 +181,7 @@ Full settings export/import includes its lead time, messages, interval and
 once-only option. Existing schedules leave it disabled.
 
 Event templates can include `%eventdate%`, `%eventtime%`, and `%eventwhen%`.
-`%eventwhen%` describes the Eastern calendar day: weekday/date when further away,
+`%eventwhen%` describes the selected-zone calendar day: weekday/date when further away,
 tomorrow the day before, and today throughout the event day (including after
 the start). It does not change to hours/minutes or "already started". Countdown
 annotations and phase-specific message wording provide those details.
@@ -200,7 +202,7 @@ scheduled interval delivery.
 Pause/resume in scheduling settings. `/yourcommand 1 off` pauses that guild's
 schedule until resumed. Peer messages reset the matching command/guild cooldown
 with an extra random 30â€“90 seconds; they do not resume paused schedules.
-The status panel reports engagement, waiting, and the next eligible time in ET.
+The status panel reports engagement, waiting, and the next eligible time in your scheduling timezone.
 Local notifications announce schedule starts/ends and cooldown delays once per
 change. These notices are visible only to you. Matching peer messages are
 recorded even while a command is inactive, and later activation honors that
@@ -213,9 +215,9 @@ recorded cooldown.
 | `%guild%` | Resolved guild name. |
 | `%zone%` | Your current zone name. |
 | `%time%`, `%timeofday%`, `%greeting%` | Morning, afternoon, or evening. |
-| `%eventdate%` | Configured event's Eastern date, e.g. `10/16/2026`. |
-| `%eventtime%` | Eastern time with EDT/EST, e.g. `08:00 PM EDT`. |
-| `%eventwhen%` | Today, tomorrow, or weekday/date, using the event's Eastern date. |
+| `%eventdate%` | Configured event's selected-zone date, e.g. `10/16/2026`. |
+| `%eventtime%` | Selected-zone time with its standard/daylight abbreviation, e.g. `08:00 PM EDT`. |
+| `%eventwhen%` | Today, tomorrow, or weekday/date, using the event's selected-zone date. |
 
 Tokens are case-insensitive and resolved when chat is populated. Event tokens
 require a configured event. Example:
@@ -256,7 +258,7 @@ The extra cooldown delay survives UI reloads.
 
 Open `/scm status` for Zone cooldowns and scheduled commands. Schedules show
 WAITING, RUNNING, PAUSED, or FINISHED (or disabled/configuration states), current
-phase, Eastern window boundaries, and next eligible Repeat delivery. Blocking
+phase, selected-zone window boundaries, and next eligible Repeat delivery. Blocking
 reasons include busy input, cooldown, an empty phase, or another Zone owner.
 
 For ordinary On Demand/Startup combinations:
@@ -360,13 +362,13 @@ locked messages to the new command while preserving local phase assignments and
 the imported channel and schedule. Old command/guild keys do not remain.
 
 NEXT OCCURRENCE DISPLAY (1.11.8)
-Below Repeat schedule, Next event shows the calculated Eastern date/time without
+Below Repeat schedule, Next event shows the calculated selected-zone date/time without
 changing the original recurrence anchor. Windows/reminders use Next window or
 Next reminder. After an event starts, Next event shows the following occurrence,
 even while the current promotion remains active. One-time events show None
 scheduled when no future start remains. This preview reflects unsaved edits.
 
-Promotion days: 0 starts at midnight Eastern on event day. Select On event day
+Promotion days: 0 starts at midnight in your selected timezone on event day. Select On event day
 messages; Starting soon and live messages still follow their configured phases.
 Positive lead values start that many days before the event at its clock time.
 Delivery still honors startup delay, cooldowns, shared spacing and chat availability.
@@ -374,7 +376,7 @@ Delivery still honors startup delay, cooldowns, shared spacing and chat availabi
 The promotion-days field also shows a short explanation and a calculated
 Promotion starts date/time, reflecting unsaved edits and the next event occurrence.
 
-## Faction rotation and month-final raffles (1.12.0)
+## Faction rotation and month-final events (2.0)
 
 Select the command/guild in Create/Edit/Delete Messages, choose Scheduled, and
 open Scheduling. Choose Promote an event and your repeat schedule, then select
@@ -397,18 +399,16 @@ reuse a template with %eventfaction%, or choose one faction for special wording.
 Phase checkboxes and interval overrides still decide when messages are eligible.
 Multiple eligible messages are chosen randomly as before.
 
-For raffles, keep Every other week and the original first drawing date. Choose
-Last raffle of the month + 50/50. Add both regular and combined raffle/50-50
-announcements under the same command. In each message row choose Regular drawings
-or Month-final drawings. Unassigned messages default to Regular
-drawings in this pattern. Select each message's desired promotion phases.
-The pool is determined by the drawing's Eastern date, throughout its promotion:
-if the next scheduled drawing falls in another month, this drawing is month-final.
-It is the last actual biweekly drawing, not the calendar's last Saturday. For an
-October 10 anchor, October 10 is regular and October 24 is month-final; January
-2, 16 and 30 likewise use regular, regular, month-final pools.
+Choose Last event of month with any repeating event schedule; Every other week
+is not required. Add regular and month-final announcements under the same command.
+In each message row click the Group button to choose Regular events or Month-final events. Unassigned
+messages default to Regular events. Select each message's desired promotion phases.
+The last scheduled event in each calendar month uses the month-final pool throughout
+its promotion. This follows your recurrence, not a fixed weekday or raffle rule.
+For example, biweekly events anchored October 10 use regular messages October 10
+and month-final messages October 24.
 If no messages are marked month-final for this command/guild, regular messages
-are used for every drawing. Once special messages are configured, their phase
+are used for every event. Once special messages are configured, their phase
 selections apply; an intentionally empty special phase does not use regular text.
 Mark only the special messages, once per message; the choice is shared across phases.
 

@@ -7,7 +7,7 @@ end
 
 function SmartChatMsg:NormalizeSchedule(data)
     if type(data) ~= "table" then return nil, "Schedule not configured." end
-    local result = {enabled=data.enabled == true, paused=data.paused == true, timeZone="America/New_York",
+    local result = {enabled=data.enabled == true, paused=data.paused == true, timeZone=self:NormalizeSchedulingTimeZone(data.timeZone or self:GetSchedulingTimeZone()),
         delivery=data.delivery or "REPEAT", intervalMinutes=positiveInteger(data.intervalMinutes or 5), messagePhases={}, phaseIntervals={},
         mode=data.mode or "EVENT", recurrence=data.recurrence or "NONE", recurrenceInterval=positiveInteger(data.recurrenceInterval or 1), weekdays={}, phaseOnce={}}
     if result.mode~="EVENT" and result.mode~="WINDOW" and result.mode~="REMINDER" then return nil,"Choose a schedule kind." end
@@ -30,7 +30,7 @@ function SmartChatMsg:NormalizeSchedule(data)
         local date, time = self:Trim(data[name.."Date"] or ""), self:Trim(data[name.."Time"] or "")
         local fold = data[name.."Fold"]
         if data.mode and not fold then fold="EDT" end
-        local utc, reason = self:ParseEasternDateTime(date,time,fold)
+        local utc, reason = self:ParseScheduleDateTime(date,time,fold,result)
         if not utc then return nil,name..": "..reason end
         result[name.."Date"],result[name.."Time"],result[name.."Fold"] = date,time,fold
         result[name == "start" and "startsAtUtc" or name == "end" and "endsAtUtc" or "eventAtUtc"] = utc
@@ -48,7 +48,7 @@ function SmartChatMsg:NormalizeSchedule(data)
     for _,name in ipairs({"start","event","end"}) do
         if not result[name.."Date"] then
             local value=name=="start" and result.startsAtUtc or name=="end" and result.endsAtUtc or result.eventAtUtc
-            local formatted=self:FormatEasternDateTime(value)
+            local formatted=self:FormatScheduleDateTime(value,result)
             result[name.."Date"],result[name.."Time"]=formatted:sub(1,10),formatted:sub(12,19)
         end
     end
@@ -226,6 +226,7 @@ function SmartChatMsg:ImportScheduleRecords(records,imported)
     local enabledZones=0
     for id,byGuild in pairs(candidates) do
         for guild,draft in pairs(byGuild) do
+            draft.timeZone=imported.schedulingTimeZone or "ET"
             local schedule,reason=self:NormalizeSchedule(draft)
             if not schedule then return false,"Imported schedule: "..reason end
             if schedule.enabled and schedule.delivery=="ZONE" then enabledZones=enabledZones+1 end

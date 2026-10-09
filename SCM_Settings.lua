@@ -1941,6 +1941,16 @@ function SmartChatMsg:CreateSettingsPanel()
             name = "Global Settings",
             controls = {
                 {
+                    type="dropdown",name="Scheduling timezone",choices={"Eastern (ET)","Central (CT)","Mountain (MT)","Pacific (PT)"},
+                    tooltip="US daylight-saving rules are applied automatically. Changing this moves existing schedules to the same clock time in the new zone (8 PM Eastern becomes 8 PM Pacific). Explicit timezone text in messages is unchanged.",
+                    getFunc=function() local code=SmartChatMsg:GetSchedulingTimeZone();return SmartChatMsg:GetSchedulingTimeZoneName(code).." ("..code..")" end,
+                    setFunc=function(value)
+                        local code=value:match("%((%u%u)%)")
+                        local ok,reason=SmartChatMsg:SetSchedulingTimeZone(code)
+                        if not ok then ZO_Alert(UI_ALERT_CATEGORY_ERROR,SOUNDS.NEGATIVE_CLICK,reason) end
+                    end,
+                },
+                {
                     type = "custom",
                     reference = "SCM_DefaultGuildDropdownHolder",
                     createFunc = function(control)
@@ -2099,6 +2109,7 @@ function SmartChatMsg:CreateSettingsPanel()
                     reference = "SCM_MessagesEditorHolder",
                     minHeight = 0, maxHeight = 20000,
                     createFunc = function(control)
+                        control:SetResizeToFitDescendents(false)
                         control:SetHeight(0)
                         messagesEditorHolder = BuildMessagesEditor(control)
                         messagesEditorHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 30)
@@ -2112,7 +2123,7 @@ function SmartChatMsg:CreateSettingsPanel()
 
                             -- The editor is anchored 30px below this holder.
                             -- Reserve that inset and a gap for the following submenu.
-                            control:SetHeight(shouldShow and (30 + messagesEditorHolder:GetHeight() + 12) or 0)
+                            control:SetHeight(shouldShow and (30 + messagesEditorHolder:GetHeight() + 30) or 0)
                         else
                             control:SetHeight(0)
                         end
@@ -2147,7 +2158,7 @@ function SmartChatMsg:CreateSettingsPanel()
     for _,section in ipairs(optionsTable) do
         if section.name=="Create / Edit / Delete Messages" then
             table.insert(section.controls, {
-                type="submenu", name="Scheduling (Eastern Time)",
+                type="submenu", name=function() return "Scheduling ("..SmartChatMsg:GetSchedulingTimeZoneName().." Time)" end,
                 tooltip="Select Scheduled in Run At above to configure automatic reminders.",
                 disabled=function()
                     local id=SmartChatMsg.savedVars.selectedMessagesCommand

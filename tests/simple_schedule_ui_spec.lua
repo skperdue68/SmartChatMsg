@@ -8,7 +8,7 @@ scm.GetSelectedGuildNameForMessages=function() return "Amber Traders" end
 scm.RefreshSettingsUI=function() end
 local function find(list,name)
     for _,c in ipairs(list) do
-        if c.name==name then return c end
+        if (type(c.name)=="function" and c.name() or c.name)==name then return c end
         if c.controls then local found=find(c.controls,name); if found then return found end end
     end
 end

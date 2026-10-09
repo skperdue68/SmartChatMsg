@@ -54,7 +54,7 @@ s.RefreshSettingsUI=function() end
 local controls=s:BuildScheduleOptionControls()
 local function find(list,name)
     for _,control in ipairs(list) do
-        if control.name==name then return control end
+        if (type(control.name)=="function" and control.name() or control.name)==name then return control end
         if control.controls then local match=find(control.controls,name);if match then return match end end
     end
 end
@@ -76,10 +76,10 @@ local one=assert(s:NormalizeSchedule(draft));eq(#one.rotationFactions,1)
 eq(s:GetScheduleEventVariant(one,one.eventAtUtc+100*86400),'DC')
 local checklist=s:GetScheduleMessageChecklist('DAY');eq(#checklist[1].variantChoices,2)
 checklist[1].setVariant('DC');eq(draft.messageVariants.all,'DC')
-pattern.setFunc('Last raffle of the month + 50/50')
+pattern.setFunc('Last event of month')
 checklist=s:GetScheduleMessageChecklist('DAY');eq(#checklist[1].variantChoices,2)
 checklist[1].setVariant('FINAL');assert(checklist[1].phaseText)
-assert(s:GetScheduleMessagePhaseText('all',draft):find('Month-final drawings',1,true))
+assert(s:GetScheduleMessagePhaseText('all',draft):find('Month-final events',1,true))
 local function control()
     local c={width=520,height=0,children={},handlers={}}
     function c:GetWidth() return self.width end
@@ -105,11 +105,12 @@ ZO_ComboBox_ObjectFromContainer=function(c)
     return combo
 end
 local pool=control();s:RefreshScheduleMessagePool(pool,'DAY')
-local row=pool.scheduleRows[1];eq(#row.variantCombo.items,2)
-eq(row.variantCombo.selected,'Month-final drawings')
-row.variantCombo.items[1].callback();eq(draft.messageVariants.all,'REGULAR')
-s:RefreshScheduleMessagePool(pool,'DAY');eq(row.variantCombo.selected,'Regular drawings')
-assert(row.height>=row.label.height+36,'message group dropdown must fit below the wrapped text')
+local row=pool.scheduleRows[1]
+assert(row.variantButton,'month-final group must have a visible button')
+eq(row.variantButton.text,'Group: Month-final events')
+row.variantButton.handlers.OnClicked();eq(draft.messageVariants.all,'REGULAR')
+s:RefreshScheduleMessagePool(pool,'DAY');eq(row.variantButton.text,'Group: Regular events')
+assert(row.height>=row.label.height+36,'message group button must fit below wrapped text')
 find(controls,'Schedule type').setFunc('Run during a window');eq(draft.specialPattern,'NONE')
 -- Round-trip the flexible two-faction setup, including personal groups and new IDs.
 f.reset();f.entry('shared','ad','Amber Traders','PvP for %eventfaction%','Guild')
