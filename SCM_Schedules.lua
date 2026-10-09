@@ -136,7 +136,15 @@ function SmartChatMsg:GetScheduledMessageEntries(commandId,guildName)
     local result={}
     local occurrence=self:GetScheduleOccurrence(schedule,GetTimeStamp())
     local variant=self:GetScheduleEventVariant(schedule,occurrence.eventAtUtc)
-    for _,entry in ipairs(self:GetMessageEntriesForCommandAndGuild(commandId,guildName)) do
+    local entries=self:GetMessageEntriesForCommandAndGuild(commandId,guildName)
+    if schedule.specialPattern=='MONTH_FINAL' and variant=='FINAL' then
+        local hasSpecialMessages=false
+        for _,entry in ipairs(entries) do
+            if self:GetScheduleMessageVariant(schedule,entry.id)=='FINAL' then hasSpecialMessages=true;break end
+        end
+        if not hasSpecialMessages then variant='REGULAR' end
+    end
+    for _,entry in ipairs(entries) do
         local assigned=schedule.messagePhases[entry.id]
         local group=self:GetScheduleMessageVariant(schedule,entry.id)
         if (not assigned or assigned.ANY or assigned[phase]) and (schedule.specialPattern=='NONE' or group=='ALL' or group==variant) then result[#result+1]=entry end

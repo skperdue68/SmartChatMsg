@@ -130,4 +130,19 @@ eq(s:GetScheduleEventVariant(restored,s:ParseEasternDateTime('2026-11-07','08:00
 local kept
 for _,entry in ipairs(s.savedVars.messages) do if entry.id=='personal' then kept=entry end end
 assert(kept and kept.locked and kept.commandId=='imported-id')
+-- A month-final occurrence uses regular messages if no special messages exist.
+f.reset();f.entry('regular','ad','Amber Traders','Regular raffle','Guild')
+local raffle={mode='EVENT',enabled=true,delivery='REPEAT',eventDate='2026-10-10',eventTime='08:00 PM',promotionDays=2,endDelayMinutes=20,
+    recurrence='BIWEEKLY',intervalMinutes=30,specialPattern='MONTH_FINAL',messageVariants={deleted='FINAL'}}
+assert(s:SaveGuildSchedule('ad','Amber Traders',raffle))
+now=s:ParseEasternDateTime('2026-10-22','08:00 PM')
+local eligible=s:GetScheduledMessageEntries('ad','Amber Traders');eq(#eligible,1);eq(eligible[1].id,'regular')
+f.entry('special','ad','Amber Traders','Special monthly raffle','Guild')
+local config=s:GetGuildSchedule('ad','Amber Traders')
+config.messageVariants.special='FINAL';config.messagePhases.special={DAY=true}
+eq(#s:GetScheduledMessageEntries('ad','Amber Traders'),0,'configured special pool must still respect excluded phases')
+now=s:ParseEasternDateTime('2026-10-24','12:00 PM')
+eligible=s:GetScheduledMessageEntries('ad','Amber Traders');eq(#eligible,1);eq(eligible[1].id,'special')
+assert(s:DeleteMessageEntry('special'))
+eligible=s:GetScheduledMessageEntries('ad','Amber Traders');eq(#eligible,1);eq(eligible[1].id,'regular')
 print('event rotation and month-final raffle checks passed')

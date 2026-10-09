@@ -202,7 +202,9 @@ if the next scheduled drawing falls in another month, this drawing is month-fina
 It is the last actual biweekly drawing, not the calendar's last Saturday. For an
 October 10 anchor, October 10 is regular and October 24 is month-final; January
 2, 16 and 30 likewise use regular, regular, month-final pools.
-No regular-only fallback occurs if the month-final phase has no eligible messages.
+If no messages are marked month-final for this command/guild, regular messages
+are used for every drawing. Once special messages are configured, their phase
+selections apply; an intentionally empty special phase does not use regular text.
 Mark only the special messages, once per message; the choice is shared across phases.
 
 Save and activate after reviewing the next events and their faction/group labels.

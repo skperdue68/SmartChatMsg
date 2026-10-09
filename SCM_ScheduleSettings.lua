@@ -331,7 +331,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
     controls[#controls+1]={type="description",text=function()
         local d=draft()
         if d.specialPattern=="FACTION_ROTATION" then return "In each message row, choose All selected factions or a faction. Keep using the phase checkboxes for when it runs." end
-        if d.specialPattern=="MONTH_FINAL" then return "Existing messages automatically use Regular drawings. Mark only your special announcements Month-final drawings. The final actual drawing of each Eastern calendar month uses that pool, throughout its promotion period." end
+        if d.specialPattern=="MONTH_FINAL" then return "Existing messages automatically use Regular drawings. Mark only your special announcements Month-final drawings. The final drawing uses that pool throughout promotion. If none are marked month-final, regular messages are used instead." end
         return "Special patterns are optional. Message group choices appear in each phase's message list when enabled."
     end}
     controls[#controls+1]={type="description",reference="SCM_NextScheduleOccurrence",text=function() return self:GetNextScheduleOccurrenceText(draft()) end}
