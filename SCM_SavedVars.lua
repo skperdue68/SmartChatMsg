@@ -1102,7 +1102,18 @@ function SmartChatMsg:SetGuildRunAt(commandId, guildName, runAt)
     end
 
     settings.runAt = self:NormalizeRunAt(runAt)
+    if self.RegisterDynamicCommands then self:RegisterDynamicCommands() end
     return true
+end
+
+function SmartChatMsg:ShouldRegisterCommand(commandId)
+    local found=false
+    for guild,settings in pairs((self.savedVars.commandGuildSettings or {})[commandId] or {}) do
+        found=true
+        if self:GetGuildRunAt(commandId,guild)~="SCHEDULED" then return true end
+    end
+    -- Newly created names remain callable until a guild configuration is saved.
+    return not found
 end
 
 function SmartChatMsg:SetGuildOpenStatusPanelOnRun(commandId, guildName, openStatusPanelOnRun)

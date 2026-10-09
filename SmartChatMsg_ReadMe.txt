@@ -1,4 +1,4 @@
-SmartChatMsg 1.11.2 — quick user guide
+SmartChatMsg 1.11.3 — quick user guide
 
 Store reusable recruitment, trial, auction and other announcements. SmartChatMsg
 fills your chat box; you still press Enter to send. See README.md for the full guide.
@@ -15,6 +15,13 @@ The status window distinguishes a message ready for Enter from protected player
 text, startup delay and the shared pause. Full current settings help: README.md.
 
 STATUS CONTROLS AND TESTING
+Click Auto or Repeat Commands to expand/collapse; empty sections collapse.
+Promotion start/end dates appear inside current scheduled cards. Next Send only
+appears while Active. Controls use textured ESO buttons, with space for scrollbars.
+Schedule-only names do not create slash commands; On Demand/Startup names still
+do. Ordinary repeats start by slash command and appear while running or paused.
+Scheduled %eventtime% countdowns use the saved occurrence timestamp directly,
+fixing an extra day caused by UTC midnight during the previous Eastern evening.
 Cards show scheduled commands only within their current window. Buttons cycle
 Off -> Paused -> On -> Paused -> Off and show the next action. Paused/Off stops
 delivery without losing templates or dates, and protects edited chat. All four

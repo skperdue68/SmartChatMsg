@@ -63,6 +63,7 @@ local function reset()
     scm.scheduledSendPause = nil
     scm.scheduleNoticeStates = {}
     scm.repeatPanelPaused = {}
+    scm.statusSectionStates = {}
     scm.scheduleRuntime, scm.chatPopulationQueue = {}, {}
     scm.statusPanelVisible = false
     scm.startupQueueCurrent = nil

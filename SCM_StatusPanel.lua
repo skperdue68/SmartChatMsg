@@ -136,12 +136,34 @@ end
 
 
 function SmartChatMsg:GetStatusPanelRepeatSectionMaxHeight()
-    return 344
+    return 400
 end
 
 
 function SmartChatMsg:GetStatusPanelRepeatCardHeight()
-    return 104
+    return 124
+end
+
+function SmartChatMsg:GetStatusSectionExpanded(section,hasContent)
+    self.statusSectionStates=self.statusSectionStates or {}
+    local state=self.statusSectionStates[section]
+    if not state or state.hasContent~=hasContent then
+        state={hasContent=hasContent,expanded=hasContent};self.statusSectionStates[section]=state
+    end
+    return state.expanded
+end
+
+function SmartChatMsg:ToggleStatusSection(section)
+    local state=self.statusSectionStates and self.statusSectionStates[section]
+    if not state then return end
+    state.expanded=not state.expanded
+    if self.statusPanelVisible then self:RefreshStatusPanel() end
+end
+
+function SmartChatMsg:GetRepeatCardTimingText(row)
+    local text="Last Sent: "..tostring(row.lastSentText)
+    if row.isActive then text=text.." | Next Send: "..tostring(row.nextSendText) end
+    return text
 end
 
 function SmartChatMsg:GetReminderPanelControlState(commandId,guildName)
@@ -154,7 +176,10 @@ function SmartChatMsg:GetReminderPanelControlState(commandId,guildName)
     local key=self:GetReminderStateKey(commandId,guildName)
     local paused=self.repeatPanelPaused and self.repeatPanelPaused[key]
     if paused then return "PAUSED",paused.fromOn and "OFF" or "ON" end
-    return self:IsReminderAutomationActive(commandId,guildName) and "ON" or "OFF","PAUSED"
+    local pending=self.pendingRestoreState and self.pendingRestoreState.metadata
+    local queued=self.chatPopulationQueue and self.chatPopulationQueue[key]
+    local preparing=(pending and pending.commandId==commandId and self:StringsEqualIgnoreCase(pending.guildName or "",guildName)) or queued
+    return (self:IsReminderAutomationActive(commandId,guildName) or preparing) and "ON" or "OFF","PAUSED"
 end
 
 function SmartChatMsg:IsScheduledOccurrenceCurrent(commandId,guildName)
@@ -221,8 +246,9 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                     guildName = guildName or tostring(guildKey)
                     local reminderMinutes = self:GetGuildReminderMinutes(command.id, guildName)
                     local scheduled=self:GetGuildRunAt(command.id,guildName)=="SCHEDULED"
+                    local controlState,nextState=self:GetReminderPanelControlState(command.id,guildName)
                     if (scheduled and self:IsScheduledOccurrenceCurrent(command.id,guildName))
-                        or (not scheduled and reminderMinutes and reminderMinutes>0) then
+                        or (not scheduled and reminderMinutes and reminderMinutes>0 and controlState~="OFF") then
                         local isActive = self:IsReminderAutomationActive(command.id, guildName)
                         local nextTriggerAt = self:GetReminderNextTriggerAt(command.id, guildName)
                         local lastUsedAt = self:GetGuildLastUsedAt(command.id, guildName)
@@ -238,16 +264,19 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                             end
                         end
 
-                        local controlState,nextState=self:GetReminderPanelControlState(command.id,guildName)
                         local statusText=controlState=="PAUSED" and "Paused" or controlState=="ON" and "Active" or "Inactive"
                         if scheduled then statusText,nextSendText=self:GetScheduledCardDetails(command.id,guildName,controlState)
                         elseif controlState=="PAUSED" then nextSendText="Paused" end
                         isActive=controlState=="ON"
+                        local schedule=scheduled and self:GetGuildSchedule(command.id,guildName)
+                        local occurrence=schedule and self:GetScheduleOccurrence(schedule,now)
 
                         table.insert(rows, {
                             commandId = command.id,
                             commandName = command.name or "command",
                             slashCommand = self:BuildSlashCommandName(command.name or "command") or "/command",
+                            displayName = scheduled and (command.name or "Scheduled message") or (self:BuildSlashCommandName(command.name or "command") or "/command"),
+                            promotionText = occurrence and (self:FormatEasternDateTime(occurrence.startsAtUtc).." → "..self:FormatEasternDateTime(occurrence.endsAtUtc)) or nil,
                             guildName = guildName,
                             channelText = self:GetAutoPopulateChannelStatusText(command.id, guildName),
                             reminderMinutes = reminderMinutes,
@@ -648,7 +677,7 @@ function SmartChatMsg:GetStatusPanelTargetSize(active, rows)
     if hasRepeatRows then
         for _, rowData in ipairs(repeatRows) do
             local detailText = string.format("%s | %s", tostring(rowData.guildName), tostring(rowData.channelText))
-            local timingText = string.format("Last Sent: %s | Next: %s", tostring(rowData.lastSentText), tostring(rowData.nextSendText))
+            local timingText = self:GetRepeatCardTimingText(rowData)
             contentWidth = math.max(contentWidth, self:EstimateStatusPanelTextWidth(tostring(rowData.slashCommand or rowData.commandName or "/command")) + 180)
             contentWidth = math.max(contentWidth, self:EstimateStatusPanelTextWidth(detailText) + 160)
             contentWidth = math.max(contentWidth, self:EstimateStatusPanelTextWidth(timingText) + 160)
@@ -710,7 +739,21 @@ function SmartChatMsg:GetStatusPanelTargetSize(active, rows)
         height = height + (hasRepeatRows and self:GetStatusPanelRepeatSectionMaxHeight() or 72)
     end
 
-    height = math.max(160, math.min(760, height))
+    -- Account for the final anchored viewport, including its bottom padding.
+    if panel and panel.GetTop then
+        local top=panel:GetTop()
+        local bottom=top
+        if type(top)=="number" then
+            for _,control in ipairs({panel.statusLabel,panel.footerLabel,panel.repeatHeader,panel.repeatEmptyLabel,panel.repeatScroll}) do
+                if control and not control:IsHidden() and control.GetBottom then
+                    local edge=control:GetBottom()
+                    if type(edge)=="number" then bottom=math.max(bottom,edge) end
+                end
+            end
+            height=bottom-top+20
+        end
+    end
+    height = math.max(110, math.min(760, height))
     return width, height
 end
 
@@ -873,7 +916,8 @@ function SmartChatMsg:ApplyStatusPanelLayout(panel, width)
     end
 
     panel.footerLabel:SetAnchor(TOPLEFT, lastControl, BOTTOMLEFT, 0, 8)
-    panel.repeatDivider:SetAnchor(TOPLEFT, panel.footerLabel, BOTTOMLEFT, 0, 10)
+    local autoExpanded=self:GetStatusSectionExpanded("auto",self:GetActiveAutoPopulate()~=nil)
+    panel.repeatDivider:SetAnchor(TOPLEFT, autoExpanded and panel.footerLabel or panel.statusLabel, BOTTOMLEFT, 0, 10)
     panel.repeatHeader:SetAnchor(TOPLEFT, panel.repeatDivider, BOTTOMLEFT, 0, 8)
 
     if panel.repeatEmptyLabel and not panel.repeatEmptyLabel:IsHidden() then
@@ -882,7 +926,7 @@ function SmartChatMsg:ApplyStatusPanelLayout(panel, width)
 
     panel.repeatScroll:SetAnchor(TOPLEFT, panel.repeatHeader, BOTTOMLEFT, 0, 6)
 
-    local childWidth = math.max(300, contentWidth - 18)
+    local childWidth = math.max(300, contentWidth - 32)
     if panel.repeatScrollChild then
         panel.repeatScrollChild:SetWidth(childWidth)
     end
@@ -910,15 +954,15 @@ function SmartChatMsg:ApplyStatusPanelLayout(panel, width)
         row.commandLabel:ClearAnchors()
         row.commandLabel:SetAnchor(TOPLEFT, row, TOPLEFT, 8, 8)
 
-        row.statusLabel:SetDimensions(textWidth, 20)
+        row.statusLabel:SetDimensions(childWidth-16, 40)
         row.statusLabel:ClearAnchors()
         row.statusLabel:SetAnchor(TOPLEFT, row.commandLabel, BOTTOMLEFT, 0, 2)
 
-        row.detailsLabel:SetDimensions(textWidth, 20)
+        row.detailsLabel:SetDimensions(childWidth-16, 20)
         row.detailsLabel:ClearAnchors()
         row.detailsLabel:SetAnchor(TOPLEFT, row.statusLabel, BOTTOMLEFT, 0, 2)
 
-        row.timingLabel:SetDimensions(textWidth, 20)
+        row.timingLabel:SetDimensions(childWidth-16, 20)
         row.timingLabel:ClearAnchors()
         row.timingLabel:SetAnchor(TOPLEFT, row.detailsLabel, BOTTOMLEFT, 0, 2)
 
@@ -928,7 +972,7 @@ function SmartChatMsg:ApplyStatusPanelLayout(panel, width)
         row.timingLabel:SetWrapMode(TEXT_WRAP_MODE_ELLIPSIS)
 
         if row.commandLabel.SetMaxLineCount then row.commandLabel:SetMaxLineCount(1) end
-        if row.statusLabel.SetMaxLineCount then row.statusLabel:SetMaxLineCount(1) end
+        if row.statusLabel.SetMaxLineCount then row.statusLabel:SetMaxLineCount(2) end
         if row.detailsLabel.SetMaxLineCount then row.detailsLabel:SetMaxLineCount(1) end
         if row.timingLabel.SetMaxLineCount then row.timingLabel:SetMaxLineCount(1) end
     end
@@ -1033,7 +1077,7 @@ function SmartChatMsg:CreateStatusPanelRepeatCard(panel, index)
     timingLabel:SetFont("ZoFontGameSmall")
     timingLabel:SetColor(0.82, 0.82, 0.82, 1)
 
-    local toggleButton = WINDOW_MANAGER:CreateControl("SCM_StatusPanelRepeatRowButton" .. tostring(index), row, CT_BUTTON)
+    local toggleButton = WINDOW_MANAGER:CreateControlFromVirtual("SCM_StatusPanelRepeatRowButton" .. tostring(index), row, "ZO_DefaultButton")
     toggleButton:SetFont("ZoFontGameSmall")
     toggleButton:SetNormalFontColor(0.92, 0.92, 0.92, 1)
     toggleButton:SetMouseOverFontColor(0.95, 0.83, 0.46, 1)
@@ -1117,6 +1161,10 @@ function SmartChatMsg:CreateStatusPanel()
     local statusLabel = WINDOW_MANAGER:CreateControl("SCM_StatusPanelState", panel, CT_LABEL)
     statusLabel:SetFont("ZoFontGameSmall")
     statusLabel:SetAnchor(TOPLEFT, title, BOTTOMLEFT, 0, 8)
+    statusLabel:SetMouseEnabled(true)
+    statusLabel:SetHandler("OnMouseUp",function(_,button,upInside)
+        if button==MOUSE_BUTTON_INDEX_LEFT and upInside then SmartChatMsg:ToggleStatusSection("auto") end
+    end)
 
     local commandLabel = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCommand", panel, CT_LABEL)
     commandLabel:SetFont("ZoFontGameSmall")
@@ -1207,6 +1255,10 @@ function SmartChatMsg:CreateStatusPanel()
     repeatHeader:SetFont("ZoFontGameSmall")
     repeatHeader:SetColor(0.95, 0.83, 0.46, 1)
     repeatHeader:SetText("Repeat Commands")
+    repeatHeader:SetMouseEnabled(true)
+    repeatHeader:SetHandler("OnMouseUp",function(_,button,upInside)
+        if button==MOUSE_BUTTON_INDEX_LEFT and upInside then SmartChatMsg:ToggleStatusSection("repeat") end
+    end)
 
     local repeatScroll = WINDOW_MANAGER:CreateControlFromVirtual("SCM_StatusPanelRepeatScroll", panel, "ZO_ScrollContainer")
     repeatScroll:SetMouseEnabled(true)
@@ -1215,7 +1267,7 @@ function SmartChatMsg:CreateStatusPanel()
     local repeatEmptyLabel = WINDOW_MANAGER:CreateControl("SCM_StatusPanelRepeatEmpty", panel, CT_LABEL)
     repeatEmptyLabel:SetFont("ZoFontGameSmall")
     repeatEmptyLabel:SetColor(0.82, 0.82, 0.82, 1)
-    repeatEmptyLabel:SetText("No repeat commands configured.")
+    repeatEmptyLabel:SetText("No current schedules or running repeats.")
 
     local function beginMove(control)
         if not panel.isMoving and control == panel.dragBar then
@@ -1417,17 +1469,23 @@ function SmartChatMsg:RefreshStatusPanel()
         panel.footerLabel:SetText(string.format("Tracked Zones: %d | Other Zones %d-%d%s", totalTracked, showingFrom, showingTo, moreText))
     end
 
-    local schedules=self:GetScheduleSummaryText()
-    if schedules~="" then panel.footerLabel:SetText(panel.footerLabel:GetText().."\n"..schedules) end
+    local autoExpanded=self:GetStatusSectionExpanded("auto",active~=nil)
+    panel.statusLabel:SetText((autoExpanded and "[-] " or "[+] ")..(active and "Auto: Active" or "Auto: Inactive"))
+    if not autoExpanded then
+        for _,control in ipairs({panel.commandLabel,panel.guildLabel,panel.channelLabel,panel.divider,panel.listHeader,panel.currentLabel,panel.currentRow,panel.footerLabel}) do control:SetHidden(true) end
+        for _,row in ipairs(panel.rows) do row:SetHidden(true) end
+    end
     local repeatRows = self:GetRepeatStatusPanelRows()
+    local repeatExpanded=self:GetStatusSectionExpanded("repeat",#repeatRows>0)
+    panel.repeatHeader:SetText((repeatExpanded and "[-] " or "[+] ").."Repeat Commands ("..tostring(#repeatRows)..")")
     panel.repeatDataRows = repeatRows
     panel.repeatDivider:SetHidden(false)
     panel.repeatHeader:SetHidden(false)
 
-    if #repeatRows == 0 then
+    if #repeatRows == 0 or not repeatExpanded then
         panel.repeatSectionHeight = 0
         panel.repeatScroll:SetHidden(true)
-        panel.repeatEmptyLabel:SetHidden(false)
+        panel.repeatEmptyLabel:SetHidden(not repeatExpanded)
         for _, row in ipairs(panel.repeatRows or {}) do
             row:SetHidden(true)
         end
@@ -1444,15 +1502,15 @@ function SmartChatMsg:RefreshStatusPanel()
         for index, rowData in ipairs(repeatRows) do
             local row = self:CreateStatusPanelRepeatCard(panel, index)
             row:SetHidden(false)
-            row.commandLabel:SetText(tostring(rowData.slashCommand))
+            row.commandLabel:SetText(tostring(rowData.displayName))
             if rowData.isActive then
                 row.statusLabel:SetColor(0.32, 0.86, 0.45, 1)
             else
                 row.statusLabel:SetColor(0.82, 0.82, 0.82, 1)
             end
-            row.statusLabel:SetText(string.format("Status: %s", tostring(rowData.statusText)))
+            row.statusLabel:SetText(string.format("Status: %s", tostring(rowData.statusText))..(rowData.promotionText and "\nPromotion: "..rowData.promotionText or ""))
             row.detailsLabel:SetText(string.format("%s | %s", tostring(rowData.guildName), tostring(rowData.channelText)))
-            row.timingLabel:SetText(string.format("Last Sent: %s | Next: %s", tostring(rowData.lastSentText), tostring(rowData.nextSendText)))
+            row.timingLabel:SetText(self:GetRepeatCardTimingText(rowData))
             row.toggleButton:SetText(tostring(rowData.toggleText))
             row.toggleButton.data = {
                 commandId = rowData.commandId,
