@@ -1,6 +1,6 @@
 # Try simple scheduling in ESO
 
-Version 1.11.5: confirm Auto and Repeat Commands collapse when empty and can be
+Version 1.11.6: confirm Auto and Repeat Commands collapse when empty and can be
 toggled by their headers. Promotion start/end should appear in current cards,
 without the duplicate summary above. Next Send must be absent while Paused/Off.
 Check native button styling, scrollbar clearance, and the section's bottom fit.
@@ -14,7 +14,7 @@ and both EST/EDT. Incoming copies with that countdown must still reset cooldowns
 Version 1.11.2 status checks: after the startup wait, run `/scm resetcooldowns`.
 An enabled current schedule should prepare chat and announce Press Enter locally.
 Leave one unsent and confirm the timeout notice explains the next attempt time.
-Cycle a current card Off -> Paused -> On -> Paused -> Off, checking both button
+Cycle a current card Disabled -> Enabled -> Paused -> Disabled, checking both button
 text and actual delivery. Pausing must retain player edits and stop delivery.
 Confirm future/expired schedules are absent from the actionable cards, and all
 four text lines stay inside each enlarged box. Reset cooldowns while a schedule
@@ -110,7 +110,7 @@ over text or a checkbox, or drag the scrollbar, to reach and select the last row
 Changing a selection must preserve the scroll position. Check that the interval
 and once-only controls below the list remain visible and do not overlap it.
 
-## Message visibility and identity (1.11.5)
+## Message visibility and identity (1.11.6)
 
 - Confirm a scheduled card shows (Scheduled) and Starts in until the event time,
   then Started. On Demand repeats should display (On Demand).
@@ -120,7 +120,7 @@ and once-only controls below the list remain visible and do not overlap it.
   message editor. Starting soon should appear only when enabled.
 - Confirm Share Messages is absent and Import / Export Settings remains.
 
-## Personal lock and transfer checks (1.11.5)
+## Personal lock and transfer checks (1.11.6)
 
 1. Add a personal message, assign its event phases, and click Lock. Confirm the
    Locked caption and Unlock button. Check the schedule pool caption too.
@@ -136,3 +136,14 @@ and once-only controls below the list remain visible and do not overlap it.
 8. Switch Run At between Scheduled, On Demand, and Startup. Ordinary modes must
    restore the slash handler; Scheduled removes it unless another guild needs it.
 9. Confirm the space below Notify Sound is smaller and rows remain separated.
+
+## Three-state cycle and new IDs (1.11.6)
+
+- A disabled current schedule shows Enable. Click it: Active, button Pause.
+  Click Pause: Paused, button Disable. Click Disable: Inactive, button Enable.
+- Pausing/disabling must withdraw unchanged prepared text, cancel queued work,
+  and preserve player edits. Enabling still respects all delivery gates.
+- Repeat these checks with an ordinary command started through its slash handler.
+  After Disable it leaves the running list; restart using the slash handler.
+- Import a same-name command under a new ID. Verify its imported channel/event
+  time and local locked message/phase choices remain consistent.
