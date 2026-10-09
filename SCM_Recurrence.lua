@@ -35,20 +35,21 @@ function SmartChatMsg:BuildScheduleOccurrence(s,event)
     if not starts or not ends then return nil end
     return {startsAtUtc=starts,eventAtUtc=event,endsAtUtc=ends,occurrenceKey=tostring(event),mode=mode}
 end
-function SmartChatMsg:GetUpcomingScheduleOccurrences(s,utc,count)
+function SmartChatMsg:GetUpcomingScheduleOccurrences(s,utc,count,futureEventsOnly)
     if not s or not s.startsAtUtc then return {} end
     utc=utc or GetTimeStamp();count=count or 3
     local anchor=(s.mode or 'EVENT')=='EVENT' and s.eventAtUtc or s.startsAtUtc
     local ap=self:GetEasternParts(anchor);local ad=dayNumber(ap)
     local recurrence=s.recurrence or 'NONE';local interval=s.recurrenceInterval or 1
-    if recurrence=='NONE' then local o=self:BuildScheduleOccurrence(s,anchor);return o and o.endsAtUtc>utc and {o} or {} end
+    if recurrence=='NONE' then local o=self:BuildScheduleOccurrence(s,anchor);return o and (futureEventsOnly and o.eventAtUtc>=utc or not futureEventsOnly and o.endsAtUtc>utc) and {o} or {} end
     local cp=self:GetEasternParts(utc);local cd=dayNumber(cp)
     local lead=math.ceil(math.max(s.eventAtUtc-s.startsAtUtc,s.endsAtUtc-s.eventAtUtc)/86400)+2
     local cache=occurrenceCache[s] or {}
     occurrenceCache[s]=cache
-    local cached=cache[count]
+    local cacheKey=futureEventsOnly and (tostring(count)..':future') or count
+    local cached=cache[cacheKey]
     if cached and cached.count==count and utc>=cached.at
-        and (#cached.value==0 or utc<cached.value[1].endsAtUtc) then return cached.value end
+        and (#cached.value==0 or (futureEventsOnly and utc<=cached.value[1].eventAtUtc or not futureEventsOnly and utc<cached.value[1].endsAtUtc)) then return cached.value end
     local first=math.max(ad,cd-lead)
     local out={}
     for day=first,dayNumber({year=2099,month=12,day=31}) do
@@ -67,10 +68,10 @@ function SmartChatMsg:GetUpcomingScheduleOccurrences(s,utc,count)
             p.hour,p.min=ap.hour,ap.min
             local event=civilUtc(self,p,(s.mode or 'EVENT')=='EVENT' and s.eventFold or s.startFold)
             local o=event and self:BuildScheduleOccurrence(s,event)
-            if o and o.endsAtUtc>utc then out[#out+1]=o;if #out>=count then break end end
+            if o and (futureEventsOnly and o.eventAtUtc>=utc or not futureEventsOnly and o.endsAtUtc>utc) then out[#out+1]=o;if #out>=count then break end end
         end
     end
-    cache[count]={count=count,at=utc,value=out}
+    cache[cacheKey]={count=count,at=utc,value=out}
     return out
 end
 function SmartChatMsg:GetScheduleOccurrence(s,utc)

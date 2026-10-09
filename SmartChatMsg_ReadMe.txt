@@ -1,4 +1,4 @@
-SmartChatMsg 1.11.6 — quick user guide
+SmartChatMsg 1.11.7 — quick user guide
 
 Store reusable recruitment, trial, auction and other announcements. SmartChatMsg
 fills your chat box; you still press Enter to send. See README.md for the full guide.
@@ -140,7 +140,7 @@ Used identifies the selected phases; Before event day can cover multiple days.
 On Demand supports literal date/time countdowns. Event substitutions need a
 saved event configuration; repeat intervals alone do not define event times.
 
-PERSONAL MESSAGE LOCKS (1.11.6)
+PERSONAL MESSAGE LOCKS (1.11.7)
 Click Lock beside a message to exclude it from export and protect it on import.
 Unlock reverses this. Locked appears below the message and in schedule pools.
 The message still sends and matches normally. Its phase choices are preserved.
@@ -150,9 +150,21 @@ Exports also capture status window saved visibility and position, in addition to
 Open Status Panel on Run, Notify Sound, Run At and other behavior/schedule settings.
 On Demand and Startup restore slash commands; scheduled-only names remove them.
 
-SIMPLE STATUS CYCLE (1.11.6)
+SIMPLE STATUS CYCLE (1.11.7)
 Disabled -> Enabled -> Paused -> Disabled; buttons show Enable, Pause, Disable.
 Disabled ordinary repeats leave the list; restart them through their command.
 Matching tolerates case, spacing, formatting, substitutions and countdown changes,
 but not arbitrary typos or different fixed wording/punctuation.
 Same-name command imports with new IDs preserve and remap local locked messages.
+
+NEXT OCCURRENCE DISPLAY (1.11.7)
+Below Repeat schedule, Next event shows the calculated Eastern date/time without
+changing the original recurrence anchor. Windows/reminders use Next window or
+Next reminder. After an event starts, Next event shows the following occurrence,
+even while the current promotion remains active. One-time events show None
+scheduled when no future start remains. This preview reflects unsaved edits.
+
+Promotion days: 0 starts at the event clock time, not midnight. To promote only
+from midnight on event day, use 1 day of lead, deselect every Before event day
+message and select On event day messages. Delivery still honors startup delay,
+cooldowns, shared spacing and chat availability.
