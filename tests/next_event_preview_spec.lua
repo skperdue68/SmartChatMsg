@@ -20,9 +20,9 @@ end
 assert(found,'next occurrence must be visible outside collapsed timing sections')
 eq(found.text(),'Next event: 2026-11-03 08:00 PM EST')
 draft.eventTime='09:00 PM';eq(found.text(),'Next event: 2026-11-03 09:00 PM EST')
--- Zero promotion days starts at the event clock time, not calendar midnight.
+-- Zero promotion days starts at Eastern calendar midnight.
 d.recurrence='NONE';d.eventDate='2026-10-13';d.promotionDays=0
-local zero=assert(s:NormalizeSchedule(d));eq(zero.startsAtUtc,zero.eventAtUtc)
-now=s:ParseEasternDateTime('2026-10-13','12:00 AM');assert(now<zero.startsAtUtc)
+local zero=assert(s:NormalizeSchedule(d))
+now=s:ParseEasternDateTime('2026-10-13','12:00 AM');eq(zero.startsAtUtc,now);eq(s:GetSchedulePhase(zero,now),'DAY')
 d.promotionDays=1;local day=assert(s:NormalizeSchedule(d));eq(s:GetSchedulePhase(day,now),'DAY')
 print('next event preview checks passed')

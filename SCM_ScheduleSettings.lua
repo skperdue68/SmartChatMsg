@@ -232,7 +232,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
     local reminder=dateTime("start","Reminder")
     reminder[#reminder+1]={type="description",text="Prepares one message per occurrence while online. Missed reminders are skipped; there is a two-minute grace period."}
     local event=dateTime("event","Event")
-    event[#event+1]=number("Start promoting (days before event)","promotionDays")
+    event[#event+1]=number("Start promoting (days before event)","promotionDays","0 starts at midnight Eastern on event day. Positive values start that many days before the event at its clock time.")
     event[#event+1]=number("Stop promoting (minutes after event)","endDelayMinutes")
     event[#event+1]={type="checkbox",name="Enable Starting soon phase",tooltip="Use a separate message pool and interval during the final minutes before the event.",getFunc=function() return draft().startingSoonEnabled==true end,setFunc=function(v) draft().startingSoonEnabled=v;refresh() end}
     local soonLead=number("Starting soon begins (minutes before event)","startingSoonMinutes","120 means two hours before the event. This phase ends at the event start and stays within the promotion window.")

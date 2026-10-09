@@ -1,4 +1,4 @@
-# SmartChatMsg (v1.11.7)
+# SmartChatMsg (v1.11.8)
 
 SmartChatMsg is an Elder Scrolls Online addon for reusable chat messages: guild
 recruitment, trial reminders, auctions, officer notices, and other announcements.
@@ -302,7 +302,7 @@ coordination, persistence, sharing, and settings callbacks. Actual ESO UI layout
 loading screens, channel restoration, and two-player operation still need in-game
 verification. There is no recurring event scheduler or offline posting.
 
-### Message list and command identity (1.11.7)
+### Message list and command identity (1.11.8)
 
 Repeat cards show (Scheduled), (On Demand), or (Startup). Scheduled cards show
 the countdown to the current occurrence's event time, changing to Started at
@@ -318,7 +318,7 @@ On Demand messages can use countdowns from supported literal dates/times.
 the command/guild; without one the tokens remain unchanged. An On Demand repeat
 interval does not itself supply an event date/time.
 
-### Personal messages and complete settings exports (1.11.7)
+### Personal messages and complete settings exports (1.11.8)
 
 Use **Lock** beside a saved message to keep it personal. **Unlock** includes it
 in the next export. A Locked caption also appears in schedule message pools.
@@ -342,7 +342,7 @@ Changing Run At updates slash registration immediately. A scheduled-only name
 has no slash command; an On Demand or Startup combination restores it. Names
 shared with another ordinary guild configuration remain registered.
 
-### Status controls and matching (1.11.7)
+### Status controls and matching (1.11.8)
 
 The button always shows the next action: Enable makes the command active; Pause
 stops delivery while keeping it paused; Disable switches it off. The next click
@@ -359,14 +359,14 @@ Import tests verify that a same-name command with a different imported ID maps
 locked messages to the new command while preserving local phase assignments and
 the imported channel and schedule. Old command/guild keys do not remain.
 
-NEXT OCCURRENCE DISPLAY (1.11.7)
+NEXT OCCURRENCE DISPLAY (1.11.8)
 Below Repeat schedule, Next event shows the calculated Eastern date/time without
 changing the original recurrence anchor. Windows/reminders use Next window or
 Next reminder. After an event starts, Next event shows the following occurrence,
 even while the current promotion remains active. One-time events show None
 scheduled when no future start remains. This preview reflects unsaved edits.
 
-Promotion days: 0 starts at the event clock time, not midnight. To promote only
-from midnight on event day, use 1 day of lead, deselect every Before event day
-message and select On event day messages. Delivery still honors startup delay,
-cooldowns, shared spacing and chat availability.
+Promotion days: 0 starts at midnight Eastern on event day. Select On event day
+messages; Starting soon and live messages still follow their configured phases.
+Positive lead values start that many days before the event at its clock time.
+Delivery still honors startup delay, cooldowns, shared spacing and chat availability.
