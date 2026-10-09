@@ -1,6 +1,6 @@
 ## Title: SmartChatMsg
 ## Author: evainefaye
-## Version: 2.0.1
+## Version: 2.0.2
 ## APIVersion: 101049
 ## SavedVariables: SmartChatMsgSavedVars
 ## DependsOn: LibAddonMenu-2.0>=34 LibAddonMenuDatePicker

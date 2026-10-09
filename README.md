@@ -1,6 +1,8 @@
-# SmartChatMsg (v2.0.1)
+# SmartChatMsg (v2.0.2)
 
 **[Read the complete SmartChatMsg 2.0 user guide](docs/SmartChatMsg-2.0.md)** for all configuration options, examples, timezone changes, recurrence, message groups, and phase behavior.
+
+**2.0.2:** Scheduled message views sort by earliest selected phase, ending with unused messages. Live checkbox edits update the order while preserving scroll position and existing sections.
 
 **2.0.1:** Scheduling now includes a **Guild timezone** default shared by all
 commands for that guild. Choose ET/CT/MT/PT or **Use global default**. Guild changes

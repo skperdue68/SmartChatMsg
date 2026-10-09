@@ -87,10 +87,50 @@ function SmartChatMsg:GetScheduleMessagePhaseText(messageId,schedule)
     return text
 end
 
+-- View-only stable sorting: a message belongs to its earliest enabled phase.
+function SmartChatMsg:SortScheduledMessageEntries(entries,schedule)
+    local decorated={}
+    local function rank(entry)
+        if not schedule then return 1 end
+        local a=(schedule.messagePhases or {})[entry.id]
+        if not a or a.ANY then return 1 end
+        if schedule.mode~="EVENT" then return 5 end
+        for i,phase in ipairs({"BEFORE","DAY","SOON","LIVE"}) do
+            if a[phase] and (phase~="SOON" or schedule.startingSoonEnabled) then return i end
+        end
+        return 5
+    end
+    for i,entry in ipairs(entries) do decorated[i]={entry=entry,rank=rank(entry),index=i} end
+    table.sort(decorated,function(a,b) return a.rank==b.rank and a.index<b.index or a.rank<b.rank end)
+    local result={};for i,item in ipairs(decorated) do result[i]=item.entry end
+    return result
+end
+function SmartChatMsg:CaptureMessageListScroll(container,positions)
+    local viewport=container and container.scroll
+    if not viewport or not viewport.GetScrollOffsets then return nil end
+    local _,offset=viewport:GetScrollOffsets();if type(offset)~="number" then return nil end
+    local snapshot={offset=offset}
+    for _,row in ipairs(positions or {}) do
+        if row.y+row.height>offset then snapshot.id=row.id;snapshot.delta=offset-row.y;break end
+    end
+    return snapshot
+end
+function SmartChatMsg:RestoreMessageListScroll(container,snapshot,positions)
+    local viewport=container and container.scroll
+    if not snapshot or not viewport or not viewport.GetScrollExtents or not viewport.SetVerticalScroll then return end
+    local offset=snapshot.offset
+    for _,row in ipairs(positions or {}) do if row.id==snapshot.id then offset=row.y+snapshot.delta;break end end
+    local _,extent=viewport:GetScrollExtents()
+    if type(extent)~="number" then return end
+    viewport:SetVerticalScroll(math.max(0,math.min(offset,extent)))
+    ZO_Scroll_UpdateScrollBar(container,true)
+end
+
 function SmartChatMsg:GetScheduleMessageChecklist(phase)
     local _,id,guild=self:GetScheduleEditorDraft()
     local result={}
-    for _,entry in ipairs(self:GetMessageEntriesForCommandAndGuild(id,guild)) do
+    local schedule=self:GetScheduleEditorDraft()
+    for _,entry in ipairs(self:SortScheduledMessageEntries(self:GetMessageEntriesForCommandAndGuild(id,guild),schedule)) do
         local messageId=entry.id
         local d=self:GetScheduleEditorDraft()
         local variantChoices=d.specialPattern=="MONTH_FINAL" and {"REGULAR","FINAL"} or nil
@@ -101,7 +141,7 @@ function SmartChatMsg:GetScheduleMessageChecklist(phase)
                 if code and code~="NONE" and not seen[code] then variantChoices[#variantChoices+1]=code;seen[code]=true end
             end
         end
-        result[#result+1]={type="checkbox",name=entry.text,
+        result[#result+1]={type="checkbox",name=entry.text,messageId=messageId,
             variantChoices=variantChoices,variant=self:GetScheduleMessageVariant(d,messageId),
             setVariant=function(value)
                 local current=self:GetScheduleEditorDraft();current.messageVariants[messageId]=value
@@ -150,6 +190,8 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
         control:SetHandler("OnRectWidthChanged",function() self:RefreshScheduleMessagePool(control,phase) end)
     end
     local scroll,content=control.scheduleScroll,control.scheduleContent
+    local scrollSnapshot=self:CaptureMessageListScroll(scroll,control.scheduleRowPositions)
+    local positions={}
     scroll:SetWidth(width)
     local contentWidth=math.max(80,width-(ZO_SCROLL_BAR_WIDTH or 16)-8)
     local viewportWidth=scroll:GetNamedChild("Scroll"):GetWidth()
@@ -179,6 +221,7 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
             row.label:SetHandler("OnMouseWheel",wheel)
             control.scheduleRows[i]=row
         end
+        row.messageId=choice.messageId
         row:SetWidth(contentWidth)
         row.label:SetWidth(math.max(40,contentWidth-50))
         row:SetHidden(false); row:ClearAnchors(); row:SetAnchor(TOPLEFT,content,TOPLEFT,0,y)
@@ -224,11 +267,11 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
             if row.variantControl then row.variantControl:SetHidden(true) end
             if row.variantButton then row.variantButton:SetHidden(true) end
         end
-        row:SetHeight(height); y=y+height+6
+        row:SetHeight(height);positions[#positions+1]={id=choice.messageId,y=y,height=height}; y=y+height+6
         ZO_CheckButton_SetCheckState(row.check,choice.getFunc())
         ZO_CheckButton_SetToggleFunction(row.check,function(button) choice.setFunc(ZO_CheckButton_IsChecked(button)) end)
         row.label:SetHandler("OnMouseUp",function()
-            local value=not choice.getFunc(); choice.setFunc(value); ZO_CheckButton_SetCheckState(row.check,value)
+            local value=not choice.getFunc(); choice.setFunc(value)
         end)
     end
     content:SetHeight(math.max(1,y))
@@ -238,7 +281,10 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
     if control.scheduleSelectionKey~=key then
         ZO_Scroll_ResetToTop(scroll)
         control.scheduleSelectionKey=key
+    else
+        self:RestoreMessageListScroll(scroll,scrollSnapshot,positions)
     end
+    control.scheduleRowPositions=positions
     ZO_Scroll_UpdateScrollBar(scroll)
     control.scheduleRefreshing=false
 end

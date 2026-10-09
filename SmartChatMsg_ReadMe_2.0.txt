@@ -84,6 +84,10 @@ The phases use these same names in settings and status:
 | **Starting soon** | The configured final minutes before the event, within the promotion window. |
 | **From event start until promotion ends** | Event start until the configured promotion stop. |
 
+Scheduled message views are sorted by their earliest selected phase: Before event day, On event day, Starting soon, From event start until promotion ends, then messages not selected for any enabled phase. A message in several phases appears in its earliest group; a default message enabled for all phases appears in the first group. Within a group, the existing order stays stable. Sorting changes only the view, not the saved message list or random message selection.
+
+The order updates as you check or uncheck messages, including unsaved changes. Phase lists keep the top visible message and your offset within it; the main settings page keeps its scroll offset. The existing sections and message controls are reused. Near the end of a shortened list, scrolling is limited to the remaining content.
+
 Each phase can have several checked messages; one eligible message is chosen randomly each time. A message can be included in several phases. **Message interval override (optional)** overrides the default interval for that phase; leave it blank to inherit the default. For example: every 180 minutes before event day, every 60 minutes on event day, and every 15 minutes starting soon.
 
 ### Prepare only once
