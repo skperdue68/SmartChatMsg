@@ -1,6 +1,6 @@
 ## Title: SmartChatMsg
 ## Author: evainefaye
-## Version: 1.11.8
+## Version: 1.12.0
 ## APIVersion: 101049
 ## SavedVariables: SmartChatMsgSavedVars
 ## DependsOn: LibAddonMenu-2.0>=34 LibAddonMenuDatePicker
@@ -10,6 +10,7 @@ SCM_MessageSharing.lua
 SCM_SavedVars.lua
 SCM_Calendar.lua
 SCM_Recurrence.lua
+SCM_EventPatterns.lua
 SCM_Schedules.lua
 SCM_Scheduler.lua
 SCM_ScheduleSettings.lua

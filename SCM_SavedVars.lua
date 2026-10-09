@@ -542,7 +542,10 @@ function SmartChatMsg:PreserveLockedMessages(imported)
                 -- A local lock protects its phase assignments as well as its text.
                 for _,guilds in pairs(imported.commandGuildSettings or {}) do
                     for _,settings in pairs(guilds) do
-                        if settings.schedule then settings.schedule.messagePhases[kept.id]=nil end
+                        if settings.schedule then
+                            settings.schedule.messagePhases[kept.id]=nil
+                            settings.schedule.messageVariants[kept.id]=nil
+                        end
                     end
                 end
                 local guild=self:NormalizeKey(entry.guildName or self:GetGuildNameByIndex(entry.guildIndex))
@@ -550,6 +553,7 @@ function SmartChatMsg:PreserveLockedMessages(imported)
                 local newSettings=guild and imported.commandGuildSettings and imported.commandGuildSettings[command.id] and imported.commandGuildSettings[command.id][guild]
                 if localSchedule and newSettings and newSettings.schedule then
                     newSettings.schedule.messagePhases[kept.id]=clone(localSchedule.messagePhases[entry.id])
+                    newSettings.schedule.messageVariants[kept.id]=localSchedule.messageVariants[entry.id]
                 end
             end
         end
@@ -629,7 +633,7 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
 
         local recordType = table.remove(parts, 1)
 
-        if recordType == "SCHEDULE_V1" or recordType == "SCHEDULEMESSAGE_V1" or recordType == "SCHEDULEOPTIONS_V1" then
+        if recordType == "SCHEDULE_V1" or recordType == "SCHEDULEMESSAGE_V1" or recordType == "SCHEDULEOPTIONS_V1" or recordType=="SCHEDULEPATTERN_V1" or recordType=="SCHEDULEVARIANT_V1" then
             table.insert(parts, 1, recordType)
             scheduleRecords[#scheduleRecords + 1] = parts
         elseif recordType == "DEFAULT" then

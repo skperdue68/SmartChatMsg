@@ -108,7 +108,7 @@ function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName, commandId
         if token == "guild" then return guildName end
         if token == "time" or token == "timeofday" or token == "greeting" then return field("greeting") end
         if token == "zone" then return field("zone") end
-        if commandId and (token == "eventdate" or token == "eventtime") then
+        if commandId and (token == "eventdate" or token == "eventtime" or token == "eventfaction") then
             return self:GetScheduledEventTokenValue(token,commandId,guildName) or "%"..token.."%"
         end
         if commandId and token == "eventwhen" then
@@ -170,8 +170,9 @@ function SmartChatMsg:MatchesIncomingMessage(entry, guildName, normalizedText)
     local occurrence=schedule and self:GetScheduleOccurrence(schedule,GetTimeStamp())
     local eventAt=occurrence and occurrence.eventAtUtc or (schedule and schedule.eventAtUtc)
     local eventWhen=schedule and self:GetScheduledEventTokenValue("eventwhen",entry.commandId,guildName)
-    if not cached or cached.text ~= entry.text or cached.guildName ~= guildName or cached.eventAt~=eventAt or cached.eventWhen~=eventWhen then
-        cached = { text = entry.text, guildName = guildName,eventAt=eventAt,eventWhen=eventWhen, matcher = self:BuildIncomingMessageMatcher(entry.text, guildName,entry.commandId) }
+    local eventFaction=schedule and self:GetScheduledEventTokenValue("eventfaction",entry.commandId,guildName)
+    if not cached or cached.text ~= entry.text or cached.guildName ~= guildName or cached.eventAt~=eventAt or cached.eventWhen~=eventWhen or cached.eventFaction~=eventFaction then
+        cached = { text = entry.text, guildName = guildName,eventAt=eventAt,eventWhen=eventWhen,eventFaction=eventFaction, matcher = self:BuildIncomingMessageMatcher(entry.text, guildName,entry.commandId) }
         self.incomingMessageMatchCache[entry] = cached
     end
     local matcher = cached.matcher

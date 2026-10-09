@@ -1,4 +1,4 @@
-# SmartChatMsg (v1.11.8)
+# SmartChatMsg (v1.12.0)
 
 SmartChatMsg is an Elder Scrolls Online addon for reusable chat messages: guild
 recruitment, trial reminders, auctions, officer notices, and other announcements.
@@ -300,7 +300,7 @@ before copying another player's setup.
 Automated checks cover calendar/DST rules, boundaries, queues, edited input,
 coordination, persistence, sharing, and settings callbacks. Actual ESO UI layout,
 loading screens, channel restoration, and two-player operation still need in-game
-verification. There is no recurring event scheduler or offline posting.
+verification. Events recur while you are online; there is no offline posting.
 
 ### Message list and command identity (1.11.8)
 
@@ -373,3 +373,47 @@ Delivery still honors startup delay, cooldowns, shared spacing and chat availabi
 
 The promotion-days field also shows a short explanation and a calculated
 Promotion starts date/time, reflecting unsaved edits and the next event occurrence.
+
+## Faction rotation and month-final raffles (1.12.0)
+
+Select the command/guild in Create/Edit/Delete Messages, choose Scheduled, and
+open Scheduling. Choose Promote an event and your repeat schedule, then select
+the optional Special event pattern. Existing schedules default to None.
+
+For PvP, choose Faction rotation. Open its section and set Faction frequency (weeks)
+(default 4), First faction, Second faction, and Third faction using dropdowns.
+Second/third can be Not used. Each selected faction must appear only once.
+The complete cycle is frequency times the number of selected factions:
+two factions at two weeks each repeat every four weeks. The original event date is the first event of
+the first faction's block; choose a date that anchors your real rotation.
+AD -> EP -> DC with 4 weeks each repeats after 12 calendar weeks, even after
+time offline or daylight-saving changes. The schedule still controls event days.
+%eventfaction% inserts Aldmeri Dominion, Ebonheart Pact, or Daggerfall Covenant
+for the occurrence being promoted; it is independent of your character's faction.
+The next-event preview shows the calculated faction.
+
+Each phase's message row has an event-group dropdown. Choose All selected factions to
+reuse a template with %eventfaction%, or choose one faction for special wording.
+Phase checkboxes and interval overrides still decide when messages are eligible.
+Multiple eligible messages are chosen randomly as before.
+
+For raffles, keep Every other week and the original first drawing date. Choose
+Last raffle of the month + 50/50. Add both regular and combined raffle/50-50
+announcements under the same command. In each message row choose Regular drawings
+or Month-final drawings. Unassigned messages default to Regular
+drawings in this pattern. Select each message's desired promotion phases.
+The pool is determined by the drawing's Eastern date, throughout its promotion:
+if the next scheduled drawing falls in another month, this drawing is month-final.
+It is the last actual biweekly drawing, not the calendar's last Saturday. For an
+October 10 anchor, October 10 is regular and October 24 is month-final; January
+2, 16 and 30 likewise use regular, regular, month-final pools.
+If no messages are marked month-final for this command/guild, regular messages
+are used for every drawing. Once special messages are configured, their phase
+selections apply; an intentionally empty special phase does not use regular text.
+Mark only the special messages, once per message; the choice is shared across phases.
+
+Save and activate after reviewing the next events and their faction/group labels.
+Pattern settings, order, block length and message groups are included in settings
+export/import. Local locked messages keep their personal group and phase choices.
+Incoming matching resolves %eventfaction% to the expected occurrence's faction.
+Changing to a window/non-repeating schedule turns the special pattern off.

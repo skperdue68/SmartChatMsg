@@ -17,6 +17,8 @@ function SmartChatMsg:NormalizeSchedule(data)
     if not result.startingSoonMinutes then result.startingSoonMinutes=120 end
     local validRecurrence={NONE=true,DAILY=true,WEEKLY=true,BIWEEKLY=true,MONTHLY_DATE=true,MONTHLY_WEEKDAY=true}
     if not validRecurrence[result.recurrence] or not result.recurrenceInterval then return nil,"Choose a valid recurrence and positive interval." end
+    local patternOk,patternError=self:NormalizeEventPattern(data,result)
+    if not patternOk then return nil,patternError end
     for day=1,7 do if type(data.weekdays)=="table" and data.weekdays[day] then result.weekdays[day]=true end end
     for _,phase in ipairs(phases) do result.phaseOnce[phase]=type(data.phaseOnce)=="table" and data.phaseOnce[phase]==true end
     local simpleEvent=data.mode=="EVENT" and (data.promotionDays~=nil or not data.startDate)
@@ -132,9 +134,20 @@ function SmartChatMsg:GetScheduledMessageEntries(commandId,guildName)
     if state~="RUNNING" then return {} end
     local schedule=self:GetGuildSchedule(commandId,guildName)
     local result={}
-    for _,entry in ipairs(self:GetMessageEntriesForCommandAndGuild(commandId,guildName)) do
+    local occurrence=self:GetScheduleOccurrence(schedule,GetTimeStamp())
+    local variant=self:GetScheduleEventVariant(schedule,occurrence.eventAtUtc)
+    local entries=self:GetMessageEntriesForCommandAndGuild(commandId,guildName)
+    if schedule.specialPattern=='MONTH_FINAL' and variant=='FINAL' then
+        local hasSpecialMessages=false
+        for _,entry in ipairs(entries) do
+            if self:GetScheduleMessageVariant(schedule,entry.id)=='FINAL' then hasSpecialMessages=true;break end
+        end
+        if not hasSpecialMessages then variant='REGULAR' end
+    end
+    for _,entry in ipairs(entries) do
         local assigned=schedule.messagePhases[entry.id]
-        if not assigned or assigned.ANY or assigned[phase] then result[#result+1]=entry end
+        local group=self:GetScheduleMessageVariant(schedule,entry.id)
+        if (not assigned or assigned.ANY or assigned[phase]) and (schedule.specialPattern=='NONE' or group=='ALL' or group==variant) then result[#result+1]=entry end
     end
     return result
 end
@@ -158,6 +171,10 @@ function SmartChatMsg:ExportScheduleRecords()
                 local days={};for day=1,7 do days[day]=s.weekdays and s.weekdays[day] and "1" or "0" end
                 local once={};for _,phase in ipairs(phases) do once[#once+1]=s.phaseOnce and s.phaseOnce[phase] and "1" or "0" end
                 lines[#lines+1]=encode({"SCHEDULEOPTIONS_V1",id,guild,s.mode or "EVENT",s.recurrence or "NONE",tostring(s.recurrenceInterval or 1),table.concat(days),tostring(s.promotionDays or ""),tostring(s.endDelayMinutes or ""),table.concat(once),s.startingSoonEnabled and "1" or "0",tostring(s.startingSoonMinutes or 120),tostring(s.phaseIntervals.SOON or "")})
+                lines[#lines+1]=encode({"SCHEDULEPATTERN_V1",id,guild,s.specialPattern or "NONE",tostring(s.rotationWeeks or 4),table.concat(s.rotationFactions or {"AD","EP","DC"},",")})
+                for messageId,variant in pairs(s.messageVariants or {}) do
+                    if not self:IsMessageLocked(messageId) then lines[#lines+1]=encode({"SCHEDULEVARIANT_V1",id,guild,messageId,variant}) end
+                end
                 for messageId,assigned in pairs(s.messagePhases) do
                     if not self:IsMessageLocked(messageId) then
                     local row={"SCHEDULEMESSAGE_V1",id,guild,messageId}
@@ -194,6 +211,12 @@ function SmartChatMsg:ImportScheduleRecords(records,imported)
                 d.promotionDays=row[8]~="" and row[8] or nil;d.endDelayMinutes=row[9]~="" and row[9] or nil
                 d.startingSoonEnabled=row[11]=="1";d.startingSoonMinutes=row[12] or 120;d.startingSoonIntervalMinutes=row[13]
                 d.phaseOnce={};for index,phase in ipairs(phases) do d.phaseOnce[phase]=(row[10] or ""):sub(index,index)=="1" end
+            elseif kind=="SCHEDULEPATTERN_V1" then
+                d.specialPattern,d.rotationWeeks=row[4],row[5]
+                d.rotationFactions={};for faction in (row[6] or ""):gmatch("[^,]+") do d.rotationFactions[#d.rotationFactions+1]=faction end
+            elseif kind=="SCHEDULEVARIANT_V1" then
+                if not row[4] or row[4]=="" then return false,"Imported event group is missing its message ID." end
+                d.messageVariants=d.messageVariants or {};d.messageVariants[row[4]]=row[5]
             else
                 if not row[4] or row[4]=="" then return false,"Imported schedule message is missing its ID." end
                 d.messagePhases[row[4]]={ANY=row[5]=="1",BEFORE=row[6]=="1",DAY=row[7]=="1",LIVE=row[8]=="1",SOON=row[9]=="1"}
