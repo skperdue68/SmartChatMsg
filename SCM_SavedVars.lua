@@ -733,7 +733,7 @@ function SmartChatMsg:ImportSettingsFromString(rawText)
             local guildKey = self:NormalizeKey(self:UnescapeImportExportField(parts[2] or ""))
             local channel = self:UnescapeImportExportField(parts[3] or "")
 
-            if commandIds[commandId] and guildKey and (channel == "Zone" or channel == "Guild" or channel == "Officer") then
+            if commandIds[commandId] and guildKey and (channel == "Zone" or channel == "Guild" or channel == "Officer" or channel == "Group") then
                 imported.chatChannels[commandId] = imported.chatChannels[commandId] or {}
                 imported.chatChannels[commandId][guildKey] = channel
             end
@@ -1691,6 +1691,7 @@ function SmartChatMsg:GetChatChannelOptions()
     end
 
     table.insert(options, "Zone")
+    table.insert(options, "Group (/p)")
 
     return options
 end
@@ -1711,7 +1712,7 @@ function SmartChatMsg:GetSavedChatChannel(commandId, guildName)
     end
 
     local channel = byCommand[guildKey]
-    if channel ~= "Zone" and channel ~= "Guild" and channel ~= "Officer" then
+    if channel ~= "Zone" and channel ~= "Guild" and channel ~= "Officer" and channel ~= "Group" then
         return nil
     end
 
@@ -1732,7 +1733,7 @@ function SmartChatMsg:SetSavedChatChannel(commandId, guildName, channel)
         self.savedVars.chatChannels[commandId] = {}
     end
 
-    if channel ~= "Zone" and channel ~= "Guild" and channel ~= "Officer" then
+    if channel ~= "Zone" and channel ~= "Guild" and channel ~= "Officer" and channel ~= "Group" then
         self.savedVars.chatChannels[commandId][guildKey] = nil
 
         if next(self.savedVars.chatChannels[commandId]) == nil then
@@ -1755,7 +1756,7 @@ function SmartChatMsg:GetSelectedMessagesChannel()
     local guildName = self:GetSelectedGuildNameForMessages()
     local savedChannel = self:GetSavedChatChannel(commandId, guildName)
 
-    if savedChannel == "Guild" or savedChannel == "Officer" or savedChannel == "Zone" then
+    if savedChannel == "Guild" or savedChannel == "Officer" or savedChannel == "Zone" or savedChannel == "Group" then
         local guildIndex = self:GetSelectedGuildIndexForMessages()
 
         if savedChannel == "Guild" and guildIndex then
@@ -1766,7 +1767,7 @@ function SmartChatMsg:GetSelectedMessagesChannel()
             return string.format("Officer (/o%d)", guildIndex)
         end
 
-        return savedChannel
+        return savedChannel=="Group" and "Group (/p)" or savedChannel
     end
 
     return "Select a Chat Channel"
@@ -1776,7 +1777,9 @@ function SmartChatMsg:SetSelectedMessagesChannel(channel)
     local normalizedChannel = nil
 
     if type(channel) == "string" then
-        if channel == "Zone" then
+        if channel == "Group" or channel == "Group (/p)" then
+            normalizedChannel = "Group"
+        elseif channel == "Zone" then
             normalizedChannel = "Zone"
         elseif channel:find("^Guild %(/g%d%)$") or channel == "Guild" then
             normalizedChannel = "Guild"
@@ -1788,7 +1791,7 @@ function SmartChatMsg:SetSelectedMessagesChannel(channel)
     local commandId = self.savedVars.selectedMessagesCommand
     local guildName = self:GetSelectedGuildNameForMessages()
 
-    if normalizedChannel ~= "Guild" and normalizedChannel ~= "Officer" and normalizedChannel ~= "Zone" then
+    if normalizedChannel ~= "Guild" and normalizedChannel ~= "Officer" and normalizedChannel ~= "Zone" and normalizedChannel ~= "Group" then
         self.savedVars.selectedMessagesChannel = nil
         self:SetSavedChatChannel(commandId, guildName, nil)
         return
