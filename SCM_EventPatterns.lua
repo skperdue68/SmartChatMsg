@@ -41,15 +41,15 @@ end
 
 function SmartChatMsg:GetScheduleEventVariant(schedule,eventAt)
     if schedule.specialPattern=='FACTION_ROTATION' then
-        -- Compare Eastern calendar dates, preserving four-week blocks across DST.
-        local function day(utc) return math.floor((utc+self:GetEasternUtcOffset(utc)*3600)/86400) end
+        -- Compare schedule-zone calendar dates, preserving rotation blocks across DST.
+        local function day(utc) return math.floor((utc+self:GetTimeZoneUtcOffset(utc,schedule.timeZone)*3600)/86400) end
         local weeks=math.floor(math.max(0,day(eventAt)-day(schedule.eventAtUtc))/7)
         local index=math.floor(weeks/schedule.rotationWeeks)%#schedule.rotationFactions+1
         return schedule.rotationFactions[index]
     elseif schedule.specialPattern=='MONTH_FINAL' then
         local nextEvent=self:GetUpcomingScheduleOccurrences(schedule,eventAt+1,1,true)[1]
         if not nextEvent then return 'FINAL' end
-        local current,nextParts=self:GetEasternParts(eventAt),self:GetEasternParts(nextEvent.eventAtUtc)
+        local current,nextParts=self:GetScheduleParts(eventAt,schedule),self:GetScheduleParts(nextEvent.eventAtUtc,schedule)
         return (current.year~=nextParts.year or current.month~=nextParts.month) and 'FINAL' or 'REGULAR'
     end
     return 'ALL'
@@ -60,7 +60,7 @@ function SmartChatMsg:GetScheduleFactionName(schedule,eventAt)
 end
 
 function SmartChatMsg:GetScheduleVariantLabel(variant)
-    return factions[variant] or ({ALL='All selected factions',REGULAR='Regular drawings',FINAL='Month-final drawings'})[variant] or variant
+    return factions[variant] or ({ALL='All selected factions',REGULAR='Regular events',FINAL='Month-final events'})[variant] or variant
 end
 
 function SmartChatMsg:GetScheduleMessageVariant(schedule,messageId)

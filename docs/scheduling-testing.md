@@ -1,4 +1,13 @@
-# Try simple scheduling in ESO
+# Try SmartChatMsg 2.0 scheduling in ESO
+
+
+Version 2.0 checks:
+- Confirm Scheduling begins below Enter Message with a clear gap, including after adding/deleting messages.
+- Choose any repeating Promote an event schedule and Last event of month. Each phase row has a Group button; click Regular events/Month-final events and save. Reopen and verify the selection. Check regular fallback with no special messages.
+- Change global Scheduling timezone ET/CT/MT/PT. Heading, picker labels, previews, event tokens, midnight starts, recurrence and faction/month-final selection must follow the new zone. Existing 8 PM anchors must remain 8 PM in the new zone. Export, switch zones, import and verify the exported zone returns.
+- Verify (Scheduled) has a space before Starts in. The status suffix names the same phase as settings and its effective interval, one announcement, or on-zone delivery. Check long labels and promotion dates fit inside the enlarged card.
+- Test phase interval overrides and Prepare only once: send once, let the interval pass, confirm no second send in that phase; advance to the next phase and a later recurring event.
+- Smoke-test On Demand and Startup commands, plus the three-minute scheduled startup hold and five-minute spacing between different scheduled combinations.
 
 Version 1.12.0: confirm Auto and Repeat Commands collapse when empty and can be
 toggled by their headers. Promotion start/end should appear in current cards,

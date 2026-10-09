@@ -141,7 +141,7 @@ end
 
 
 function SmartChatMsg:GetStatusPanelRepeatCardHeight()
-    return 144
+    return 164
 end
 
 function SmartChatMsg:GetStatusSectionExpanded(section,hasContent)
@@ -271,11 +271,15 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                         isActive=controlState=="ON"
                         local schedule=scheduled and self:GetGuildSchedule(command.id,guildName)
                         local occurrence=schedule and self:GetScheduleOccurrence(schedule,now)
+                        if schedule then
+                            local description=self:GetSchedulePhaseDescription(command.id,guildName)
+                            statusText=statusText.." — "..description
+                        elseif reminderMinutes then statusText=statusText.." — every "..tostring(reminderMinutes).." minutes" end
                         local displayName=scheduled and (command.name or "Scheduled message") or (self:BuildSlashCommandName(command.name or "command") or "/command")
                         local runAt=self:GetGuildRunAt(command.id,guildName)
                         displayName=displayName..(scheduled and " (Scheduled)" or runAt=="STARTUP" and " (Startup)" or " (On Demand)")
                         if occurrence and type(occurrence.eventAtUtc)=="number" then
-                            displayName=displayName.."\n"..(occurrence.eventAtUtc>now and ("Starts in "..self:FormatStatusDuration(occurrence.eventAtUtc-now)) or "Started")
+                            displayName=displayName.." "..(occurrence.eventAtUtc>now and ("Starts in "..self:FormatStatusDuration(occurrence.eventAtUtc-now)) or "Started")
                         end
 
                         table.insert(rows, {
@@ -283,7 +287,7 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                             commandName = command.name or "command",
                             slashCommand = self:BuildSlashCommandName(command.name or "command") or "/command",
                             displayName = displayName,
-                            promotionText = occurrence and (self:FormatEasternDateTime(occurrence.startsAtUtc).." → "..self:FormatEasternDateTime(occurrence.endsAtUtc)) or nil,
+                            promotionText = occurrence and (self:FormatScheduleDateTime(occurrence.startsAtUtc).." → "..self:FormatScheduleDateTime(occurrence.endsAtUtc)) or nil,
                             guildName = guildName,
                             channelText = self:GetAutoPopulateChannelStatusText(command.id, guildName),
                             reminderMinutes = reminderMinutes,
@@ -961,7 +965,7 @@ function SmartChatMsg:ApplyStatusPanelLayout(panel, width)
         row.commandLabel:ClearAnchors()
         row.commandLabel:SetAnchor(TOPLEFT, row, TOPLEFT, 8, 8)
 
-        row.statusLabel:SetDimensions(childWidth-16, 40)
+        row.statusLabel:SetDimensions(childWidth-16, 60)
         row.statusLabel:ClearAnchors()
         row.statusLabel:SetAnchor(TOPLEFT, row.commandLabel, BOTTOMLEFT, 0, 2)
 

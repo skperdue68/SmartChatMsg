@@ -87,7 +87,7 @@ test('phase transitions announce once with the active frequency and ET end time'
     now=s:ParseEasternDateTime('2026-10-10','12:00 AM');s:NotifyScheduleTransition('ad','Amber Traders','RUNNING')
     eq(#CHAT_SYSTEM.messages,count+1)
     local notice=CHAT_SYSTEM.messages[#CHAT_SYSTEM.messages]
-    assert(notice:find('Event day',1,true));assert(notice:find('120 minutes',1,true));assert(notice:find('EDT',1,true))
+    assert(notice:find('On event day',1,true));assert(notice:find('120 minutes',1,true));assert(notice:find('EDT',1,true))
     s:NotifyScheduleTransition('ad','Amber Traders','RUNNING');eq(#CHAT_SYSTEM.messages,count+1)
     now=config.eventAtUtc-120*60;s:NotifyScheduleTransition('ad','Amber Traders','RUNNING')
     assert(CHAT_SYSTEM.messages[#CHAT_SYSTEM.messages]:find('Starting soon',1,true))

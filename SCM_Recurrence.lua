@@ -10,40 +10,40 @@ local function dayNumber(p)
     for m=1,p.month-1 do days=days+lengths[m] end
     return days+p.day-1
 end
-local function civilUtc(self,p,fold)
-    return self:ParseEasternDateTime(date(p),time(p),fold or 'EDT')
+local function civilUtc(self,p,fold,schedule)
+    return self:ParseScheduleDateTime(date(p),time(p),fold or 'FIRST',schedule)
 end
 function SmartChatMsg:BuildScheduleOccurrence(s,event)
     local mode=s.mode or 'EVENT'
     local anchor=mode=='EVENT' and s.eventAtUtc or s.startsAtUtc
     if not anchor then return nil end
-    local ap=self:GetEasternParts(anchor)
-    local ep=self:GetEasternParts(event)
+    local ap=self:GetScheduleParts(anchor,s)
+    local ep=self:GetScheduleParts(event,s)
     local delta=dayNumber(ep)-dayNumber(ap)
     local function shift(value,fold)
-        local p=self:GetEasternParts(value)
+        local p=self:GetScheduleParts(value,s)
         local target=os.date('!*t',(dayNumber(p)+delta)*86400)
         target.hour,target.min=p.hour,p.min
-        return civilUtc(self,target,fold)
+        return civilUtc(self,target,fold,s)
     end
     local starts,ends
     if mode=='REMINDER' then starts,ends=event,event+120
     elseif mode=='EVENT' and s.promotionDays~=nil then
         local p=os.date('!*t',(dayNumber(ep)-s.promotionDays)*86400);p.hour,p.min=ep.hour,ep.min
         if s.promotionDays==0 then p.hour,p.min=0,0 end
-        starts=civilUtc(self,p,s.eventFold);ends=event+(s.endDelayMinutes or 60)*60
+        starts=civilUtc(self,p,s.eventFold,s);ends=event+(s.endDelayMinutes or 60)*60
     else starts,ends=shift(s.startsAtUtc,s.startFold),shift(s.endsAtUtc,s.endFold) end
     if not starts or not ends then return nil end
-    return {startsAtUtc=starts,eventAtUtc=event,endsAtUtc=ends,occurrenceKey=tostring(event),mode=mode}
+    return {startsAtUtc=starts,eventAtUtc=event,endsAtUtc=ends,occurrenceKey=tostring(event),mode=mode,timeZone=s.timeZone}
 end
 function SmartChatMsg:GetUpcomingScheduleOccurrences(s,utc,count,futureEventsOnly)
     if not s or not s.startsAtUtc then return {} end
     utc=utc or GetTimeStamp();count=count or 3
     local anchor=(s.mode or 'EVENT')=='EVENT' and s.eventAtUtc or s.startsAtUtc
-    local ap=self:GetEasternParts(anchor);local ad=dayNumber(ap)
+    local ap=self:GetScheduleParts(anchor,s);local ad=dayNumber(ap)
     local recurrence=s.recurrence or 'NONE';local interval=s.recurrenceInterval or 1
     if recurrence=='NONE' then local o=self:BuildScheduleOccurrence(s,anchor);return o and (futureEventsOnly and o.eventAtUtc>=utc or not futureEventsOnly and o.endsAtUtc>utc) and {o} or {} end
-    local cp=self:GetEasternParts(utc);local cd=dayNumber(cp)
+    local cp=self:GetScheduleParts(utc,s);local cd=dayNumber(cp)
     local lead=math.ceil(math.max(s.eventAtUtc-s.startsAtUtc,s.endsAtUtc-s.eventAtUtc)/86400)+2
     local cache=occurrenceCache[s] or {}
     occurrenceCache[s]=cache
@@ -67,7 +67,7 @@ function SmartChatMsg:GetUpcomingScheduleOccurrences(s,utc,count,futureEventsOnl
         end
         if eligible then
             p.hour,p.min=ap.hour,ap.min
-            local event=civilUtc(self,p,(s.mode or 'EVENT')=='EVENT' and s.eventFold or s.startFold)
+            local event=civilUtc(self,p,(s.mode or 'EVENT')=='EVENT' and s.eventFold or s.startFold,s)
             local o=event and self:BuildScheduleOccurrence(s,event)
             if o and (futureEventsOnly and o.eventAtUtc>=utc or not futureEventsOnly and o.endsAtUtc>utc) then out[#out+1]=o;if #out>=count then break end end
         end

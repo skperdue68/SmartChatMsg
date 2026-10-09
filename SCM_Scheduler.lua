@@ -4,11 +4,11 @@ SmartChatMsg = SmartChatMsg or {}
 function SmartChatMsg:GetSchedulePacingDelay(commandId,guildName)
     local now=GetTimeStamp()
     if self.scheduleStartupEndsAt and now<self.scheduleStartupEndsAt then
-        return self.scheduleStartupEndsAt,"Startup delay until "..self:FormatEasternDateTime(self.scheduleStartupEndsAt)
+        return self.scheduleStartupEndsAt,"Startup delay until "..self:FormatScheduleDateTime(self.scheduleStartupEndsAt)
     end
     local pause=self.scheduledSendPause
     if pause and now<pause.endsAt and pause.senderKey~=self:GetReminderStateKey(commandId,guildName) then
-        return pause.endsAt,"5-minute pause after another scheduled message until "..self:FormatEasternDateTime(pause.endsAt)
+        return pause.endsAt,"5-minute pause after another scheduled message until "..self:FormatScheduleDateTime(pause.endsAt)
     end
 end
 
@@ -16,7 +16,7 @@ function SmartChatMsg:HandleScheduledSendConfirmed(metadata)
     if not metadata or not metadata.scheduledDelivery then return end
     self.scheduledSendPause={senderKey=self:GetReminderStateKey(metadata.commandId,metadata.guildName),endsAt=GetTimeStamp()+300}
     self:ShowStatusMessage(self:GetSlashCommandDisplayName(metadata.commandId).." / "..metadata.guildName
-        ..": scheduled message sent. Other schedules pause for 5 minutes, until "..self:FormatEasternDateTime(self.scheduledSendPause.endsAt)..".")
+        ..": scheduled message sent. Other schedules pause for 5 minutes, until "..self:FormatScheduleDateTime(self.scheduledSendPause.endsAt)..".")
 end
 
 function SmartChatMsg:GetChatEditControl()
@@ -242,7 +242,7 @@ function SmartChatMsg:HandleScheduledPopulateTimeout(metadata)
     schedule.nextDueOccurrence=occurrence and occurrence.occurrenceKey
     local runtime=self.scheduleRuntime and self.scheduleRuntime[self:GetReminderStateKey(metadata.commandId,metadata.guildName)]
     self:ShowStatusMessage(self:GetSlashCommandDisplayName(metadata.commandId).." / "..metadata.guildName
-        ..": scheduled message was not sent before the chat timeout. Next attempt: "..self:FormatEasternDateTime(schedule.nextDueAt)..".")
+        ..": scheduled message was not sent before the chat timeout. Next attempt: "..self:FormatScheduleDateTime(schedule.nextDueAt)..".")
     if runtime and schedule.delivery=="ZONE" then runtime.zonePending=retry>0 end
 end
 
@@ -282,7 +282,7 @@ end
 function SmartChatMsg:GetSchedulePhaseDescription(commandId,guildName)
     local schedule=self:GetGuildSchedule(commandId,guildName)
     local phase=self:GetSchedulePhase(schedule,GetTimeStamp())
-    local labels={BEFORE="Before event day",DAY="Event day",SOON="Starting soon",LIVE="Event started"}
+    local labels={BEFORE="Before event day",DAY="On event day",SOON="Starting soon",LIVE="From event start until promotion ends"}
     local label=schedule.mode=="EVENT" and labels[phase] or "Scheduled window"
     local frequency
     if schedule.delivery=="ZONE" then frequency="on zone arrival"
@@ -302,14 +302,14 @@ function SmartChatMsg:NotifyScheduleTransition(commandId,guildName,state)
     if state=="RUNNING" then description,phase=self:GetSchedulePhaseDescription(commandId,guildName) end
     local prefix=self:GetSlashCommandDisplayName(commandId).." / "..guildName..": "
     if previous and previous.occurrence and not previous.ended and GetTimeStamp()>=previous.occurrence.endsAtUtc then
-        self:ShowStatusMessage(prefix.."schedule ended at "..self:FormatEasternDateTime(previous.occurrence.endsAtUtc)..".")
+        self:ShowStatusMessage(prefix.."schedule ended at "..self:FormatScheduleDateTime(previous.occurrence.endsAtUtc)..".")
         previous.ended=true
     end
     if state=="RUNNING" and occurrence and (not previous or previous.state~="RUNNING" or previous.occurrence.occurrenceKey~=occurrence.occurrenceKey) then
-        self:ShowStatusMessage(prefix.."schedule "..(previous and previous.state=="PAUSED" and "resumed" or "started").."; "..description.."; active until "..self:FormatEasternDateTime(occurrence.endsAtUtc)..".")
+        self:ShowStatusMessage(prefix.."schedule "..(previous and previous.state=="PAUSED" and "resumed" or "started").."; "..description.."; active until "..self:FormatScheduleDateTime(occurrence.endsAtUtc)..".")
         previous={config=config,occurrence=occurrence,ended=false}
     elseif state=="RUNNING" and previous and previous.description~=description then
-        self:ShowStatusMessage(prefix.."schedule changed to "..description.."; active until "..self:FormatEasternDateTime(occurrence.endsAtUtc)..".")
+        self:ShowStatusMessage(prefix.."schedule changed to "..description.."; active until "..self:FormatScheduleDateTime(occurrence.endsAtUtc)..".")
     elseif state=="PAUSED" and previous and previous.state=="RUNNING" then
         self:ShowStatusMessage(prefix.."schedule paused.")
     end
@@ -325,7 +325,7 @@ function SmartChatMsg:NotifyCooldownDelay(commandId,guildName,endsAt)
     local key=self:GetReminderStateKey(commandId,guildName)
     if self.cooldownNoticeDeadlines[key]==endsAt then return end
     self.cooldownNoticeDeadlines[key]=endsAt
-    self:ShowStatusMessage(self:GetSlashCommandDisplayName(commandId).." / "..guildName..": message delayed by cooldown until "..self:FormatEasternDateTime(endsAt)..".")
+    self:ShowStatusMessage(self:GetSlashCommandDisplayName(commandId).." / "..guildName..": message delayed by cooldown until "..self:FormatScheduleDateTime(endsAt)..".")
 end
 
 function SmartChatMsg:TickSchedules()
@@ -408,7 +408,7 @@ function SmartChatMsg:InitializeScheduler()
     self.scheduleStartupEndsAt=GetTimeStamp()+180
     self.scheduledSendPause=nil
     self.scheduleNoticeStates,self.cooldownNoticeDeadlines={},{}
-    self:ShowStatusMessage("SmartChatMsg is running. Scheduled messages wait 3 minutes, until "..self:FormatEasternDateTime(self.scheduleStartupEndsAt)..".")
+    self:ShowStatusMessage("SmartChatMsg is running. Scheduled messages wait 3 minutes, until "..self:FormatScheduleDateTime(self.scheduleStartupEndsAt)..".")
     local active=self:GetActiveAutoPopulate()
     if active and self:GetGuildRunAt(active.commandId,active.guildName)=="SCHEDULED" then active.scheduledOwner=true end
     EVENT_MANAGER:RegisterForUpdate(self.name.."_Scheduler",1000,function() SmartChatMsg:TickSchedules() end)
@@ -459,11 +459,11 @@ function SmartChatMsg:GetScheduleStatusText(commandId,guildName)
     end
     if schedule then
         local occurrence=self:GetScheduleOccurrence(schedule,GetTimeStamp()) or schedule
-        text=text.."\n"..self:FormatEasternDateTime(occurrence.startsAtUtc).." → "..self:FormatEasternDateTime(occurrence.endsAtUtc)
+        text=text.."\n"..self:FormatScheduleDateTime(occurrence.startsAtUtc).." → "..self:FormatScheduleDateTime(occurrence.endsAtUtc)
         if phase and schedule.delivery=="REPEAT" then
             local due=self:GetScheduledDueAt(commandId,guildName,phase)
             if pacingEndsAt then due=math.max(due,pacingEndsAt) end
-            text=text..(due<occurrence.endsAtUtc and "\nNext eligible: "..self:FormatEasternDateTime(math.max(due,GetTimeStamp())) or "\nNo further delivery before window end")
+            text=text..(due<occurrence.endsAtUtc and "\nNext eligible: "..self:FormatScheduleDateTime(math.max(due,GetTimeStamp())) or "\nNo further delivery before window end")
         end
     end
     return text
@@ -477,15 +477,15 @@ function SmartChatMsg:GetScheduledEventTokenValue(token,commandId,guildName)
         return occurrence and self:GetScheduleFactionName(schedule,occurrence.eventAtUtc)
     end
     schedule=self:GetScheduleOccurrence(schedule,GetTimeStamp()) or schedule
-    local event=self:GetEasternParts(schedule.eventAtUtc)
+    local event=self:GetScheduleParts(schedule.eventAtUtc)
     if token=="eventdate" then return string.format("%02d/%02d/%04d",event.month,event.day,event.year) end
-    if token=="eventtime" then return self:FormatEasternDateTime(schedule.eventAtUtc):sub(12) end
+    if token=="eventtime" then return self:FormatScheduleDateTime(schedule.eventAtUtc):sub(12) end
     if token=="eventwhen" then
-        local current=self:GetEasternParts(GetTimeStamp())
-        local day=self:ParseEasternDateTime(string.format("%04d-%02d-%02d",current.year,current.month,current.day),"12:00 AM")
+        local current=self:GetScheduleParts(GetTimeStamp())
+        local day=self:ParseScheduleDateTime(string.format("%04d-%02d-%02d",current.year,current.month,current.day),"12:00 AM")
         if current.year==event.year and current.yday==event.yday then return "today" end
         -- Compare civil dates through noon UTC to avoid a 23/25-hour DST day.
-        local nextDay=os.date("!*t",day+self:GetEasternUtcOffset(day)*3600+86400)
+        local nextDay=os.date("!*t",day+self:GetTimeZoneUtcOffset(day)*3600+86400)
         if nextDay.year==event.year and nextDay.yday==event.yday then return "tomorrow" end
         local weekdays={"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"}
         return weekdays[event.wday].." "..string.format("%02d/%02d/%04d",event.month,event.day,event.year)
