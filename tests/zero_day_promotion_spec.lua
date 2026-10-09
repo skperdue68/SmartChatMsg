@@ -25,4 +25,16 @@ assert(s:SaveGuildSchedule('ad','Amber Traders',d))
 c=s:GetGuildSchedule('ad','Amber Traders');now=c.startsAtUtc-1
 eq(s:GetGuildScheduleState('ad','Amber Traders',now),'WAITING')
 now=c.startsAtUtc;s:TickSchedules();assert(s.pendingRestoreState,'midnight should prepare an eligible event-day message')
+s.savedVars.selectedMessagesCommand='ad';s.GetSelectedGuildNameForMessages=function() return 'Amber Traders' end
+local caption
+for _,control in ipairs(s:BuildScheduleOptionControls()) do
+    if control.name=='Event and promotion timing' then
+        for _,child in ipairs(control.controls) do if child.reference=='SCM_PromotionStartNote' then caption=child end end
+    end
+end
+assert(caption,'promotion explanation must sit inside event timing controls')
+assert(caption.text():find('0 = midnight on event day.',1,true))
+assert(caption.text():find('Promotion starts: 2026-10-13 12:00 AM EDT',1,true))
+s:GetScheduleEditorDraft().promotionDays=1
+assert(caption.text():find('Promotion starts: 2026-10-12 08:00 PM EDT',1,true),'preview must reflect unsaved lead changes')
 print('zero-day midnight promotion checks passed')

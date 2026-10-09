@@ -113,7 +113,7 @@ The runtime files are `SCM_MessageSharing.lua`, `SCM_SavedVars.lua`,
 | `/recruit 1` | Run your custom command for local guild slot 1. |
 | `/recruit 1 off` | Stop ordinary automation, or persistently pause a schedule. |
 
-Guild parameters `1`–`5`, `g1`–`g5`, and `o1`–`o5` resolve the corresponding local
+Guild parameters `1`â€“`5`, `g1`â€“`g5`, and `o1`â€“`o5` resolve the corresponding local
 guild slots. For example, `2`, `g2`, and `o2` select the same guild. Set Default
 Guild to run without a guild parameter. Select the saved output channel in settings.
 
@@ -199,7 +199,7 @@ scheduled interval delivery.
 
 Pause/resume in scheduling settings. `/yourcommand 1 off` pauses that guild's
 schedule until resumed. Peer messages reset the matching command/guild cooldown
-with an extra random 30–90 seconds; they do not resume paused schedules.
+with an extra random 30â€“90 seconds; they do not resume paused schedules.
 The status panel reports engagement, waiting, and the next eligible time in ET.
 Local notifications announce schedule starts/ends and cooldown delays once per
 change. These notices are visible only to you. Matching peer messages are
@@ -233,7 +233,7 @@ distinguish your announcements from different events.
 
 The other player does not need SmartChatMsg. Their matching Zone, Guild, or
 Officer message records usage for your entire **Command + Guild** combination
-and adds a random **30–90 seconds** to its cooldown. An active Repeat cycle is
+and adds a random **30â€“90 seconds** to its cooldown. An active Repeat cycle is
 deferred. Your own messages and customer-service messages are excluded.
 
 Guild/Officer matching uses the actual receiving guild and configured channel,
@@ -370,3 +370,6 @@ Promotion days: 0 starts at midnight Eastern on event day. Select On event day
 messages; Starting soon and live messages still follow their configured phases.
 Positive lead values start that many days before the event at its clock time.
 Delivery still honors startup delay, cooldowns, shared spacing and chat availability.
+
+The promotion-days field also shows a short explanation and a calculated
+Promotion starts date/time, reflecting unsaved edits and the next event occurrence.
