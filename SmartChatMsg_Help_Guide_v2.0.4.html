@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SmartChatMsg Help Guide v2.0.3</title><style>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SmartChatMsg Help Guide v2.0.4</title><style>
     body {
         font-family: Arial, Helvetica, sans-serif;
         line-height: 1.65;
@@ -111,9 +111,10 @@
     }
 
 nav ul {columns:2;padding-left:22px} nav {background:#eff6ff;padding:16px;border-radius:10px} a {color:#1d4ed8} h2,h3 {scroll-margin-top:20px} table {display:block;overflow-x:auto} @media(max-width:650px){.page{padding:20px} nav ul{columns:1}} @media print {nav{display:none}.page{box-shadow:none;padding:0} body{background:white}}
+nav ul {columns:2;padding-left:22px} nav {background:#eff6ff;padding:16px;border-radius:10px} a {color:#1d4ed8} h2,h3 {scroll-margin-top:20px} table {display:block;overflow-x:auto} @media(max-width:650px){.page{padding:20px} nav ul{columns:1}} @media print {nav{display:none}.page{box-shadow:none;padding:0} body{background:white}}
 nav ul {columns:2;padding-left:22px} nav {background:#eff6ff;padding:16px;border-radius:10px} a {color:#1d4ed8} h2,h3 {scroll-margin-top:20px} table {display:block;overflow-x:auto} @media(max-width:650px){.page{padding:20px} nav ul{columns:1}} @media print {nav{display:none}.page{box-shadow:none;padding:0} body{background:white}}</style></head><body><main class="page">
-<h1>SmartChatMsg Help Guide v2.0.3</h1>
-<p class="small">Matches addon version 2.0.3. Standalone help: no internet connection required.</p><nav aria-label="Contents"><strong>Contents</strong><ul><li><a href="#install-or-update">Install or update</a></li><li><a href="#commands-guilds-and-messages">Commands, guilds, and messages</a></li><li><a href="#global-settings">Global settings</a></li><li><a href="#choose-how-a-combination-starts-run-at">Choose how a combination starts: Run At</a></li><li><a href="#scheduling">Scheduling</a></li><li><a href="#repeat-schedule-and-more-repeat-options">Repeat schedule and More repeat options</a></li><li><a href="#special-event-patterns">Special event patterns</a></li><li><a href="#message-substitutions-and-countdowns">Message substitutions and countdowns</a></li><li><a href="#other-players-announcements-and-cooldowns">Other players&#x27; announcements and cooldowns</a></li><li><a href="#startup-delay-chat-protection-and-status">Startup delay, chat protection, and status</a></li><li><a href="#export-import-and-personal-messages">Export, import, and personal messages</a></li><li><a href="#quick-test">Quick test</a></li><li><a href="#additional-substitutions">Additional substitutions</a></li><li><a href="#debugging">Debugging</a></li></ul></nav>
+<h1>SmartChatMsg Help Guide v2.0.4</h1>
+<p class="small">Matches addon version 2.0.4. Standalone help: no internet connection required.</p><nav aria-label="Contents"><strong>Contents</strong><ul><li><a href="#install-or-update">Install or update</a></li><li><a href="#commands-guilds-and-messages">Commands, guilds, and messages</a></li><li><a href="#global-settings">Global settings</a></li><li><a href="#choose-how-a-combination-starts-run-at">Choose how a combination starts: Run At</a></li><li><a href="#scheduling">Scheduling</a></li><li><a href="#repeat-schedule-and-more-repeat-options">Repeat schedule and More repeat options</a></li><li><a href="#special-event-patterns">Special event patterns</a></li><li><a href="#message-substitutions-and-countdowns">Message substitutions and countdowns</a></li><li><a href="#other-players-announcements-and-cooldowns">Other players&#x27; announcements and cooldowns</a></li><li><a href="#startup-delay-chat-protection-and-status">Startup delay, chat protection, and status</a></li><li><a href="#export-import-and-personal-messages">Export, import, and personal messages</a></li><li><a href="#quick-test">Quick test</a></li><li><a href="#additional-substitutions">Additional substitutions</a></li><li><a href="#debugging">Debugging</a></li></ul></nav>
 <p>SmartChatMsg prepares reusable messages in ESO&#x27;s chat box. <strong>Press Enter to send them.</strong> It runs only while you are online with the addon loaded; it cannot send announcements while ESO is closed.</p>
 <h2 id="install-or-update">Install or update</h2>
 <p>Install the SmartChatMsg addon folder and enable <strong>LibAddonMenu-2.0</strong> and <strong>LibAddonMenuDatePicker</strong>. Keep your existing SavedVariables file when updating. Open the settings with <code>/scm</code>, and open the status window with <code>/scm status</code>.</p>
@@ -184,6 +185,7 @@ nav ul {columns:2;padding-left:22px} nav {background:#eff6ff;padding:16px;border
 <h2 id="quick-test">Quick test</h2>
 <p>Create a dedicated test command and one message, choose your guild and output channel, and set Run At to Scheduled. For a simple test, choose Run during a window, starting now and ending 15 minutes later, with a five-minute message interval. Save and activate. Wait for the three-minute startup hold if you just loaded the addon, leave chat input empty, and watch <code>/scm status</code>. Press Enter when a message is prepared. A housing zone is convenient for a Zone test; use guild chat when testing guild-channel matching.</p>
 <p><code>/scm resetcooldowns</code> clears existing cooldowns for testing, including once-completion deadlines. It preserves schedule dates, paused/disabled states, and the startup delay. Other schedules&#x27; spacing is also reset. A future or expired schedule remains future or expired; resetting cooldowns does not move its dates.</p>
+<p>When you select <strong>Promote an event</strong>, <strong>Event and promotion timing</strong> opens automatically so the event date and time are visible. You can collapse it yourself; ordinary settings refreshes keep that choice. Selecting a different event configuration opens its timing section again.</p>
 <h2 id="additional-substitutions">Additional substitutions</h2>
     <p>Messages support wildcard substitutions that are replaced when the message is populated.</p>
 
@@ -209,6 +211,7 @@ nav ul {columns:2;padding-left:22px} nav {background:#eff6ff;padding:16px;border
     <p>These tokens are case-insensitive, so <code>%TIME%</code>, <code>%Guild%</code>, and <code>%Zone%</code> also work.</p>
 
     
+
 
 <h2 id="debugging">Debugging</h2><p><code>/scmdebug</code> toggles debug logging. Use <code>/scmdebug on</code>, <code>/scmdebug off</code>, or <code>/scmdebug status</code> to control it explicitly.</p>
 </main></body></html>

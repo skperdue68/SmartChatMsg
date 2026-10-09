@@ -1,5 +1,22 @@
 SmartChatMsg = SmartChatMsg or {}
 
+-- Open once per selected event configuration; ordinary refreshes preserve a
+-- user's manual collapse. LAM creates controls asynchronously.
+function SmartChatMsg:RefreshEventTimingExpansion()
+    local control=_G.SCM_EventTimingSubmenu
+    if not control then return end
+    local draft=self:GetScheduleEditorDraft()
+    local scheduled=self:IsMessagesSelectionComplete() and self:GetGuildRunAt(self.savedVars.selectedMessagesCommand,self:GetSelectedGuildNameForMessages())=="SCHEDULED"
+    local selection=tostring(self.scheduleEditor.key)..":"..tostring(draft.mode)..":"..tostring(scheduled)
+    if draft.mode=="EVENT" and scheduled and control.disabled then return end
+    if self.eventTimingExpansionSelection==selection then return end
+    self.eventTimingExpansionSelection=selection
+    if draft.mode=="EVENT" and scheduled and not control.open then
+        control.open=true
+        control.animation:PlayFromStart()
+    end
+end
+
 local function copy(v)
     if type(v)~="table" then return v end
     local r={}; for k,item in pairs(v) do r[k]=copy(item) end; return r
@@ -379,7 +396,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
     event[#event+1]=soonLead
     for _,entry in ipairs({{"WINDOW",window},{"REMINDER",reminder},{"EVENT",event}}) do
         local mode=entry[1]
-        controls[#controls+1]={type="submenu",name=({WINDOW="Window dates and times",REMINDER="First reminder date and time",EVENT="Event and promotion timing"})[mode],controls=entry[2],disabled=function() return draft().mode~=mode end}
+        controls[#controls+1]={type="submenu",reference=mode=="EVENT" and "SCM_EventTimingSubmenu" or nil,name=({WINDOW="Window dates and times",REMINDER="First reminder date and time",EVENT="Event and promotion timing"})[mode],controls=entry[2],disabled=function() return draft().mode~=mode end}
     end
     controls[#controls+1]=dropdown("Repeat schedule",repeatLabels,repeatValues,"recurrence")
     local pattern=dropdown("Special event pattern",{"None","Faction rotation","Last event of month"},{"NONE","FACTION_ROTATION","MONTH_FINAL"},"specialPattern")
