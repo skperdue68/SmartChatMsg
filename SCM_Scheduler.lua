@@ -472,6 +472,10 @@ end
 function SmartChatMsg:GetScheduledEventTokenValue(token,commandId,guildName)
     local schedule=self:GetGuildSchedule(commandId,guildName)
     if not schedule then return nil end
+    if token=="eventfaction" then
+        local occurrence=self:GetScheduleOccurrence(schedule,GetTimeStamp())
+        return occurrence and self:GetScheduleFactionName(schedule,occurrence.eventAtUtc)
+    end
     schedule=self:GetScheduleOccurrence(schedule,GetTimeStamp()) or schedule
     local event=self:GetEasternParts(schedule.eventAtUtc)
     if token=="eventdate" then return string.format("%02d/%02d/%04d",event.month,event.day,event.year) end
