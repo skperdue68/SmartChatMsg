@@ -111,4 +111,23 @@ row.variantCombo.items[1].callback();eq(draft.messageVariants.all,'REGULAR')
 s:RefreshScheduleMessagePool(pool,'DAY');eq(row.variantCombo.selected,'Regular drawings')
 assert(row.height>=row.label.height+36,'message group dropdown must fit below the wrapped text')
 find(controls,'Schedule type').setFunc('Run during a window');eq(draft.specialPattern,'NONE')
+-- Round-trip the flexible two-faction setup, including personal groups and new IDs.
+f.reset();f.entry('shared','ad','Amber Traders','PvP for %eventfaction%','Guild')
+f.entry('personal','ad','Amber Traders','Personal Pact notice','Guild')
+local flexible={mode='EVENT',enabled=true,delivery='REPEAT',eventDate='2026-10-10',eventTime='08:00 PM',promotionDays=0,endDelayMinutes=20,
+    recurrence='WEEKLY',intervalMinutes=30,specialPattern='FACTION_ROTATION',rotationWeeks=2,rotationFactions={'AD','EP'},
+    messageVariants={personal='EP'},messagePhases={personal={DAY=true}}}
+assert(s:SaveGuildSchedule('ad','Amber Traders',flexible));assert(s:SetMessageLocked('personal',true))
+local export=s:BuildExportString():gsub('|ad|','|imported-id|')
+assert(s:ImportSettingsFromString(export))
+local restored=s:GetGuildSchedule('imported-id','Amber Traders')
+eq(restored.specialPattern,'FACTION_ROTATION');eq(restored.rotationWeeks,2)
+eq(#restored.rotationFactions,2);eq(restored.rotationFactions[1],'AD');eq(restored.rotationFactions[2],'EP')
+eq(restored.messageVariants.personal,'EP');eq(restored.messagePhases.personal.DAY,true)
+eq(restored.startsAtUtc,s:ParseEasternDateTime('2026-10-10','12:00 AM'))
+eq(s:GetScheduleEventVariant(restored,s:ParseEasternDateTime('2026-10-24','08:00 PM')),'EP')
+eq(s:GetScheduleEventVariant(restored,s:ParseEasternDateTime('2026-11-07','08:00 PM')),'AD')
+local kept
+for _,entry in ipairs(s.savedVars.messages) do if entry.id=='personal' then kept=entry end end
+assert(kept and kept.locked and kept.commandId=='imported-id')
 print('event rotation and month-final raffle checks passed')
