@@ -1,8 +1,10 @@
-# SmartChatMsg (v2.0.5)
+# SmartChatMsg (v2.0.6)
 
-**[Open the standalone HTML help guide v2.0.5](SmartChatMsg_Help_Guide_v2.0.5.html)** (included with the addon).
+**[Open the standalone HTML help guide v2.0.6](SmartChatMsg_Help_Guide_v2.0.6.html)** (included with the addon).
 
 **[Read the complete SmartChatMsg 2.0 user guide](docs/SmartChatMsg-2.0.md)** for all configuration options, examples, timezone changes, recurrence, message groups, and phase behavior.
+
+**2.0.6:** Assigned phase names are separate preview links: clicking Event day tests Event day, even from a Before event day message row. The links wrap to fit the row.
 
 **2.0.5:** Test messages locally using the normal parser and substitutions. The Test button beside Lock uses the current time; clicking message text in a phase simulates a time inside that phase. Previews include unsaved edits and do not send, change cooldowns, or change phase selections. Event and promotion timing opens automatically when selecting an event configuration.
 

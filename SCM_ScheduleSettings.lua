@@ -244,6 +244,58 @@ function SmartChatMsg:GetScheduleMessageChecklist(phase)
     return result
 end
 
+-- Each assigned phase is a separate link: clicking "Event day" must not
+-- inherit the containing pool's "Before event day" preview clock.
+function SmartChatMsg:RefreshSchedulePhaseLinks(row,text)
+    local phases={["Before event day"]="BEFORE",["Event day"]="DAY",["Starting soon"]="SOON",["Until end"]="LIVE",["While active"]="ANY"}
+    if not row.phaseLinkContainer then
+        row.phaseLinkContainer=WINDOW_MANAGER:CreateControl(nil,row,CT_CONTROL)
+        row.phaseLinkContainer:SetAnchor(TOPLEFT,row.label,BOTTOMLEFT,0,4)
+        row.phaseLinks={}
+    end
+    local container=row.phaseLinkContainer
+    local width=row.label:GetWidth()
+    container:SetWidth(width)
+    local tags={"Used:"}
+    for tag in (tostring(text or "").." · "):gmatch("(.-) · ") do tags[#tags+1]=tag end
+    for _,link in ipairs(row.phaseLinks) do link:SetHidden(true) end
+    local x,y,lineHeight=0,0,0
+    for i,tag in ipairs(tags) do
+        local link=row.phaseLinks[i]
+        if not link then
+            link=WINDOW_MANAGER:CreateControl(nil,container,CT_LABEL)
+            link:SetFont("ZoFontGame")
+            row.phaseLinks[i]=link
+        end
+        local phase=phases[tag]
+        link.phase=phase
+        link:SetText(tag)
+        link:SetWidth(width);link:SetHeight(10000)
+        local textWidth=link.GetTextWidth and link:GetTextWidth() or #tag*8
+        local linkWidth=math.min(width,math.max(24,textWidth+2))
+        link:SetWidth(linkWidth)
+        local height=math.max(20,link:GetTextHeight())
+        link:SetHeight(height)
+        if x>0 and x+linkWidth>width then x=0;y=y+lineHeight+4;lineHeight=0 end
+        link:ClearAnchors();link:SetAnchor(TOPLEFT,container,TOPLEFT,x,y)
+        link:SetHidden(false);link:SetMouseEnabled(phase~=nil)
+        link:SetColor(phase and 0.95 or 0.77,phase and 0.82 or 0.76,phase and 0.45 or 0.62,1)
+        link:SetHandler("OnMouseUp",phase and function(_,button,upInside)
+            if button==MOUSE_BUTTON_INDEX_LEFT and upInside then self:TestMessagePreview(row.messageId,phase) end
+        end or nil)
+        link:SetHandler("OnMouseEnter",phase and function(label)
+            InitializeTooltip(InformationTooltip,label,TOP,0,8)
+            SetTooltipText(InformationTooltip,"Test this message during "..tag.." using a simulated time inside that phase.")
+        end or nil)
+        link:SetHandler("OnMouseExit",phase and function() ClearTooltip(InformationTooltip) end or nil)
+        link:SetHandler("OnMouseWheel",function(_,delta) ZO_Scroll_OnMouseWheel(row.scheduleScroll,delta) end)
+        x=x+linkWidth+8;lineHeight=math.max(lineHeight,height)
+    end
+    local height=y+lineHeight
+    container:SetHeight(height)
+    return height
+end
+
 -- Native LAM custom rows update with selection and newly added/deleted messages.
 function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
     if control.scheduleRefreshing then return end
@@ -307,21 +359,23 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
         end)
         row.label:SetHandler("OnMouseExit",function(label) label:SetColor(1,1,1,1);ClearTooltip(InformationTooltip) end)
         row.messageId=choice.messageId
+        row.scheduleScroll=scroll
         row:SetWidth(contentWidth)
         row.label:SetWidth(math.max(40,contentWidth-50))
         row:SetHidden(false); row:ClearAnchors(); row:SetAnchor(TOPLEFT,content,TOPLEFT,0,y)
         -- Clear the old height before measuring a new wrapped message/width.
         row.label:SetHeight(10000)
-        row.label:SetText((choice.name or "").."\n|cC5C29EUsed: "..choice.phaseText.."|r")
+        row.label:SetText(choice.name or "")
         local height=math.max(32,row.label:GetTextHeight()+12)
         row.label:SetHeight(height-12)
+        height=height+4+self:RefreshSchedulePhaseLinks(row,choice.phaseText)
         if choice.variantChoices and choice.variantChoices[1]=="REGULAR" then
             if not row.variantButton then
                 row.variantButton=WINDOW_MANAGER:CreateControlFromVirtual(nil,row,"ZO_DefaultButton")
                 row.variantButton:SetHeight(31)
             end
             row.variantButton:SetHidden(false);row.variantButton:ClearAnchors()
-            row.variantButton:SetAnchor(TOPLEFT,row.label,BOTTOMLEFT,0,4)
+            row.variantButton:SetAnchor(TOPLEFT,row.phaseLinkContainer,BOTTOMLEFT,0,4)
             row.variantButton:SetWidth(math.max(100,contentWidth-50))
             row.variantButton:SetText("Group: "..self:GetScheduleVariantLabel(choice.variant))
             row.variantButton:SetHandler("OnClicked",function()
@@ -339,7 +393,7 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
                 row.variantControl:SetHandler("OnMouseWheel",function(_,delta) ZO_Scroll_OnMouseWheel(scroll,delta) end)
             end
             row.variantControl:SetHidden(false);row.variantControl:ClearAnchors()
-            row.variantControl:SetAnchor(TOPLEFT,row.label,BOTTOMLEFT,0,4)
+            row.variantControl:SetAnchor(TOPLEFT,row.phaseLinkContainer,BOTTOMLEFT,0,4)
             row.variantControl:SetWidth(math.max(100,contentWidth-50))
             row.variantCombo:ClearItems()
             for _,value in ipairs(choice.variantChoices) do

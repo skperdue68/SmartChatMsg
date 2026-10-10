@@ -137,7 +137,7 @@ The final event uses its month-final pool throughout promotion, including promot
 
 Click **Test** beside a message's **Lock / Unlock** button to display the parsed message in your local chat using the current time. This uses the same substitutions and countdown parser as delivery, including unsaved message edits. For the selected scheduled command/guild, unsaved schedule edits are used too.
 
-In a scheduling phase, click the **message text** to test that specific message at a simulated time inside the phase. The checkbox still controls inclusion; clicking the text does not toggle it. A local heading shows the phase and simulated date/time, followed by the completed message:
+In a scheduling phase, click the **message text** to test that specific message at a simulated time inside the phase section you are viewing. The phase names beside **Used:** are separate links: clicking **Event day** tests Event day even when the row appears in Before event day. Each link uses a time inside its own named phase. The checkbox still controls inclusion; clicking the text does not toggle it. A local heading shows the phase and simulated date/time, followed by the completed message:
 
 - **Before event day:** normally the event's clock time on the previous calendar day, adjusted to fit the configured phase.
 - **Event day:** midway through the eligible event-day period before Starting soon.
