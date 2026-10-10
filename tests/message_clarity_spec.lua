@@ -51,6 +51,7 @@ pool.width=300;s:RefreshScheduleMessagePool(pool,'DAY')
 assert(item.height>first,'narrower viewport must remeasure all lines')
 print('message clarity checks passed')
 
+local realPreview=s.TestMessagePreview
 local tested
 s.TestMessagePreview=function(_,id,phase) tested={id=id,phase=phase} end
 MOUSE_BUTTON_INDEX_LEFT=1
@@ -62,3 +63,43 @@ eq(tested,nil,"right click must not run a test")
 item.label.handlers.OnMouseUp(item.label,1,false)
 eq(tested,nil,"release outside must not run a test")
 print("phase message links test the displayed row without toggling selection")
+
+-- Reproduce clicking the assigned Event day wording from the Before-event pool.
+s.TestMessagePreview=realPreview
+f.reset();f.entry('phase','ad','Amber Traders','Meet %eventwhen% at %eventtime%!','Guild')
+assert(s:SaveGuildSchedule('ad','Amber Traders',{mode='EVENT',enabled=true,eventDate='2026-10-06',eventTime='08:00 PM',promotionDays=2,endDelayMinutes=60,intervalMinutes=15,recurrence='WEEKLY',startingSoonEnabled=true,startingSoonMinutes=120}))
+s.savedVars.selectedMessagesCommand='ad'
+now=s:ParseEasternDateTime('2026-10-09','08:00 PM')
+local notices={};s.AddLocalChatMessage=function(_,text) notices[#notices+1]=text end
+local preview,context
+s.TestMessagePreview=function(self,id,phase) preview,context=realPreview(self,id,phase);return preview,context end
+s:RefreshScheduleMessagePool(pool,'BEFORE')
+local row=pool.scheduleRows[1]
+local dayLink
+for _,link in ipairs(row.phaseLinks or {}) do if link.phase=='DAY' then dayLink=link end end
+assert(dayLink,'assigned Event day must have its own preview link')
+dayLink.handlers.OnMouseUp(dayLink,1,true)
+eq(context.phase,'DAY','assigned Event day link cannot use containing BEFORE phase')
+eq(s:GetSchedulePhase(context.schedule,context.now),'DAY')
+assert(preview:find('today',1,true),preview)
+assert(not preview:find('(1d)',1,true),preview)
+assert(preview:find('08:00 PM',1,true),preview)
+assert(notices[#notices-1]:find('Event day',1,true))
+eq(s:GetScheduleParts(context.now,context.schedule).day,13,'preview must use next weekly event')
+-- Message text still tests the containing phase; phase links never toggle usage.
+row.label.handlers.OnMouseUp(row.label,1,true)
+eq(context.phase,'BEFORE')
+assert(preview:find('tomorrow',1,true),preview)
+print('assigned phase links use their own simulated clock and recurring occurrence')
+
+for _,link in ipairs(row.phaseLinks) do
+ if link.phase then
+  link.handlers.OnMouseUp(link,1,true)
+  eq(context.phase,link.phase)
+  eq(s:GetSchedulePhase(context.schedule,context.now),link.phase,'every link must pick a clock inside its own phase')
+  assert(link.width<=row.label.width,'phase links must wrap within the message row')
+ end
+end
+assert(row.height>=row.label.height+row.phaseLinkContainer.height+16,'message and phase links must fit inside their border')
+assert(s:GetGuildSchedule('ad','Amber Traders').messagePhases.phase==nil,'testing links must not change message inclusion')
+print('all assigned phase links stay inside their phase and row bounds')

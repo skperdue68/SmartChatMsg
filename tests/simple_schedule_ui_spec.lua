@@ -87,6 +87,7 @@ local function nativeControl()
     function c:SetAnchorFill() end
     function c:SetCenterColor() end
     function c:SetEdgeColor() end
+    function c:SetColor() end
     function c:SetEdgeTexture() end
     return c
 end
@@ -105,7 +106,7 @@ end
 pool.createFunc(holder)
 eq(#holder.scheduleRows,2)
 assert(holder.scheduleRows[1].label.text:find("First actual message preview",1,true))
-assert(holder.scheduleRows[1].label.text:find("Used:",1,true))
+eq(holder.scheduleRows[1].phaseLinks[1].text,"Used:")
 holder.scheduleRows[1].check.checked=false
 holder.scheduleRows[1].check.toggle(holder.scheduleRows[1].check)
 eq(scm:GetScheduleEditorDraft().messagePhases.a.BEFORE,false)

@@ -238,3 +238,5 @@ Changing to a window/non-repeating schedule turns the special pattern off.
 - Test a recurring event after the anchor date and around a DST transition.
 - Test a phase excluded by the promotion window: a clear local notice appears.
 - Confirm tests leave cooldowns, schedule activation, once-per-phase flags, and pending chat text unchanged.
+
+- From a Before event day row, click **Event day** beside Used: the heading must say Event day, `%eventwhen%` must say today, and the countdown must be shorter than one day. Repeat for each phase link; verify the links wrap within the border at narrow widths.
