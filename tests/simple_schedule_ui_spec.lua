@@ -109,7 +109,8 @@ assert(holder.scheduleRows[1].label.text:find("Used:",1,true))
 holder.scheduleRows[1].check.checked=false
 holder.scheduleRows[1].check.toggle(holder.scheduleRows[1].check)
 eq(scm:GetScheduleEditorDraft().messagePhases.a.BEFORE,false)
-rowFor('b').label.OnMouseUp()
+rowFor('b').check.checked=false
+rowFor('b').check.toggle(rowFor('b').check)
 eq(scm:GetScheduleEditorDraft().messagePhases.b.BEFORE,false)
 f.entry("c","ad","Amber Traders","Added after settings opened")
 pool.refreshFunc(holder)
@@ -201,7 +202,8 @@ end
 holder.scheduleRows[#holder.scheduleRows].label.OnMouseWheel(nil,-1)
 eq(holder.scheduleScroll.offset,40)
 pool.refreshFunc(holder); eq(holder.scheduleScroll.offset,40)
-rowFor('long12').label.OnMouseUp()
+rowFor('long12').check.checked=false
+rowFor('long12').check.toggle(rowFor('long12').check)
 eq(scm:GetScheduleEditorDraft().messagePhases.long12.BEFORE,false)
 holder.width=320; holder.OnRectWidthChanged()
 eq(holder.scheduleScroll.width,320)

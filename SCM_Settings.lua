@@ -1592,6 +1592,12 @@ local function BuildMessagesEditor(parent)
             RefreshRowState(rowData)
         end)
 
+        local testButton=WINDOW_MANAGER:CreateControlFromVirtual(string.format("SCM_SavedMessageTestButton%d",controlId),row,"ZO_DefaultButton")
+        testButton:SetDimensions(70,24)
+        testButton:SetAnchor(LEFT,lockButton,RIGHT,6,0)
+        testButton:SetText("Test")
+        testButton:SetHandler("OnClicked",function() SmartChatMsg:TestMessagePreview(entry.id) end)
+
         editBox:SetHandler("OnTextChanged", function(self)
             local text = self:GetText() or ""
 
@@ -1855,6 +1861,7 @@ function SmartChatMsg:RefreshSettingsUI()
     if self.settings.panel then
         CALLBACK_MANAGER:FireCallbacks("LAM-RefreshPanel", self.settings.panel)
     end
+    self:RefreshEventTimingExpansion()
     self:RestoreMessageListScroll(scrollContainer,scrollSnapshot)
 end
 
@@ -2186,6 +2193,11 @@ function SmartChatMsg:CreateSettingsPanel()
             })
             break
         end
+    end
+    if CALLBACK_MANAGER and CALLBACK_MANAGER.RegisterCallback then
+        CALLBACK_MANAGER:RegisterCallback("LAM-PanelControlsCreated", function(panel)
+            if panel==self.settings.panel then self:RefreshEventTimingExpansion() end
+        end)
     end
     LAM2:RegisterOptionControls("SmartChatMsgOptionsPanel", optionsTable)
 end

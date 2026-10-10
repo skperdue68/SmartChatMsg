@@ -1,5 +1,22 @@
 SmartChatMsg = SmartChatMsg or {}
 
+-- Open once per selected event configuration; ordinary refreshes preserve a
+-- user's manual collapse. LAM creates controls asynchronously.
+function SmartChatMsg:RefreshEventTimingExpansion()
+    local control=_G.SCM_EventTimingSubmenu
+    if not control then return end
+    local draft=self:GetScheduleEditorDraft()
+    local scheduled=self:IsMessagesSelectionComplete() and self:GetGuildRunAt(self.savedVars.selectedMessagesCommand,self:GetSelectedGuildNameForMessages())=="SCHEDULED"
+    local selection=tostring(self.scheduleEditor.key)..":"..tostring(draft.mode)..":"..tostring(scheduled)
+    if draft.mode=="EVENT" and scheduled and control.disabled then return end
+    if self.eventTimingExpansionSelection==selection then return end
+    self.eventTimingExpansionSelection=selection
+    if draft.mode=="EVENT" and scheduled and not control.open then
+        control.open=true
+        control.animation:PlayFromStart()
+    end
+end
+
 local function copy(v)
     if type(v)~="table" then return v end
     local r={}; for k,item in pairs(v) do r[k]=copy(item) end; return r
@@ -62,6 +79,65 @@ function SmartChatMsg:GetScheduleEditorDraft()
         self.scheduleEditor={key=key,source=source,draft=d}
     end
     return self.scheduleEditor.draft,id,guild
+end
+
+-- Preview contexts are explicit: never replace ESO's clock or stored settings.
+function SmartChatMsg:GetMessagePreviewContext(entry,phase)
+    local schedule=self:GetGuildSchedule(entry.commandId,entry.guildName)
+    local selected=self.savedVars.selectedMessagesCommand==entry.commandId and self:GetSelectedGuildNameForMessages()==entry.guildName
+    if selected and (schedule or self:GetGuildRunAt(entry.commandId,entry.guildName)=="SCHEDULED") then
+        local reason
+        schedule,reason=self:NormalizeSchedule(self:GetScheduleEditorDraft())
+        if not schedule then return nil,reason end
+    end
+    if not schedule then
+        if phase then return nil,"Configure the schedule's dates and times first." end
+        return nil
+    end
+    -- Normal testing uses today's actual clock; phase testing pins one occurrence.
+    local occurrence=self:GetScheduleOccurrence(schedule,GetTimeStamp()) or self:BuildScheduleOccurrence(schedule,schedule.eventAtUtc)
+    if not occurrence then return nil,"No event occurrence is available to preview." end
+    local context={schedule=schedule,occurrence=occurrence,now=GetTimeStamp(),phase=phase}
+    if not phase then return context end
+    local first,last=occurrence.startsAtUtc,occurrence.endsAtUtc
+    if schedule.mode=="EVENT" then
+        local event=occurrence.eventAtUtc
+        local parts=self:GetScheduleParts(event,schedule)
+        local midnight=self:ParseScheduleDateTime(string.format("%04d-%02d-%02d",parts.year,parts.month,parts.day),"12:00 AM",nil,schedule)
+        local soon=schedule.startingSoonEnabled and event-schedule.startingSoonMinutes*60 or event
+        if phase=="BEFORE" then
+            last=math.min(midnight,soon)
+            -- Prefer one calendar day before the event, handling DST correctly.
+            -- UTC civil dates avoid depending on the player's computer timezone.
+            local previous=os.date("!*t",event+self:GetTimeZoneUtcOffset(event,schedule.timeZone)*3600-86400)
+            local preferred=self:ParseScheduleDateTime(string.format("%04d-%02d-%02d",previous.year,previous.month,previous.day),string.format("%02d:%02d %s",parts.hour%12==0 and 12 or parts.hour%12,parts.min,parts.hour>=12 and "PM" or "AM"),nil,schedule)
+            context.now=math.max(first,math.min(preferred or first,last-1))
+        elseif phase=="DAY" then first,last=math.max(first,midnight),math.min(soon,event)
+        elseif phase=="SOON" then
+            if not schedule.startingSoonEnabled then return nil,"Enable Starting soon to preview that phase." end
+            first,last=math.max(first,soon),event
+        elseif phase=="LIVE" then first=event
+        else return nil,"Choose a valid event phase." end
+    elseif phase~="ANY" then return nil,"This schedule has no event phases." end
+    if first>=last then return nil,"That phase has no time in this promotion window. Adjust the timing to preview it." end
+    if phase~="BEFORE" then context.now=first+math.floor((last-first)/2) end
+    return context
+end
+
+function SmartChatMsg:TestMessagePreview(messageId,phase)
+    local entry
+    for _,item in ipairs(self.savedVars.messages or {}) do if item.id==messageId then entry=item;break end end
+    if not entry then self:AddLocalChatMessage("[SmartChatMsg] Test unavailable: message no longer exists.");return nil end
+    local context,reason=self:GetMessagePreviewContext(entry,phase)
+    if reason then self:AddLocalChatMessage("[SmartChatMsg] Test unavailable: "..reason);return nil end
+    local text=self.settings and self.settings.GetEffectiveMessageText and self.settings:GetEffectiveMessageText(entry) or entry.text
+    local output=self:ApplyMessageSubstitutions(text,entry.commandId,entry.guildName,context)
+    local labels={BEFORE="Before event day",DAY="Event day",SOON="Starting soon",LIVE="Until end",ANY="While active"}
+    local label=phase and labels[phase] or "Current time"
+    local at=context and self:FormatScheduleDateTime(context.now,context.schedule) or self:FormatZonedDateTime(GetTimeStamp(),self:GetGuildSchedulingTimeZone(entry.guildName))
+    self:AddLocalChatMessage("[SmartChatMsg] Message test — "..label.." — "..at)
+    self:AddLocalChatMessage(output)
+    return output,context
 end
 
 function SmartChatMsg:GetScheduleMessagePhaseText(messageId,schedule)
@@ -221,6 +297,15 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
             row.label:SetHandler("OnMouseWheel",wheel)
             control.scheduleRows[i]=row
         end
+        row.label:SetHandler("OnMouseUp",function(_,button,upInside)
+            if button==MOUSE_BUTTON_INDEX_LEFT and upInside then self:TestMessagePreview(choice.messageId,phase) end
+        end)
+        row.label:SetHandler("OnMouseEnter",function(label)
+            label:SetColor(1,0.85,0.35,1)
+            InitializeTooltip(InformationTooltip,label,TOP,0,8)
+            SetTooltipText(InformationTooltip,"Click to test this message in local chat using this phase's simulated time. The checkbox controls whether it is used.")
+        end)
+        row.label:SetHandler("OnMouseExit",function(label) label:SetColor(1,1,1,1);ClearTooltip(InformationTooltip) end)
         row.messageId=choice.messageId
         row:SetWidth(contentWidth)
         row.label:SetWidth(math.max(40,contentWidth-50))
@@ -270,9 +355,6 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
         row:SetHeight(height);positions[#positions+1]={id=choice.messageId,y=y,height=height}; y=y+height+6
         ZO_CheckButton_SetCheckState(row.check,choice.getFunc())
         ZO_CheckButton_SetToggleFunction(row.check,function(button) choice.setFunc(ZO_CheckButton_IsChecked(button)) end)
-        row.label:SetHandler("OnMouseUp",function()
-            local value=not choice.getFunc(); choice.setFunc(value)
-        end)
     end
     content:SetHeight(math.max(1,y))
     control:SetHeight(viewportHeight)
@@ -379,7 +461,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
     event[#event+1]=soonLead
     for _,entry in ipairs({{"WINDOW",window},{"REMINDER",reminder},{"EVENT",event}}) do
         local mode=entry[1]
-        controls[#controls+1]={type="submenu",name=({WINDOW="Window dates and times",REMINDER="First reminder date and time",EVENT="Event and promotion timing"})[mode],controls=entry[2],disabled=function() return draft().mode~=mode end}
+        controls[#controls+1]={type="submenu",reference=mode=="EVENT" and "SCM_EventTimingSubmenu" or nil,name=({WINDOW="Window dates and times",REMINDER="First reminder date and time",EVENT="Event and promotion timing"})[mode],controls=entry[2],disabled=function() return draft().mode~=mode end}
     end
     controls[#controls+1]=dropdown("Repeat schedule",repeatLabels,repeatValues,"recurrence")
     local pattern=dropdown("Special event pattern",{"None","Faction rotation","Last event of month"},{"NONE","FACTION_ROTATION","MONTH_FINAL"},"specialPattern")
@@ -428,7 +510,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
     controls[#controls+1]={type="submenu",name="Message delivery",controls={dropdown("Delivery",{"Repeat while active","On zone arrival"},{"REPEAT","ZONE"},"delivery"),number("Message interval (minutes)","intervalMinutes")},disabled=function() return draft().mode=="REMINDER" end}
     controls[#controls+1]={type="description",text=function()
         if draft().mode~="EVENT" then return "Choose several messages to select one at random." end
-        return "Choose messages for each part of promotion. One eligible message is selected at random. Event-day promotion starts at midnight in your scheduling timezone; live promotion starts at the event time. %eventdate%, %eventtime%, and %eventwhen% use each occurrence."
+        return "Choose messages for each part of promotion. One eligible message is selected at random. Click message text to test it in local chat for that phase. Event-day promotion starts at midnight in your scheduling timezone; live promotion starts at the event time. %eventdate%, %eventtime%, and %eventwhen% use each occurrence."
     end}
     local phaseLabels={ANY="Messages",BEFORE="Before event day",DAY="On event day",SOON="Starting soon",LIVE="From event start until promotion ends"}
     local onceLabels={BEFORE="Prepare only once before event day",DAY="Prepare only once on event day",SOON="Prepare only once during Starting soon",LIVE="Prepare only once when event starts"}

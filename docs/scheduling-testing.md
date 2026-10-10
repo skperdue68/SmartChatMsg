@@ -228,3 +228,13 @@ Pattern settings, order, block length and message groups are included in setting
 export/import. Local locked messages keep their personal group and phase choices.
 Incoming matching resolves %eventfaction% to the expected occurrence's faction.
 Changing to a window/non-repeating schedule turns the special pattern off.
+
+## Local message previews
+
+- Test an ordinary message beside Lock: substitutions appear in local chat; the input stays unchanged.
+- Edit message text without saving and test it: the edited text is used.
+- Edit an event time without saving and click its message text in each phase: the local heading shows a time inside that phase, and event tokens/countdowns agree with it.
+- Confirm clicking the text does not change its checkbox; use the checkbox to enable/disable the message.
+- Test a recurring event after the anchor date and around a DST transition.
+- Test a phase excluded by the promotion window: a clear local notice appears.
+- Confirm tests leave cooldowns, schedule activation, once-per-phase flags, and pending chat text unchanged.

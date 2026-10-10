@@ -133,6 +133,22 @@ Under each phase, click the **Group: Regular events** button beneath a message t
 
 The final event uses its month-final pool throughout promotion, including promotion that starts in the previous month. If no messages for the combination are marked month-final, regular messages are used instead. Once a special pool exists, its phase checkboxes are respected; an empty special phase intentionally has no messages. Regular and month-final messages can each have several random variations.
 
+### Test a message before using it
+
+Click **Test** beside a message's **Lock / Unlock** button to display the parsed message in your local chat using the current time. This uses the same substitutions and countdown parser as delivery, including unsaved message edits. For the selected scheduled command/guild, unsaved schedule edits are used too.
+
+In a scheduling phase, click the **message text** to test that specific message at a simulated time inside the phase. The checkbox still controls inclusion; clicking the text does not toggle it. A local heading shows the phase and simulated date/time, followed by the completed message:
+
+- **Before event day:** normally the event's clock time on the previous calendar day, adjusted to fit the configured phase.
+- **Event day:** midway through the eligible event-day period before Starting soon.
+- **Starting soon:** midway through the configured Starting soon period.
+- **Until end:** midway between the event start and promotion end.
+- **While active:** midway through a window or reminder occurrence.
+
+All event substitutions and countdowns share that simulated clock and the same occurrence, including recurrence and faction rotation. If a phase has no time in the configured promotion window, the test explains that instead. Configure valid dates and times before testing scheduled messages. A message need not be enabled for that phase to test it.
+
+Tests appear only for you through `SmartChatMsg:AddLocalChatMessage`. They do not place text in the chat input, send anything, consume a once-per-phase delivery, enable a schedule, or reset cooldowns.
+
 ## Message substitutions and countdowns
 
 | Substitution | Meaning |
@@ -173,3 +189,5 @@ Use **Import / Export Settings** for full settings transfer. It includes command
 Create a dedicated test command and one message, choose your guild and output channel, and set Run At to Scheduled. For a simple test, choose Run during a window, starting now and ending 15 minutes later, with a five-minute message interval. Save and activate. Wait for the three-minute startup hold if you just loaded the addon, leave chat input empty, and watch `/scm status`. Press Enter when a message is prepared. A housing zone is convenient for a Zone test; use guild chat when testing guild-channel matching.
 
 `/scm resetcooldowns` clears existing cooldowns for testing, including once-completion deadlines. It preserves schedule dates, paused/disabled states, and the startup delay. Other schedules' spacing is also reset. A future or expired schedule remains future or expired; resetting cooldowns does not move its dates.
+
+When you select **Promote an event**, **Event and promotion timing** opens automatically so the event date and time are visible. You can collapse it yourself; ordinary settings refreshes keep that choice. Selecting a different event configuration opens its timing section again.

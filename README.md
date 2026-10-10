@@ -1,8 +1,10 @@
-# SmartChatMsg (v2.0.3)
+# SmartChatMsg (v2.0.5)
 
-**[Open the standalone HTML help guide v2.0.3](SmartChatMsg_Help_Guide_v2.0.3.html)** (included with the addon).
+**[Open the standalone HTML help guide v2.0.5](SmartChatMsg_Help_Guide_v2.0.5.html)** (included with the addon).
 
 **[Read the complete SmartChatMsg 2.0 user guide](docs/SmartChatMsg-2.0.md)** for all configuration options, examples, timezone changes, recurrence, message groups, and phase behavior.
+
+**2.0.5:** Test messages locally using the normal parser and substitutions. The Test button beside Lock uses the current time; clicking message text in a phase simulates a time inside that phase. Previews include unsaved edits and do not send, change cooldowns, or change phase selections. Event and promotion timing opens automatically when selecting an event configuration.
 
 **2.0.3:** Group (/g) is available as an output channel, including scheduled delivery, incoming cooldown matching, status labels, and settings transfer. The standalone HTML guide now matches the addon version and includes all current scheduling features.
 

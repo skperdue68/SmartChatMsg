@@ -50,3 +50,15 @@ local first=item.height
 pool.width=300;s:RefreshScheduleMessagePool(pool,'DAY')
 assert(item.height>first,'narrower viewport must remeasure all lines')
 print('message clarity checks passed')
+
+local tested
+s.TestMessagePreview=function(_,id,phase) tested={id=id,phase=phase} end
+MOUSE_BUTTON_INDEX_LEFT=1
+item.label.handlers.OnMouseUp(item.label,1,true)
+eq(tested.id,"a");eq(tested.phase,"DAY")
+tested=nil
+item.label.handlers.OnMouseUp(item.label,2,true)
+eq(tested,nil,"right click must not run a test")
+item.label.handlers.OnMouseUp(item.label,1,false)
+eq(tested,nil,"release outside must not run a test")
+print("phase message links test the displayed row without toggling selection")
