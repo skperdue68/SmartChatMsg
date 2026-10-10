@@ -36,6 +36,8 @@ local LABEL_WIDTH = 180
 local ROW_WIDTH = 700
 local MESSAGE_BOX_WIDTH = 360
 local MESSAGE_BOX_HEIGHT = 90
+local MESSAGE_EDITOR_TOP_INSET = 30
+local MESSAGE_EDITOR_BOTTOM_GAP = 30
 local CHECKBOX_WIDTH = 28
 
 local USEFUL_SOUND_KEYS = {
@@ -1369,6 +1371,13 @@ end
 local function BuildMessagesEditor(parent)
     local container = WINDOW_MANAGER:CreateControl("SCM_MessagesEditorContainer", parent, CT_CONTROL)
     container:SetDimensions(ROW_WIDTH, 0)
+    -- LAM custom controls do not call refreshFunc during creation. Since this
+    -- holder uses explicit sizing, every editor refresh must size its parent
+    -- as well, before the following Scheduling submenu is anchored.
+    local function SetEditorHeight(height)
+        container:SetHeight(height)
+        parent:SetHeight(height>0 and (MESSAGE_EDITOR_TOP_INSET+height+MESSAGE_EDITOR_BOTTOM_GAP) or 0)
+    end
 
     local countLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesEditorCountLabel", container, CT_LABEL)
     countLabel:SetFont("ZoFontGame")
@@ -1692,7 +1701,7 @@ local function BuildMessagesEditor(parent)
             resetButton:SetHidden(true)
             container:SetHidden(true)
             rowsContainer:SetHeight(0)
-            container:SetHeight(0)
+            SetEditorHeight(0)
             return
         end
 
@@ -1736,7 +1745,7 @@ local function BuildMessagesEditor(parent)
         end
 
         totalHeight = totalHeight + 30 + 4 + MESSAGE_BOX_HEIGHT
-        container:SetHeight(totalHeight)
+        SetEditorHeight(totalHeight)
     end
 
     container.RefreshEditor = RefreshEditor
@@ -2136,18 +2145,11 @@ function SmartChatMsg:CreateSettingsPanel()
                         control:SetResizeToFitDescendents(false)
                         control:SetHeight(0)
                         messagesEditorHolder = BuildMessagesEditor(control)
-                        messagesEditorHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 30)
+                        messagesEditorHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, MESSAGE_EDITOR_TOP_INSET)
                     end,
                     refreshFunc = function(control)
                         if messagesEditorHolder and messagesEditorHolder.RefreshEditor then
                             messagesEditorHolder:RefreshEditor()
-
-                            local hasChannel = SmartChatMsg:GetSelectedMessagesChannel() ~= "Select a Chat Channel"
-                            local shouldShow = SmartChatMsg:IsMessagesSelectionComplete() and hasChannel
-
-                            -- The editor is anchored 30px below this holder.
-                            -- Reserve that inset and a gap for the following submenu.
-                            control:SetHeight(shouldShow and (30 + messagesEditorHolder:GetHeight() + 30) or 0)
                         else
                             control:SetHeight(0)
                         end
