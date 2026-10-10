@@ -240,3 +240,9 @@ Changing to a window/non-repeating schedule turns the special pattern off.
 - Confirm tests leave cooldowns, schedule activation, once-per-phase flags, and pending chat text unchanged.
 
 - From a Before event day row, click **Event day** beside Used: the heading must say Event day, `%eventwhen%` must say today, and the countdown must be shorter than one day. Repeat for each phase link; verify the links wrap within the border at narrow widths.
+
+## Initial settings layout
+
+- Open settings after a UI reload with a selected command/guild and many saved messages, without first changing any settings. Scheduling must appear below all saved rows and the Enter Message box.
+- Add or remove messages, change the selected command/guild, and view a combination with no messages. Scheduling must remain below the entry box.
+- Clear and restore the selection: the editor must hide and reappear with the correct reserved height. Verify the phase preview links still work.

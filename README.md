@@ -1,8 +1,10 @@
-# SmartChatMsg (v2.0.6)
+# SmartChatMsg (v2.0.7)
 
-**[Open the standalone HTML help guide v2.0.6](SmartChatMsg_Help_Guide_v2.0.6.html)** (included with the addon).
+**[Open the standalone HTML help guide v2.0.7](SmartChatMsg_Help_Guide_v2.0.7.html)** (included with the addon).
 
 **[Read the complete SmartChatMsg 2.0 user guide](docs/SmartChatMsg-2.0.md)** for all configuration options, examples, timezone changes, recurrence, message groups, and phase behavior.
+
+**2.0.7:** Fixes Scheduling overlapping saved messages on first opening settings. The message editor reserves its full height immediately and stays synchronized as messages change.
 
 **2.0.6:** Assigned phase names are separate preview links: clicking Event day tests Event day, even from a Before event day message row. The links wrap to fit the row.
 
