@@ -191,3 +191,21 @@ Create a dedicated test command and one message, choose your guild and output ch
 `/scm resetcooldowns` clears existing cooldowns for testing, including once-completion deadlines. It preserves schedule dates, paused/disabled states, and the startup delay. Other schedules' spacing is also reset. A future or expired schedule remains future or expired; resetting cooldowns does not move its dates.
 
 When you select **Promote an event**, **Event and promotion timing** opens automatically so the event date and time are visible. You can collapse it yourself; ordinary settings refreshes keep that choice. Selecting a different event configuration opens its timing section again.
+
+## Multiple event deadlines and countdowns
+
+Use `%eventtime%` for the event clock time and `%eventcountdown%` for its remaining duration. Add an offset to either token using a whole number of minutes (`m`), hours (`h`), or days (`d`): `%eventtime-30m%`, `%eventtime-2h%`, `%eventcountdown-3h%`, `%eventcountdown-1d%`, or `%eventtime+30m%`. Tokens are case-insensitive. Offsets are elapsed durations: `-1d` is exactly 24 hours, including across DST. The offset time is displayed in the guild scheduling timezone using the abbreviation applicable to that instant.
+
+For an 8 PM raffle whose ticket sales close at 7 PM, use:
+
+`The raffle is %eventwhen% at %eventtime% (%eventcountdown%). Ticket sales close at %eventtime-1h% (%eventcountdown-1h%).`
+
+At 5 PM this reads: **The raffle is today at 08:00 PM EDT (3h). Ticket sales close at 07:00 PM EDT (2h).** The two countdowns use the same scheduled occurrence and clock, including local phase previews. Each is formatted as a compact duration, `soon` when very close, `now` at the deadline, or `passed` after it. Put parentheses in the template if you want them.
+
+When any valid explicit `%eventcountdown%` token is present, automatic embedded-time countdown insertion is suppressed for the entire message to avoid duplicate or misplaced countdowns. Templates without explicit countdowns keep their existing automatic behavior; an offset event time receives a countdown to that offset deadline. Unknown/malformed tokens remain literal. Event tokens require a schedule for the command/guild. Incoming matching accepts changing explicit countdowns but still requires the event and offset clock times to match. Full export/import preserves these templates without any additional configuration.
+
+For the raffle, set **Starting soon begins** to **60 minutes**. Include ticket-sales messages in Before event day and On event day, and use sales-closed messages in Starting soon and Until end.
+
+## Cooldowns when an event phase changes
+
+When an event enters a new phase, announcements sent or observed in the previous phase no longer delay its first message. This applies to repeat, peer-message and zone cooldowns and also works after a UI reload. New observations or sends in the current phase start normal cooldowns. Last-send history is preserved; once-per-phase completion remains independent for each phase. Startup delay, spacing between different schedules, busy-input protection and ordinary On Demand cooldowns retain their behavior.

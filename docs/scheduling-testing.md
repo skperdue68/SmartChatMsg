@@ -246,3 +246,9 @@ Changing to a window/non-repeating schedule turns the special pattern off.
 - Open settings after a UI reload with a selected command/guild and many saved messages, without first changing any settings. Scheduling must appear below all saved rows and the Enter Message box.
 - Add or remove messages, change the selected command/guild, and view a combination with no messages. Scheduling must remain below the entry box.
 - Clear and restore the selection: the editor must hide and reappear with the correct reserved height. Verify the phase preview links still work.
+
+## Event deadlines and phase cooldowns
+
+- Test a template with event time/countdown and a -1h cutoff time/countdown. Verify two independent durations and no extra automatic countdown. Test other offsets, case changes, recurring dates and DST boundaries.
+- Simulate another player sending that output: changing both countdowns should match; changing either clock time or message wording should not.
+- Observe/send near a phase boundary, then enter the next phase: the old cooldown must not delay the new phase, while a fresh matching observation should. Check Repeat and On zone arrival, reload behavior and startup/shared pacing.

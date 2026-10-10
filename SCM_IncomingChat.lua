@@ -104,11 +104,18 @@ function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName, commandId
     local source = tostring(template or "")
     -- Avoid interpreting a literal marker supplied by a user as a wildcard.
     if zo_strlower(source):find("scmmatchfield", 1, true) then return nil end
-    source = source:gsub("%%([%a]+)%%", function(token)
+    source = source:gsub("%%([%a][%w+%-]*)%%", function(token)
         token = zo_strlower(token)
         if token == "guild" then return guildName end
         if token == "time" or token == "timeofday" or token == "greeting" then return field("greeting") end
         if token == "zone" then return field("zone") end
+        local eventKind=self:ParseScheduledEventToken(token)
+        if commandId and eventKind=="eventcountdown" and self:GetGuildSchedule(commandId,guildName) then
+            return field("eventcountdown")
+        end
+        if commandId and eventKind=="eventtime" then
+            return self:GetScheduledEventTokenValue(token,commandId,guildName) or "%"..token.."%"
+        end
         if commandId and (token == "eventdate" or token == "eventtime" or token == "eventfaction") then
             return self:GetScheduledEventTokenValue(token,commandId,guildName) or "%"..token.."%"
         end
@@ -120,10 +127,15 @@ function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName, commandId
         end
         return "%" .. token .. "%"
     end)
-    local _, timeDetails = self:InsertCountdownIntoMessageText(source)
+    local timeDetails
+    local explicitCountdown=self:HasExplicitEventCountdown(template)
+    if not explicitCountdown then
+        local ignored
+        ignored,timeDetails=self:InsertCountdownIntoMessageText(source)
+    end
     -- Older clients may annotate a bare time even though the current formatter
     -- requires an explicit timezone. Match only additions at that detected time.
-    if not timeDetails then
+    if not explicitCountdown and not timeDetails then
         local detected = self:AnalyzeEmbeddedTime(source)
         if detected and not detected.explicitTimezone then
             timeDetails = {
@@ -188,10 +200,12 @@ function SmartChatMsg:MatchesIncomingMessage(entry, guildName, normalizedText)
             if value ~= "morning" and value ~= "afternoon" and value ~= "evening" then return false end
         elseif capture.kind == "zone" then
             if not self:IsKnownIncomingZoneName(value) then return false end
+        elseif capture.kind=="eventcountdown" then
+            if value~="now" and value~="passed" and not self:IsGeneratedCountdownText(value,"soon") then return false end
         elseif not self:IsGeneratedTimeAddition(value, capture.details) then
             return false
         end
-        if capture.kind ~= "countdown" then
+        if capture.kind ~= "countdown" and capture.kind~="eventcountdown" then
             if substitutions[capture.kind] and substitutions[capture.kind] ~= value then return false end
             substitutions[capture.kind] = value
         end
@@ -217,10 +231,11 @@ function SmartChatMsg:GetObservedChatCooldownEndsAt(commandId, guildName, zoneId
     local settings = self:GetCommandGuildSettings(commandId, guildName, false)
     local usages = settings and settings.observedChatCooldowns
     if type(usages) ~= "table" then return nil end
+    local phaseStart=self:GetScheduledCooldownStart(commandId,guildName)
     local endsAt
     for _, scope in ipairs({ "*", tostring(zoneId) }) do
         local usage = usages[scope]
-        if type(usage) == "table" then
+        if type(usage) == "table" and (not phaseStart or usage.at>=phaseStart) then
             local candidate = usage.at + cooldownSeconds + usage.delaySeconds
             endsAt = endsAt and math.max(endsAt, candidate) or candidate
         end
