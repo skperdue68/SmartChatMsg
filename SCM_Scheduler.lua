@@ -469,19 +469,20 @@ function SmartChatMsg:GetScheduleStatusText(commandId,guildName)
     return text
 end
 
-function SmartChatMsg:GetScheduledEventTokenValue(token,commandId,guildName)
-    local schedule=self:GetGuildSchedule(commandId,guildName)
+function SmartChatMsg:GetScheduledEventTokenValue(token,commandId,guildName,context)
+    local schedule=context and context.schedule or self:GetGuildSchedule(commandId,guildName)
     if not schedule then return nil end
+    local now=context and context.now or GetTimeStamp()
+    local occurrence=context and context.occurrence or self:GetScheduleOccurrence(schedule,now)
     if token=="eventfaction" then
-        local occurrence=self:GetScheduleOccurrence(schedule,GetTimeStamp())
         return occurrence and self:GetScheduleFactionName(schedule,occurrence.eventAtUtc)
     end
-    schedule=self:GetScheduleOccurrence(schedule,GetTimeStamp()) or schedule
+    schedule=occurrence or schedule
     local event=self:GetScheduleParts(schedule.eventAtUtc,schedule)
     if token=="eventdate" then return string.format("%02d/%02d/%04d",event.month,event.day,event.year) end
     if token=="eventtime" then return self:FormatScheduleDateTime(schedule.eventAtUtc,schedule):sub(12) end
     if token=="eventwhen" then
-        local current=self:GetScheduleParts(GetTimeStamp(),schedule)
+        local current=self:GetScheduleParts(now,schedule)
         local day=self:ParseScheduleDateTime(string.format("%04d-%02d-%02d",current.year,current.month,current.day),"12:00 AM",nil,schedule)
         if current.year==event.year and current.yday==event.yday then return "today" end
         -- Compare civil dates through noon UTC to avoid a 23/25-hour DST day.
@@ -492,8 +493,8 @@ function SmartChatMsg:GetScheduledEventTokenValue(token,commandId,guildName)
     end
 end
 
-function SmartChatMsg:ResolveScheduledEventTokens(text,commandId,guildName)
+function SmartChatMsg:ResolveScheduledEventTokens(text,commandId,guildName,context)
     return tostring(text or ""):gsub("%%([%a]+)%%",function(token)
-        return self:GetScheduledEventTokenValue(zo_strlower(token),commandId,guildName) or "%"..token.."%"
+        return self:GetScheduledEventTokenValue(zo_strlower(token),commandId,guildName,context) or "%"..token.."%"
     end)
 end

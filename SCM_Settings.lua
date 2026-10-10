@@ -1592,6 +1592,12 @@ local function BuildMessagesEditor(parent)
             RefreshRowState(rowData)
         end)
 
+        local testButton=WINDOW_MANAGER:CreateControlFromVirtual(string.format("SCM_SavedMessageTestButton%d",controlId),row,"ZO_DefaultButton")
+        testButton:SetDimensions(70,24)
+        testButton:SetAnchor(LEFT,lockButton,RIGHT,6,0)
+        testButton:SetText("Test")
+        testButton:SetHandler("OnClicked",function() SmartChatMsg:TestMessagePreview(entry.id) end)
+
         editBox:SetHandler("OnTextChanged", function(self)
             local text = self:GetText() or ""
 

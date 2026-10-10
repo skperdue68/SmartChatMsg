@@ -142,8 +142,8 @@ function SmartChatMsg:BuildSlashCommandName(commandName)
     return "/" .. cleaned
 end
 
-function SmartChatMsg:GetCurrentTimeTokenValue()
-    local hour = tonumber(os.date("%H")) or 12
+function SmartChatMsg:GetCurrentTimeTokenValue(nowEpoch)
+    local hour = tonumber(os.date("%H",nowEpoch)) or 12
     if hour < 12 then
         return "morning"
     elseif hour < 18 then
@@ -1180,15 +1180,15 @@ function SmartChatMsg:GetCountdownUntilEmbeddedTimeText(text)
     return countdownText, metadata
 end
 
-function SmartChatMsg:InsertCountdownPreservingTemplate(text,eventAtUtc)
+function SmartChatMsg:InsertCountdownPreservingTemplate(text,eventAtUtc,nowEpoch)
     local source = tostring(text or "")
-    local timeMatch, _, _, sourceTz = self:FindEmbeddedTimeDetails(source)
+    local timeMatch, _, _, sourceTz = self:FindEmbeddedTimeDetails(source,nowEpoch)
     if not timeMatch or timeMatch == "" then
         self:DebugLog("Countdown debug: message text left unchanged because no time was detected")
         return source
     end
 
-    local countdownText, countdownMeta = self:GetCountdownUntilEmbeddedTimeText(source,eventAtUtc)
+    local countdownText, countdownMeta = self:GetCountdownUntilEmbeddedTimeText(source,eventAtUtc,nowEpoch)
     if not countdownText or countdownText == "" then
         self:DebugLog("Countdown debug: message text left unchanged because countdown text could not be computed")
         return source
@@ -4699,8 +4699,8 @@ function SmartChatMsg:EmitCountdownDebugResult(label, input, best, all)
     SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Protected ESO Links: " .. tostring(best.protectedEsoLinks or 0))
 end
 
-function SmartChatMsg:FindEmbeddedTimeDetails(text)
-    local best = self:AnalyzeEmbeddedTime(text)
+function SmartChatMsg:FindEmbeddedTimeDetails(text,nowEpoch)
+    local best = self:AnalyzeEmbeddedTime(text,nil,nowEpoch and os.date("!*t",nowEpoch))
     if not best then return nil, nil, nil, nil end
     return best.rawMatch, best.resolvedHour24, best.resolvedMinute24, best.timezone
 end
@@ -4740,11 +4740,11 @@ function SmartChatMsg:GetEmbeddedDayOffset(text, nowEpoch, timeMatch)
     return 0
 end
 
-function SmartChatMsg:GetCountdownUntilEmbeddedTimeText(text,eventAtUtc)
-    local best = self:AnalyzeEmbeddedTime(text)
+function SmartChatMsg:GetCountdownUntilEmbeddedTimeText(text,eventAtUtc,nowEpoch)
+    local best = self:AnalyzeEmbeddedTime(text,nil,nowEpoch and os.date("!*t",nowEpoch))
     if best and type(eventAtUtc)=="number" then
         best.suppressCountdown=false
-        best.aboutString="("..scm_format_about_duration(math.floor((eventAtUtc-GetTimeStamp())/60))..")"
+        best.aboutString="("..scm_format_about_duration(math.floor((eventAtUtc-(nowEpoch or GetTimeStamp()))/60))..")"
     end
     if not best or best.suppressCountdown then return nil, nil end
     local countdownText = best.aboutString and best.aboutString:gsub("^%(", ""):gsub("%)$", "") or nil
@@ -4759,26 +4759,26 @@ function SmartChatMsg:GetCountdownUntilEmbeddedTimeText(text,eventAtUtc)
     return countdownText, metadata
 end
 
-function SmartChatMsg:InsertCountdownIntoMessageText(text,eventAtUtc)
+function SmartChatMsg:InsertCountdownIntoMessageText(text,eventAtUtc,nowEpoch)
     local source = tostring(text or "")
-    local best, all = self:AnalyzeEmbeddedTime(source)
+    local best, all = self:AnalyzeEmbeddedTime(source,nil,nowEpoch and os.date("!*t",nowEpoch))
     if self.debugEnabled then
         self:EmitCountdownDebugResult("Countdown Debug", source, best, all)
     end
     -- Use main's improved parser, but preserve the template's literal wording
     -- and expose countdown insertion metadata for incoming peer matching.
-    return self:InsertCountdownPreservingTemplate(source,eventAtUtc)
+    return self:InsertCountdownPreservingTemplate(source,eventAtUtc,nowEpoch)
 end
 
-function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName)
+function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName, context)
     local eventAtUtc
     if zo_strlower(tostring(text or "")):find("%eventtime%",1,true) then
-        local schedule=self:GetGuildSchedule(commandId,guildName)
-        local occurrence=schedule and self:GetScheduleOccurrence(schedule,GetTimeStamp())
+        local schedule=context and context.schedule or self:GetGuildSchedule(commandId,guildName)
+        local occurrence=context and context.occurrence or (schedule and self:GetScheduleOccurrence(schedule,GetTimeStamp()))
         eventAtUtc=occurrence and occurrence.eventAtUtc
     end
-    local result = self:ResolveScheduledEventTokens(text,commandId,guildName)
-    local timeOfDay = self:GetCurrentTimeTokenValue()
+    local result = self:ResolveScheduledEventTokens(text,commandId,guildName,context)
+    local timeOfDay = self:GetCurrentTimeTokenValue(context and context.now)
     local substitutions = {
         ["timeofday"] = timeOfDay,
         ["greeting"] = timeOfDay,
@@ -4793,7 +4793,7 @@ function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName)
         if replacement ~= nil and replacement ~= "" then return replacement end
         return "%" .. tostring(tokenName or "") .. "%"
     end)
-    result = self:InsertCountdownIntoMessageText(result,eventAtUtc)
+    result = self:InsertCountdownIntoMessageText(result,eventAtUtc,context and context.now)
     return result
 end
 
