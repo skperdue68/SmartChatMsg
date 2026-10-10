@@ -2721,7 +2721,8 @@ function SmartChatMsg:GetAutoPopulateCooldownEndsAt(commandId, guildName, zoneId
     local lastSentAt = self:GetGuildAutoPopulateLastSentAt(commandId, guildName, zoneId)
     local cooldownMinutes = self:GetGuildAutoPopulateCooldownMinutes(commandId, guildName)
     local cooldownSeconds = (cooldownMinutes or 60) * 60
-    local ownEndsAt = lastSentAt and (lastSentAt + cooldownSeconds) or nil
+    local phaseStart=self:GetScheduledCooldownStart(commandId,guildName)
+    local ownEndsAt = lastSentAt and (not phaseStart or lastSentAt>=phaseStart) and (lastSentAt + cooldownSeconds) or nil
     local observedEndsAt = self:GetObservedChatCooldownEndsAt(commandId, guildName, zoneId, cooldownSeconds)
     if ownEndsAt and observedEndsAt then
         return math.max(ownEndsAt, observedEndsAt)
@@ -3874,6 +3875,14 @@ local function scm_format_about_duration(totalMinutes)
     return body
 end
 
+-- Explicit countdowns share the existing compact duration display, but
+-- describe a reached deadline instead of showing a future countdown.
+function SmartChatMsg:FormatEventCountdown(seconds)
+    if seconds<0 then return "passed" end
+    if seconds==0 then return "now" end
+    return scm_format_about_duration(math.ceil(seconds/60))
+end
+
 local function scm_has_digit_before(text, s)
     return s > 1 and text:sub(s - 1, s - 1):match("%d") ~= nil
 end
@@ -4772,10 +4781,15 @@ end
 
 function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName, context)
     local eventAtUtc
-    if zo_strlower(tostring(text or "")):find("%eventtime%",1,true) then
+    local eventOffset
+    for token in tostring(text or ""):gmatch("%%([%a][%w+%-]*)%%") do
+        local kind,offset=self:ParseScheduledEventToken(token)
+        if kind=="eventtime" then eventOffset=offset;break end
+    end
+    if eventOffset then
         local schedule=context and context.schedule or self:GetGuildSchedule(commandId,guildName)
         local occurrence=context and context.occurrence or (schedule and self:GetScheduleOccurrence(schedule,GetTimeStamp()))
-        eventAtUtc=occurrence and occurrence.eventAtUtc
+        eventAtUtc=occurrence and occurrence.eventAtUtc+eventOffset
     end
     local result = self:ResolveScheduledEventTokens(text,commandId,guildName,context)
     local timeOfDay = self:GetCurrentTimeTokenValue(context and context.now)
@@ -4793,7 +4807,9 @@ function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName, cont
         if replacement ~= nil and replacement ~= "" then return replacement end
         return "%" .. tostring(tokenName or "") .. "%"
     end)
-    result = self:InsertCountdownIntoMessageText(result,eventAtUtc,context and context.now)
+    if not self:HasExplicitEventCountdown(text) then
+        result = self:InsertCountdownIntoMessageText(result,eventAtUtc,context and context.now)
+    end
     return result
 end
 
