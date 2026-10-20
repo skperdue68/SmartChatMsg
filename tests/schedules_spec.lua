@@ -1,5 +1,10 @@
 local f = dofile("tests/eso_fixture.lua")
 local scm, eq = f.scm, f.eq
+-- Date-sensitive parser expectations use the fixture clock, not today's date.
+local analyze=scm.AnalyzeEmbeddedTime
+scm.AnalyzeEmbeddedTime=function(self,text,zone,clock)
+    return analyze(self,text,zone,clock or os.date("!*t",GetTimeStamp()))
+end
 local tests = {}
 local function test(name, fn) tests[#tests + 1] = {name, fn} end
 local function draft()

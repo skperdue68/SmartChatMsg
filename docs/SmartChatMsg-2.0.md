@@ -209,3 +209,13 @@ For the raffle, set **Starting soon begins** to **60 minutes**. Include ticket-s
 ## Cooldowns when an event phase changes
 
 When an event enters a new phase, announcements sent or observed in the previous phase no longer delay its first message. This applies to repeat, peer-message and zone cooldowns and also works after a UI reload. New observations or sends in the current phase start normal cooldowns. Last-send history is preserved; once-per-phase completion remains independent for each phase. Startup delay, spacing between different schedules, busy-input protection and ordinary On Demand cooldowns retain their behavior.
+
+## Sharing settings with different guild-slot orders
+
+New full exports start with `SCM_EXPORT_V2` and identify guilds by name. The recipient can have the same guild in a different slot: a sender's Alphabet Mafia in slot 1 can become the recipient's slot 3. The default guild, message association, guild/officer output, last-used command guild parameters, schedules, active zone selection and guild timezone settings follow the matching name.
+
+Standalone `/g1` and `/o1` references inside saved message text are stored as named references in the export and restored to the recipient's appropriate `/gN` or `/oN`. Other channel references such as Group `/g`, URLs and longer numbers such as `/g10` are left unchanged. The named reference encoding is internal to the export; write normal message text in settings.
+
+If the recipient does not belong to a referenced guild, that record is skipped. Local chat reports its record type, command/message details and missing guild name. If a message mentions a second guild whose channel cannot be resolved, the message is skipped rather than redirected to another guild. Other valid records continue importing. Global command definitions have no guild slot and remain available. Existing personal locks keep their usual protection while their parent command exists.
+
+Older `SCM_EXPORT_V1` files remain readable. Where a named record identifies the sender's slot, it is mapped to the recipient's slot. A legacy slot-only reference with no reliable source guild name is skipped and explained in chat; it is never assumed to mean the recipient's same numbered slot. For best results, re-export using the updated addon. Both players need an addon version that supports V2 to exchange new exports. Import still replaces unlocked settings, so keep a backup first.

@@ -252,3 +252,10 @@ Changing to a window/non-repeating schedule turns the special pattern off.
 - Test a template with event time/countdown and a -1h cutoff time/countdown. Verify two independent durations and no extra automatic countdown. Test other offsets, case changes, recurring dates and DST boundaries.
 - Simulate another player sending that output: changing both countdowns should match; changing either clock time or message wording should not.
 - Observe/send near a phase boundary, then enter the next phase: the old cooldown must not delay the new phase, while a fresh matching observation should. Check Repeat and On zone arrival, reload behavior and startup/shared pacing.
+
+## Guild-name transfer
+
+- Export on an account with a guild in slot 1 and import on an account with it in slot 2 or 3. Check default guild, Startup/On Demand guild parameters, message guild selection, Guild and Officer output, schedules and timezones.
+- Include /g1 and /o2 in a message and confirm local references on the receiving account. Confirm /g, /g10 and URLs stay intact.
+- Import without the primary or a secondary referenced guild. Verify skipped-record notices include the command/message and missing guild; valid records still import.
+- Import an older V1 file with source name/slot pairs, then one with an unresolvable slot-only default. Verify name mapping or a skip notice, never an unrelated local guild. Check locked messages survive matching parent commands.
