@@ -422,7 +422,7 @@ function SmartChatMsg:UnescapeImportExportField(value)
     return text
 end
 
-function SmartChatMsg:BuildExportString()
+function SmartChatMsg:BuildSlotExportString()
     local lines = { "SCM_EXPORT_V1" }
 
     table.insert(lines, string.format("DEFAULT|%s", self:EscapeImportExportField(self.savedVars.defaultGuildIndex or "")))
@@ -605,7 +605,7 @@ function SmartChatMsg:ApplyImportedSettings(imported)
     return true
 end
 
-function SmartChatMsg:ImportSettingsFromString(rawText)
+function SmartChatMsg:ImportSlotSettingsFromString(rawText, transfer)
     local text = self:Trim(rawText or "")
     if text == "" then
         return false, "Paste exported settings first."
@@ -853,9 +853,14 @@ elseif recordType == "GUILDSETTING" then
         end
     end
 
+    if transfer then self:RemapImportedGuildSlots(imported,transfer) end
     local schedulesOk, schedulesError = self:ImportScheduleRecords(scheduleRecords, imported)
     if not schedulesOk then return false, schedulesError end
-    return self:ApplyImportedSettings(imported)
+    local ok,reason=self:ApplyImportedSettings(imported)
+    if ok and transfer then
+        for _,notice in ipairs(transfer.notices) do self:AddLocalChatMessage(notice) end
+    end
+    return ok,reason
 end
 
 function SmartChatMsg:GetCommands()
