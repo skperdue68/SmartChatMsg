@@ -1,0 +1,24 @@
+# ESO account/profile data copied into an addon checkout.
+# SmartChatMsg.lua at the repository root is source code; do not ignore it.
+SavedVariables/
+AddOnSettings.txt
+
+# Local runtime logs, temporary files and editor backups.
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# OS metadata.
+.DS_Store
+Thumbs.db
+[Dd]esktop.ini
+
+# Local Python test-runner cache files.
+__pycache__/
+*.pyc
+
+# Locally generated release archives (the shipped HTML guide stays tracked).
+/SmartChatMsg-*.zip
