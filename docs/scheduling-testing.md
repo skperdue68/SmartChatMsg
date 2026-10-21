@@ -259,3 +259,10 @@ Changing to a window/non-repeating schedule turns the special pattern off.
 - Include /g1 and /o2 in a message and confirm local references on the receiving account. Confirm /g, /g10 and URLs stay intact.
 - Import without the primary or a secondary referenced guild. Verify skipped-record notices include the command/message and missing guild; valid records still import.
 - Import an older V1 file with source name/slot pairs, then one with an unresolvable slot-only default. Verify name mapping or a skip notice, never an unrelated local guild. Check locked messages survive matching parent commands.
+
+## Retry an expired message
+
+- Let a prepared message time out without editing it. Run /scm retry: the same variation and output channel should return, with current substitutions and countdowns. Confirm usage changes only when you send.
+- Type another draft before retrying: it must be preserved and a local reason shown. Editing the original prepared text before timeout must not make that draft recoverable.
+- Test another timeout, confirmed send, deleted original message, paused schedule, phase exclusion, peer observation and startup/shared pacing. Old startup-queue callbacks must not run again.
+- Reload UI: retry should report no recoverable message for the new session.

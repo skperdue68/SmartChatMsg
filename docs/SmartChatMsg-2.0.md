@@ -219,3 +219,11 @@ Standalone `/g1` and `/o1` references inside saved message text are stored as na
 If the recipient does not belong to a referenced guild, that record is skipped. Local chat reports its record type, command/message details and missing guild name. If a message mentions a second guild whose channel cannot be resolved, the message is skipped rather than redirected to another guild. Other valid records continue importing. Global command definitions have no guild slot and remain available. Existing personal locks keep their usual protection while their parent command exists.
 
 Older `SCM_EXPORT_V1` files remain readable. Where a named record identifies the sender's slot, it is mapped to the recipient's slot. A legacy slot-only reference with no reliable source guild name is skipped and explained in chat; it is never assumed to mean the recipient's same numbered slot. For best results, re-export using the updated addon. Both players need an addon version that supports V2 to exchange new exports. Import still replaces unlocked settings, so keep a backup first.
+
+## Restore a message that timed out
+
+Use **`/scm retry`** after an announcement disappears because it timed out before you pressed Enter. The timeout notification also tells you this command. It restores the same saved message to its original output channel and recalculates substitutions/countdowns for the current time. Press Enter to send; restoring alone does not mark it used or sent.
+
+Only the most recent untouched message actually cleared by the timeout can be retried. An edited draft is preserved instead and is not stored for recovery. The recovery is session-only and ends on UI reload/logout. A newer timeout replaces it; a matching confirmed send consumes it.
+
+Retry leaves typed chat and existing pending messages alone. It explains if the command/guild or message is gone, the scheduled window has ended, the schedule is paused, the message is excluded from the current phase, or another announcement was used after the timeout. Current startup/shared pacing and incoming-message cooldown protections still apply. The command does not revive completed startup-queue actions or reset cooldowns. It can restore an unsent timed-out scheduled message before its automatic retry interval.

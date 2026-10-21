@@ -2431,6 +2431,9 @@ function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fr
     end
 
     local metadata = state.metadata
+    local expired=self.lastTimedOutMessage
+    if expired and metadata and expired.commandId==metadata.commandId and expired.entryId==metadata.selectedEntryId
+        and self:StringsEqualIgnoreCase(expired.guildName,metadata.guildName or "") then self.lastTimedOutMessage=nil end
     if type(metadata) == "table" then
         if type(metadata.selectedEntryId) == "string" and metadata.selectedEntryId ~= "" then
             for _, entry in ipairs(self.savedVars.messages or {}) do
@@ -2473,6 +2476,44 @@ function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fr
     local restored = self:RestoreChatChannel(state.previousChannel)
     self:DebugLog("Restore attempt after watcher match restored=" .. tostring(restored))
     self:ClearPendingRestoreState("watcher matched outgoing message")
+end
+
+-- Only untouched text actually cleared by the timeout is recoverable.
+-- Keep identity, not rendered countdowns or stale startup-queue callbacks.
+function SmartChatMsg:RetryTimedOutMessage()
+    local record=self.lastTimedOutMessage
+    local function reject(reason)
+        self:AddLocalChatMessage("[SmartChatMsg] Cannot retry: "..reason)
+        return false,reason
+    end
+    if not record then return reject("no unsent timed-out message is available in this UI session.") end
+    if self:IsChatPopulationBusy() then return reject("chat input is busy; finish or clear it first.") end
+    local slot=self:GetGuildSlotByName(record.guildName)
+    if not slot or not self:GetCommandById(record.commandId) then return reject("the original command or guild is no longer available.") end
+    local last=self:GetGuildLastUsedAt(record.commandId,record.guildName)
+    if last and last>=record.expiredAt then return reject("another matching announcement was used after this message expired.") end
+    local observed=self:GetObservedCommandCooldownEndsAt(record.commandId,record.guildName,record.channel)
+    if observed and observed>GetTimeStamp() then return reject("a matching announcement is still on cooldown.") end
+    local scheduled=self:GetGuildRunAt(record.commandId,record.guildName)=="SCHEDULED"
+    if scheduled then
+        if self:GetGuildScheduleState(record.commandId,record.guildName)~="RUNNING" then return reject("the schedule is inactive, paused, or outside its window.") end
+        local pacing,reason=self:GetSchedulePacingDelay(record.commandId,record.guildName)
+        if pacing then return reject(reason) end
+    end
+    local metadata={commandId=record.commandId,guildName=record.guildName,guildIndex=slot,
+        paramText=self:BuildQueuedRawParam(slot,record.channel),retryEntryId=record.entryId}
+    local config=scheduled and self:GetGuildSchedule(record.commandId,record.guildName)
+    if (config and config.delivery=="ZONE") or (record.autoPopulate and record.channel=="Zone") then
+        metadata.zoneId=self:GetEffectiveAutoPopulateZoneId(self:GetPlayerZoneId())
+        if not metadata.zoneId then return reject("the current zone is not eligible.") end
+        metadata.autoPopulate=true
+    end
+    -- Cancel a queued automatic retry; this explicit request owns the buffer.
+    self:CancelQueuedChatPopulation(record.commandId,record.guildName)
+    local ok,reason=self:PopulateChatBufferForCommand(record.commandId,record.guildName,record.channel,metadata)
+    if not ok then return reject(reason or "the message is no longer eligible.") end
+    self:AddLocalChatMessage("[SmartChatMsg] Timed-out message restored. Press Enter to send.")
+    return true
 end
 
 function SmartChatMsg:GetRestoreWatcherTimeoutSeconds(metadata)
@@ -2532,6 +2573,13 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
 
         local cleared = untouched and SmartChatMsg:ClearPendingChatBuffer()
         SmartChatMsg:DebugLog("Timeout clear pending chat result=" .. tostring(cleared))
+        local metadata=pendingState.metadata
+        if cleared and metadata and metadata.commandId and metadata.guildName and metadata.selectedEntryId then
+            SmartChatMsg.lastTimedOutMessage={commandId=metadata.commandId,guildName=metadata.guildName,
+                entryId=metadata.selectedEntryId,channel=metadata.outputChannel or SmartChatMsg:GetSavedChatChannel(metadata.commandId,metadata.guildName),
+                autoPopulate=metadata.autoPopulate==true,expiredAt=GetTimeStamp()}
+            SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Message timed out unsent. Use /scm retry to restore it.")
+        end
 
         if pendingState and type(pendingState.metadata) == "table" and pendingState.metadata.reminderRepeat == true then
             SmartChatMsg:HandleReminderPopulateTimeout(pendingState.metadata)
@@ -2920,7 +2968,11 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
         return false, "No messages are saved for that command and guild."
     end
 
-    local selectedEntry = self:SelectWeightedMessageEntry(messages)
+    local selectedEntry
+    if restoreMetadata and restoreMetadata.retryEntryId then
+        for _,entry in ipairs(messages) do if entry.id==restoreMetadata.retryEntryId then selectedEntry=entry;break end end
+        if not selectedEntry then return false,"The timed-out message was removed or is not eligible for this phase." end
+    else selectedEntry=self:SelectWeightedMessageEntry(messages) end
     if not selectedEntry then
         self:DebugLog("PopulateChatBufferForCommand aborted: no selected entry")
         return false, "No messages are saved for that command and guild."
@@ -2959,6 +3011,7 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
     watcherMetadata.commandId = watcherMetadata.commandId or commandId
     watcherMetadata.guildName = watcherMetadata.guildName or guildName
     watcherMetadata.selectedEntryId = selectedEntry.id
+    watcherMetadata.outputChannel = channel
     if isScheduled then
         watcherMetadata.scheduledDelivery = true
         watcherMetadata.scheduledPhase = self:GetSchedulePhase(self:GetGuildSchedule(commandId, guildName), GetTimeStamp())
@@ -3559,11 +3612,14 @@ local function OnAddonLoaded(event, addonName)
         elseif normalized == "schedule" then
             SmartChatMsg:OpenSettings()
             return
+        elseif normalized == "retry" then
+            SmartChatMsg:RetryTimedOutMessage()
+            return
         elseif normalized == "resetcooldowns" then
             SmartChatMsg:ResetAllCooldowns()
             return
         elseif normalized ~= "" then
-            SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Usage: /scm, /scm schedule, /scm status, or /scm resetcooldowns")
+            SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Usage: /scm, /scm schedule, /scm status, /scm retry, or /scm resetcooldowns")
             return
         end
 
