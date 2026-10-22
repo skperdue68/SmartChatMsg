@@ -271,3 +271,10 @@ Changing to a window/non-repeating schedule turns the special pattern off.
 
 - Open /scm immediately after login or /reload with multiple saved messages. Expand several phase lists: no duplicate MungeOverlay errors should occur.
 - Refresh and switch command/guild selections repeatedly. Switch message groups between Last event of month and Faction rotation after multiple pools are created. Verify all rows, checkboxes, previews and group controls remain usable without duplicate-control errors.
+
+## Conditional section expansion
+
+- Select Scheduled, then each schedule type: the scheduling and corresponding timing sections should open.
+- Select Faction rotation: its frequency and order controls should be visible immediately. Select a repeating schedule: repeat options and applicable weekday controls should open. Enable Starting soon: its phase list should open. Change special message patterns: relevant phase group choices should be revealed.
+- Collapse these sections manually, edit an unrelated field or save: they should stay collapsed. Disable the governing option, then enable it again: the newly relevant section should reopen.
+- Repeat on another command/guild, on first panel creation and after several refreshes. Check startup has no duplicate-control errors.

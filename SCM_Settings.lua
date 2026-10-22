@@ -2063,6 +2063,7 @@ function SmartChatMsg:CreateSettingsPanel()
         {
             type = "submenu",
             name = "Create / Edit / Delete Messages",
+            reference = "SCM_MessagesSubmenu",
             disabled = function()
                 return not SmartChatMsg:CanUseMessagesSection()
             end,
@@ -2184,7 +2185,7 @@ function SmartChatMsg:CreateSettingsPanel()
     for _,section in ipairs(optionsTable) do
         if section.name=="Create / Edit / Delete Messages" then
             table.insert(section.controls, {
-                type="submenu", name=function() return "Scheduling ("..SmartChatMsg:GetSchedulingTimeZoneName(SmartChatMsg:GetGuildSchedulingTimeZone(SmartChatMsg:GetSelectedGuildNameForMessages())).." Time)" end,
+                type="submenu", reference="SCM_SchedulingSubmenu", name=function() return "Scheduling ("..SmartChatMsg:GetSchedulingTimeZoneName(SmartChatMsg:GetGuildSchedulingTimeZone(SmartChatMsg:GetSelectedGuildNameForMessages())).." Time)" end,
                 tooltip="Select Scheduled in Run At above to configure automatic reminders.",
                 disabled=function()
                     local id=SmartChatMsg.savedVars.selectedMessagesCommand
