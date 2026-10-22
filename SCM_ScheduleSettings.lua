@@ -1,19 +1,49 @@
 SmartChatMsg = SmartChatMsg or {}
 
--- Open once per selected event configuration; ordinary refreshes preserve a
--- user's manual collapse. LAM creates controls asynchronously.
+-- Open sections when their controls become relevant, not on every refresh.
+-- Track native instances too: LAM creates widgets asynchronously.
 function SmartChatMsg:RefreshEventTimingExpansion()
-    local control=_G.SCM_EventTimingSubmenu
-    if not control then return end
     local draft=self:GetScheduleEditorDraft()
-    local scheduled=self:IsMessagesSelectionComplete() and self:GetGuildRunAt(self.savedVars.selectedMessagesCommand,self:GetSelectedGuildNameForMessages())=="SCHEDULED"
-    local selection=tostring(self.scheduleEditor.key)..":"..tostring(draft.mode)..":"..tostring(scheduled)
-    if draft.mode=="EVENT" and scheduled and control.disabled then return end
-    if self.eventTimingExpansionSelection==selection then return end
-    self.eventTimingExpansionSelection=selection
-    if draft.mode=="EVENT" and scheduled and not control.open then
-        control.open=true
-        control.animation:PlayFromStart()
+    local selected=self:IsMessagesSelectionComplete()
+    local scheduled=selected and self:GetGuildRunAt(self.savedVars.selectedMessagesCommand,self:GetSelectedGuildNameForMessages())=="SCHEDULED"
+    local key=self.scheduleEditor.key
+    local state=self.relevantSettingsExpansion
+    if not state or state.key~=key then state={key=key,controls={}};self.relevantSettingsExpansion=state end
+    local repeating=draft.recurrence and draft.recurrence~="NONE"
+    local rules={
+        {"SCM_MessagesSubmenu",self:CanUseMessagesSection()},
+        {"SCM_SchedulingSubmenu",scheduled,"SCM_MessagesSubmenu"},
+        {"SCM_WindowTimingSubmenu",scheduled and draft.mode=="WINDOW","SCM_SchedulingSubmenu"},
+        {"SCM_ReminderTimingSubmenu",scheduled and draft.mode=="REMINDER","SCM_SchedulingSubmenu"},
+        {"SCM_EventTimingSubmenu",scheduled and draft.mode=="EVENT","SCM_SchedulingSubmenu"},
+        {"SCM_FactionRotationSubmenu",scheduled and draft.mode=="EVENT" and repeating and draft.specialPattern=="FACTION_ROTATION","SCM_SchedulingSubmenu"},
+        {"SCM_RepeatOptionsSubmenu",scheduled and repeating,"SCM_SchedulingSubmenu"},
+        {"SCM_RepeatWeekdaysSubmenu",scheduled and (draft.recurrence=="DAILY" or draft.recurrence=="WEEKLY" or draft.recurrence=="BIWEEKLY"),"SCM_RepeatOptionsSubmenu"},
+        {"SCM_MessageDeliverySubmenu",scheduled and draft.mode~="REMINDER","SCM_SchedulingSubmenu"},
+    }
+    for _,phase in ipairs({"ANY","BEFORE","DAY","SOON","LIVE"}) do
+        local relevant=scheduled and ((phase=="ANY")~=(draft.mode=="EVENT")) and (phase~="SOON" or draft.startingSoonEnabled)
+        rules[#rules+1]={"SCM_Phase"..phase.."Submenu",relevant,"SCM_SchedulingSubmenu",draft.mode=="EVENT" and (draft.specialPattern or "NONE") or "ANY"}
+    end
+    local parents={SCM_SchedulingSubmenu="SCM_MessagesSubmenu",SCM_RepeatOptionsSubmenu="SCM_SchedulingSubmenu"}
+    local function reveal(name)
+        if not name then return true end
+        local control=_G[name]
+        if control and control.disabled then return false end
+        if not reveal(parents[name]) then return false end
+        if control and not control.open then control.open=true;control.animation:PlayFromStart() end
+        return true
+    end
+    for _,rule in ipairs(rules) do
+        local name,active,parent,variant=unpack(rule)
+        local control=_G[name]
+        if control then
+            local previous=state.controls[name]
+            if not active then state.controls[name]={control=control,active=false}
+            elseif not control.disabled and (not previous or previous.control~=control or not previous.active or previous.variant~=variant) then
+                if reveal(parent) then reveal(name);state.controls[name]={control=control,active=true,variant=variant} end
+            end
+        end
     end
 end
 
@@ -518,7 +548,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
     event[#event+1]=soonLead
     for _,entry in ipairs({{"WINDOW",window},{"REMINDER",reminder},{"EVENT",event}}) do
         local mode=entry[1]
-        controls[#controls+1]={type="submenu",reference=mode=="EVENT" and "SCM_EventTimingSubmenu" or nil,name=({WINDOW="Window dates and times",REMINDER="First reminder date and time",EVENT="Event and promotion timing"})[mode],controls=entry[2],disabled=function() return draft().mode~=mode end}
+        controls[#controls+1]={type="submenu",reference=({WINDOW="SCM_WindowTimingSubmenu",REMINDER="SCM_ReminderTimingSubmenu",EVENT="SCM_EventTimingSubmenu"})[mode],name=({WINDOW="Window dates and times",REMINDER="First reminder date and time",EVENT="Event and promotion timing"})[mode],controls=entry[2],disabled=function() return draft().mode~=mode end}
     end
     controls[#controls+1]=dropdown("Repeat schedule",repeatLabels,repeatValues,"recurrence")
     local pattern=dropdown("Special event pattern",{"None","Faction rotation","Last event of month"},{"NONE","FACTION_ROTATION","MONTH_FINAL"},"specialPattern")
@@ -542,7 +572,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
         if not schedule then return "Choose your factions and frequency to calculate the complete cycle." end
         return string.format("Complete rotation: %d weeks (%d weeks × %d factions).",schedule.rotationWeeks*#schedule.rotationFactions,schedule.rotationWeeks,#schedule.rotationFactions)
     end}
-    controls[#controls+1]={type="submenu",name="Faction rotation",controls=rotation,disabled=function() return draft().specialPattern~="FACTION_ROTATION" or draft().mode~="EVENT" end}
+    controls[#controls+1]={type="submenu",reference="SCM_FactionRotationSubmenu",name="Faction rotation",controls=rotation,disabled=function() return draft().specialPattern~="FACTION_ROTATION" or draft().mode~="EVENT" end}
     controls[#controls+1]={type="description",text=function()
         local d=draft()
         if d.specialPattern=="FACTION_ROTATION" then return "In each message row, choose All selected factions or a faction. Keep using the phase checkboxes for when it runs." end
@@ -560,11 +590,11 @@ function SmartChatMsg:BuildScheduleOptionControls()
         local day=i
         weekdays[#weekdays+1]={type="checkbox",name=name,getFunc=function() return draft().weekdays[day]==true end,setFunc=function(v) draft().weekdays[day]=v; refresh() end}
     end
-    repeats[#repeats+1]={type="submenu",name="Repeat on weekdays (optional)",controls=weekdays,disabled=function()
+    repeats[#repeats+1]={type="submenu",reference="SCM_RepeatWeekdaysSubmenu",name="Repeat on weekdays (optional)",controls=weekdays,disabled=function()
         local r=draft().recurrence; return r~="DAILY" and r~="WEEKLY" and r~="BIWEEKLY"
     end}
-    controls[#controls+1]={type="submenu",name="More repeat options",controls=repeats}
-    controls[#controls+1]={type="submenu",name="Message delivery",controls={dropdown("Delivery",{"Repeat while active","On zone arrival"},{"REPEAT","ZONE"},"delivery"),number("Message interval (minutes)","intervalMinutes")},disabled=function() return draft().mode=="REMINDER" end}
+    controls[#controls+1]={type="submenu",reference="SCM_RepeatOptionsSubmenu",name="More repeat options",controls=repeats}
+    controls[#controls+1]={type="submenu",reference="SCM_MessageDeliverySubmenu",name="Message delivery",controls={dropdown("Delivery",{"Repeat while active","On zone arrival"},{"REPEAT","ZONE"},"delivery"),number("Message interval (minutes)","intervalMinutes")},disabled=function() return draft().mode=="REMINDER" end}
     controls[#controls+1]={type="description",text=function()
         if draft().mode~="EVENT" then return "Choose several messages to select one at random." end
         return "Choose messages for each part of promotion; one eligible message is selected at random. Click message text to test this phase, or a Used phase name to test that named phase. Event-day promotion starts at midnight in your scheduling timezone; live promotion starts at the event time.\n\n%eventdate%, %eventtime%, and %eventwhen% use the scheduled occurrence. %eventcountdown% shows time remaining. Faction rotation can use %eventfaction%.\n\nAdd whole-number offsets to eventtime or eventcountdown: -30m, -2h, -1d, or +30m (minutes, hours, days). For example, %eventtime-1h% is one hour before the event; %eventcountdown-1h% counts down to that deadline. Offsets are elapsed time: -1d is 24 hours.\n\nExample: Raffle at %eventtime% (%eventcountdown%). Sales close at %eventtime-1h% (%eventcountdown-1h%).\n\nExplicit countdown tokens prevent automatic countdown insertion for the whole message. Add parentheses yourself. A countdown can show soon, now, or passed."
@@ -583,7 +613,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
             pool[#pool+1]={type="editbox",name="Message interval override (optional)",getFunc=function() return tostring(draft().phaseIntervals[phase] or "") end,setFunc=function(v) draft().phaseIntervals[phase]=v; refresh() end}
             pool[#pool+1]={type="checkbox",name=onceLabels[phase],tooltip="One randomly selected announcement for this phase per event occurrence. After a confirmed send (or a matching announcement from another player), this phase is complete even if its interval comes around again. An unsent message may retry while the phase remains active. The next event starts fresh.",getFunc=function() return draft().phaseOnce[phase]==true end,setFunc=function(v) draft().phaseOnce[phase]=v; refresh() end}
         end
-        controls[#controls+1]={type="submenu",name=phaseLabels[phase],controls=pool,disabled=function() return (phase=="ANY")==(draft().mode=="EVENT") or (phase=="SOON" and not draft().startingSoonEnabled) end}
+        controls[#controls+1]={type="submenu",reference="SCM_Phase"..phase.."Submenu",name=phaseLabels[phase],controls=pool,disabled=function() return (phase=="ANY")==(draft().mode=="EVENT") or (phase=="SOON" and not draft().startingSoonEnabled) end}
     end
     controls[#controls+1]={type="description",text=function()
         local normalized,reason=self:NormalizeSchedule(draft())
