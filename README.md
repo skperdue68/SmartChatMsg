@@ -1,8 +1,10 @@
-# SmartChatMsg (v2.0.10)
+# SmartChatMsg (v2.0.11)
 
-**[Open the standalone HTML help guide v2.0.10](SmartChatMsg_Help_Guide_v2.0.10.html)** (included with the addon).
+**[Open the standalone HTML help guide v2.0.11](SmartChatMsg_Help_Guide_v2.0.11.html)** (included with the addon).
 
 **[Read the complete SmartChatMsg 2.0 user guide](docs/SmartChatMsg-2.0.md)** for all configuration options, examples, timezone changes, recurrence, message groups, and phase behavior.
+
+**2.0.11:** Fixes duplicate MungeOverlay control errors while opening settings. Schedule rows and their templated children now have stable unique names across phase lists, refreshes and message-group changes.
 
 **2.0.10:** `/scm retry` restores the most recent untouched message cleared by the unsent timeout. It keeps the same saved message and channel, recalculates substitutions/countdowns, protects your chat draft, and respects current schedule eligibility and peer cooldowns.
 

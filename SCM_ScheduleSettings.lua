@@ -307,6 +307,7 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
     if not control.scheduleScroll then
         self.schedulePoolControlSerial=(self.schedulePoolControlSerial or 0)+1
         local name="SCM_ScheduleMessagePool"..self.schedulePoolControlSerial
+        control.schedulePoolName=name
         local scroll=WINDOW_MANAGER:CreateControlFromVirtual(name,control,"ZO_ScrollContainer")
         scroll:SetAnchor(TOPLEFT,control,TOPLEFT,0,0)
         scroll:SetHeight(viewportHeight)
@@ -331,14 +332,16 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
     for i,choice in ipairs(choices) do
         local row=control.scheduleRows[i]
         if not row then
-            row=WINDOW_MANAGER:CreateControl(nil,content,CT_CONTROL)
-            row.backdrop=WINDOW_MANAGER:CreateControlFromVirtual(nil,row,"ZO_DefaultBackdrop")
+            local name=control.schedulePoolName.."Row"..i
+            row=WINDOW_MANAGER:CreateControl(name,content,CT_CONTROL)
+            row.scheduleControlName=name
+            row.backdrop=WINDOW_MANAGER:CreateControlFromVirtual(name.."Backdrop",row,"ZO_DefaultBackdrop")
             row.backdrop:SetAnchorFill(row)
             row.backdrop:SetCenterColor(0,0,0,0.25)
             row.backdrop:SetEdgeColor(0.45,0.43,0.30,0.7)
-            row.check=WINDOW_MANAGER:CreateControlFromVirtual(nil,row,"ZO_CheckButton")
+            row.check=WINDOW_MANAGER:CreateControlFromVirtual(name.."Check",row,"ZO_CheckButton")
             row.check:SetAnchor(TOPLEFT,row,TOPLEFT,6,6)
-            row.label=WINDOW_MANAGER:CreateControl(nil,row,CT_LABEL)
+            row.label=WINDOW_MANAGER:CreateControl(name.."Label",row,CT_LABEL)
             row.label:SetFont("ZoFontGame")
             row.label:SetAnchor(TOPLEFT,row,TOPLEFT,40,6)
             row.label:SetMouseEnabled(true)
@@ -371,7 +374,7 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
         height=height+4+self:RefreshSchedulePhaseLinks(row,choice.phaseText)
         if choice.variantChoices and choice.variantChoices[1]=="REGULAR" then
             if not row.variantButton then
-                row.variantButton=WINDOW_MANAGER:CreateControlFromVirtual(nil,row,"ZO_DefaultButton")
+                row.variantButton=WINDOW_MANAGER:CreateControlFromVirtual(row.scheduleControlName.."VariantButton",row,"ZO_DefaultButton")
                 row.variantButton:SetHeight(31)
             end
             row.variantButton:SetHidden(false);row.variantButton:ClearAnchors()
@@ -386,7 +389,7 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
         elseif choice.variantChoices then
             if row.variantButton then row.variantButton:SetHidden(true) end
             if not row.variantControl then
-                row.variantControl=WINDOW_MANAGER:CreateControlFromVirtual("SCM_ScheduleVariant"..self.schedulePoolControlSerial.."Row"..i,row,"ZO_ComboBox")
+                row.variantControl=WINDOW_MANAGER:CreateControlFromVirtual(row.scheduleControlName.."Variant",row,"ZO_ComboBox")
                 row.variantControl:SetHeight(31)
                 row.variantCombo=ZO_ComboBox_ObjectFromContainer(row.variantControl)
                 row.variantCombo:SetSortsItems(false)
