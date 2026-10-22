@@ -266,3 +266,8 @@ Changing to a window/non-repeating schedule turns the special pattern off.
 - Type another draft before retrying: it must be preserved and a local reason shown. Editing the original prepared text before timeout must not make that draft recoverable.
 - Test another timeout, confirmed send, deleted original message, paused schedule, phase exclusion, peer observation and startup/shared pacing. Old startup-queue callbacks must not run again.
 - Reload UI: retry should report no recoverable message for the new session.
+
+## Schedule control names
+
+- Open /scm immediately after login or /reload with multiple saved messages. Expand several phase lists: no duplicate MungeOverlay errors should occur.
+- Refresh and switch command/guild selections repeatedly. Switch message groups between Last event of month and Faction rotation after multiple pools are created. Verify all rows, checkboxes, previews and group controls remain usable without duplicate-control errors.
