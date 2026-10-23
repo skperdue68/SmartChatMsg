@@ -229,3 +229,9 @@ Only the most recent untouched message actually cleared by the timeout can be re
 Retry leaves typed chat and existing pending messages alone. It explains if the command/guild or message is gone, the scheduled window has ended, the schedule is paused, the message is excluded from the current phase, or another announcement was used after the timeout. Current startup/shared pacing and incoming-message cooldown protections still apply. The command does not revive completed startup-queue actions or reset cooldowns. It can restore an unsent timed-out scheduled message before its automatic retry interval.
 
 Faction frequency is under **Scheduling > Faction rotation > Faction frequency (weeks)**. The section is enabled only for a repeating **Promote an event** schedule with **Special event pattern = Faction rotation**. For weekly PvP with four weeks per faction, choose Weekly, set Custom repeat interval to 1, and Faction frequency to 4.
+
+## Automatically revealed settings
+
+When a setting makes another section relevant, that section opens automatically. This includes selecting Scheduled in Run At, changing the schedule type, selecting Faction rotation, choosing a repeating schedule with weekday options, enabling Starting soon, and revealing message group choices in the phase lists. Enclosing sections open as needed so the newly relevant controls are visible.
+
+You can collapse any section afterward. Ordinary refreshes, message edits, and saves preserve that choice. Switching to a different command/guild reveals its relevant settings again. Selecting another option and then returning to a previously disabled section opens it again. Sections that remain irrelevant stay disabled through the normal settings behavior.
