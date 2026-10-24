@@ -12,7 +12,7 @@ now=schedule.eventAtUtc
 assert(s:GetRepeatStatusPanelRows()[1].displayName:find('Started',1,true))
 schedule.messagePhases={a={DAY=true,SOON=true}}
 eq(s:GetScheduleMessagePhaseText('a',schedule),'Event day')
-eq(s:GetScheduleMessagePhaseText('other',schedule),'Before event day · Event day · Until end')
+eq(s:GetScheduleMessagePhaseText('other',schedule),'Before event day · Event day · After event starts')
 schedule.startingSoonEnabled=true
 eq(s:GetScheduleMessagePhaseText('a',schedule),'Event day · Starting soon')
 assert(s:GetScheduleMessagePhaseText('other',schedule):find('Starting soon',1,true))

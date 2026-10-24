@@ -162,7 +162,7 @@ function SmartChatMsg:TestMessagePreview(messageId,phase)
     if reason then self:AddLocalChatMessage("[SmartChatMsg] Test unavailable: "..reason);return nil end
     local text=self.settings and self.settings.GetEffectiveMessageText and self.settings:GetEffectiveMessageText(entry) or entry.text
     local output=self:ApplyMessageSubstitutions(text,entry.commandId,entry.guildName,context)
-    local labels={BEFORE="Before event day",DAY="Event day",SOON="Starting soon",LIVE="Until end",ANY="While active"}
+    local labels={BEFORE="Before event day",DAY="Event day",SOON="Starting soon",LIVE="After event starts",ANY="While active"}
     local label=phase and labels[phase] or "Current time"
     local at=context and self:FormatScheduleDateTime(context.now,context.schedule) or self:FormatZonedDateTime(GetTimeStamp(),self:GetGuildSchedulingTimeZone(entry.guildName))
     self:AddLocalChatMessage("[SmartChatMsg] Message test — "..label.." — "..at)
@@ -174,7 +174,7 @@ function SmartChatMsg:GetScheduleMessagePhaseText(messageId,schedule)
     if not schedule then return "" end
     if schedule.mode~="EVENT" then return "While active" end
     local assigned=schedule.messagePhases and schedule.messagePhases[messageId]
-    local labels={BEFORE="Before event day",DAY="Event day",SOON="Starting soon",LIVE="Until end"}
+    local labels={BEFORE="Before event day",DAY="Event day",SOON="Starting soon",LIVE="After event starts"}
     local result={}
     for _,phase in ipairs({"BEFORE","DAY","SOON","LIVE"}) do
         if (not assigned or assigned.ANY or assigned[phase]) and (phase~="SOON" or schedule.startingSoonEnabled) then
@@ -277,7 +277,7 @@ end
 -- Each assigned phase is a separate link: clicking "Event day" must not
 -- inherit the containing pool's "Before event day" preview clock.
 function SmartChatMsg:RefreshSchedulePhaseLinks(row,text)
-    local phases={["Before event day"]="BEFORE",["Event day"]="DAY",["Starting soon"]="SOON",["Until end"]="LIVE",["While active"]="ANY"}
+    local phases={["Before event day"]="BEFORE",["Event day"]="DAY",["Starting soon"]="SOON",["After event starts"]="LIVE",["While active"]="ANY"}
     if not row.phaseLinkContainer then
         row.phaseLinkContainer=WINDOW_MANAGER:CreateControl(nil,row,CT_CONTROL)
         row.phaseLinkContainer:SetAnchor(TOPLEFT,row.label,BOTTOMLEFT,0,4)
@@ -467,13 +467,13 @@ function SmartChatMsg:BuildScheduleOptionControls()
         return {type="editbox",name=name,tooltip=tooltip,getFunc=function()
             local d=draft(); local value=d[key]
             if value==nil and key=="promotionDays" and d.eventAtUtc and d.startsAtUtc then value=math.ceil(math.max(0,(d.eventAtUtc-d.startsAtUtc)/86400)) end
-            if value==nil and key=="endDelayMinutes" and d.endsAtUtc and d.eventAtUtc then value=math.max(1,(d.endsAtUtc-d.eventAtUtc)/60) end
+            if value==nil and key=="endDelayMinutes" and d.endsAtUtc and d.eventAtUtc then value=math.max(0,(d.endsAtUtc-d.eventAtUtc)/60) end
             return tostring(value or "")
         end,setFunc=function(v)
             local d=draft(); d[key]=v
             if key=="recurrenceInterval" and v=="" then d[key]=nil end
             if key=="endDelayMinutes" and d.promotionDays==nil then d.promotionDays=math.ceil(math.max(0,((d.eventAtUtc or 0)-(d.startsAtUtc or 0))/86400)) end
-            if key=="promotionDays" and d.endDelayMinutes==nil then d.endDelayMinutes=d.endsAtUtc and d.eventAtUtc and math.max(1,(d.endsAtUtc-d.eventAtUtc)/60) or 60 end
+            if key=="promotionDays" and d.endDelayMinutes==nil then d.endDelayMinutes=d.endsAtUtc and d.eventAtUtc and math.max(0,(d.endsAtUtc-d.eventAtUtc)/60) or 60 end
             refresh()
         end}
     end
@@ -542,7 +542,6 @@ function SmartChatMsg:BuildScheduleOptionControls()
         local starts=occurrence and self:FormatScheduleDateTime(occurrence.startsAtUtc,occurrence) or (schedule and "None scheduled." or tostring(reason))
         return "0 = midnight on event day. 1+ = that many days earlier at the event's time.\nPromotion starts: "..starts
     end}
-    event[#event+1]=number("Stop promoting (minutes after event)","endDelayMinutes")
     event[#event+1]={type="checkbox",name="Enable Starting soon phase",tooltip="Use a separate message pool and interval during the final minutes before the event.",getFunc=function() return draft().startingSoonEnabled==true end,setFunc=function(v) draft().startingSoonEnabled=v;refresh() end}
     local soonLead=number("Starting soon begins (minutes before event)","startingSoonMinutes","120 means two hours before the event. This phase ends at the event start and stays within the promotion window.")
     soonLead.disabled=function() return not draft().startingSoonEnabled end
@@ -600,14 +599,20 @@ function SmartChatMsg:BuildScheduleOptionControls()
         if draft().mode~="EVENT" then return "Choose several messages to select one at random." end
         return "Choose messages for each part of promotion; one eligible message is selected at random. Click message text to test this phase, or a Used phase name to test that named phase. Event-day promotion starts at midnight in your scheduling timezone; live promotion starts at the event time.\n\n%eventdate%, %eventtime%, and %eventwhen% use the scheduled occurrence. %eventcountdown% shows time remaining. Faction rotation can use %eventfaction%.\n\nAdd whole-number offsets to eventtime or eventcountdown: -30m, -2h, -1d, or +30m (minutes, hours, days). For example, %eventtime-1h% is one hour before the event; %eventcountdown-1h% counts down to that deadline. Offsets are elapsed time: -1d is 24 hours.\n\nExample: Raffle at %eventtime% (%eventcountdown%). Sales close at %eventtime-1h% (%eventcountdown-1h%).\n\nExplicit countdown tokens prevent automatic countdown insertion for the whole message. Add parentheses yourself. A countdown can show soon, now, or passed."
     end}
-    local phaseLabels={ANY="Messages",BEFORE="Before event day",DAY="On event day",SOON="Starting soon",LIVE="From event start until promotion ends"}
-    local onceLabels={BEFORE="Prepare only once before event day",DAY="Prepare only once on event day",SOON="Prepare only once during Starting soon",LIVE="Prepare only once when event starts"}
+    local phaseLabels={ANY="Messages",BEFORE="Before event day",DAY="On event day",SOON="Starting soon",LIVE="After event starts"}
+    local onceLabels={BEFORE="Prepare only once before event day",DAY="Prepare only once on event day",SOON="Prepare only once during Starting soon",LIVE="Prepare only once after event starts"}
     for _,name in ipairs({"ANY","BEFORE","DAY","SOON","LIVE"}) do
         local phase=name
-        local pool={{type="custom",minHeight=230,maxHeight=230,createFunc=function(control) self:RefreshScheduleMessagePool(control,phase) end,refreshFunc=function(control) self:RefreshScheduleMessagePool(control,phase) end}}
+        local pool={}
+        if phase=="LIVE" then
+            pool[#pool+1]=number("Promote after start (minutes)","endDelayMinutes","0 stops promotion exactly when the event starts. A positive number keeps these messages eligible for that many minutes afterward.")
+            pool[#pool+1]={type="description",text="Use these messages after the event has started, while people can still join. Set 0 to stop at the event start; for example, 120 continues for two hours. The interval below controls how often a message is prepared during that time."}
+        end
+        pool[#pool+1]={type="custom",minHeight=230,maxHeight=230,createFunc=function(control) self:RefreshScheduleMessagePool(control,phase) end,refreshFunc=function(control) self:RefreshScheduleMessagePool(control,phase) end}
         pool[#pool+1]={type="description",text=function()
             local count=0; for _,choice in ipairs(self:GetScheduleMessageChecklist(phase)) do if choice.getFunc() then count=count+1 end end
             local d=draft(); local interval=d.phaseIntervals[phase] or d.intervalMinutes
+            if phase=="LIVE" and tonumber(d.endDelayMinutes)==0 then return "Post-start promotion is off: stops at the event start. Message selections are saved." end
             return tostring(count).." messages selected · "..((d.mode=="REMINDER" or d.phaseOnce[phase]) and "Prepare once" or d.delivery=="ZONE" and "On zone arrival" or "Every "..tostring(interval).." minutes")
         end}
         if phase~="ANY" then
