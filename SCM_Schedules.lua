@@ -38,8 +38,10 @@ function SmartChatMsg:NormalizeSchedule(data)
     if result.mode=="REMINDER" then result.eventAtUtc=result.startsAtUtc;result.endsAtUtc=result.startsAtUtc+120
     elseif result.mode=="WINDOW" then result.eventAtUtc=result.startsAtUtc
     elseif simpleEvent then
-        local lead,delay=tonumber(data.promotionDays or 1),positiveInteger(data.endDelayMinutes or 60)
-        if not lead or lead<0 or lead>3650 or lead~=math.floor(lead) or not delay then return nil,"Use whole promotion days and a positive end delay." end
+        local lead,delay=tonumber(data.promotionDays or 1),tonumber(data.endDelayMinutes or 60)
+        if not lead or lead<0 or lead>3650 or lead~=math.floor(lead) or not delay or delay<0 or delay==math.huge or delay~=math.floor(delay) then
+            return nil,"Use whole promotion days and zero or more whole minutes after event start."
+        end
         result.promotionDays,result.endDelayMinutes=lead,delay
         result.startsAtUtc,result.endsAtUtc=result.eventAtUtc-lead*86400,result.eventAtUtc+delay*60
         local o=self:BuildScheduleOccurrence(result,result.eventAtUtc);if not o then return nil,"Promotion start time does not exist." end
@@ -52,8 +54,9 @@ function SmartChatMsg:NormalizeSchedule(data)
             result[name.."Date"],result[name.."Time"]=formatted:sub(1,10),formatted:sub(12,19)
         end
     end
-    if result.startsAtUtc > result.eventAtUtc or result.eventAtUtc >= result.endsAtUtc then
-        return nil,"Schedule start must be at/before the event, and schedule end must be after the event."
+    local eventAtEnd=result.mode=="EVENT" and result.eventAtUtc==result.endsAtUtc
+    if result.startsAtUtc > result.eventAtUtc or result.startsAtUtc>=result.endsAtUtc or (result.eventAtUtc >= result.endsAtUtc and not eventAtEnd) then
+        return nil,"Promotion must have time to run: start at/before the event and end at/after it. Windows must end after they start."
     end
     for id, assignments in pairs(type(data.messagePhases) == "table" and data.messagePhases or {}) do
         if type(id) == "string" and type(assignments) == "table" then

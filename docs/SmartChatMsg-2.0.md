@@ -83,7 +83,7 @@ Use this when messages should change as an event or submission deadline approach
 
 1. Under **Event and promotion timing**, set the **Event date**, hour, minute, and AM/PM. This original date is also the recurrence and faction-rotation anchor.
 2. Set **Start promoting (days before event)**. **0 starts at midnight on event day in the selected timezone.** Positive values start that many calendar days earlier at the event's clock time: 1 for an 8 PM event starts at 8 PM the previous day; 2 starts at 8 PM two days earlier. DST can make the elapsed duration differ from exactly 24/48 hours. The preview shows the actual promotion start.
-3. Set **Stop promoting (minutes after event)**. For a contest deadline, use the smallest available end delay and leave the final phase's messages unchecked if you want no post-deadline announcements.
+3. Under **After event starts**, set **Promote after start (minutes)**. **0 stops exactly at the event start**—ideal for a raffle or submission deadline. A positive duration keeps promotion active afterward; for example, 120 allows messages for two hours while people can still join. Select the ongoing-event messages in this section and optionally set their own message interval. Duration and message interval are different settings.
 4. Optionally enable **Starting soon** and choose its lead time, such as 120 minutes.
 5. Set delivery, recurrence, phase messages, and intervals, then review and save.
 
@@ -94,9 +94,9 @@ The phases use these same names in settings and status:
 | **Before event day** | Promotion starts until midnight on event day. |
 | **On event day** | Midnight until the event starts, unless Starting soon takes over earlier. |
 | **Starting soon** | The configured final minutes before the event, within the promotion window. |
-| **From event start until promotion ends** | Event start until the configured promotion stop. |
+| **After event starts** | Event start until the configured post-start duration expires. A duration of 0 gives this phase no running time. |
 
-Scheduled message views are sorted by their earliest selected phase: Before event day, On event day, Starting soon, From event start until promotion ends, then messages not selected for any enabled phase. A message in several phases appears in its earliest group; a default message enabled for all phases appears in the first group. Within a group, the existing order stays stable. Sorting changes only the view, not the saved message list or random message selection.
+Scheduled message views are sorted by their earliest selected phase: Before event day, On event day, Starting soon, After event starts, then messages not selected for any enabled phase. A message in several phases appears in its earliest group; a default message enabled for all phases appears in the first group. Within a group, the existing order stays stable. Sorting changes only the view, not the saved message list or random message selection.
 
 The order updates as you check or uncheck messages, including unsaved changes. Phase lists keep the top visible message and your offset within it; the main settings page keeps its scroll offset. The existing sections and message controls are reused. Near the end of a shortened list, scrolling is limited to the remaining content.
 
@@ -141,9 +141,9 @@ The **Event date under Event and promotion timing** starts the first faction's b
 
 Select **Special event pattern → Last event of month**. This finds the last actual scheduled event in each calendar month, using your recurrence and scheduling timezone. It is not tied to raffles, a fixed weekday, or the month's last calendar day.
 
-Under each phase, click the **Group: Regular events** button beneath a message to switch it to **Group: Month-final events**. Click again to switch back. Existing/unmarked messages are regular by default. Mark only the special month-final announcements; you do not need to change every message.
+Under each phase, click the **Group** button beneath a message to cycle **Regular events → Month-final events → All events → Regular events**. Existing/unmarked messages remain regular by default. Mark special month-final announcements as Month-final events. Choose All events when the same text should be eligible for either kind of occurrence; its phase checkboxes still control when it runs. For example, one All events message assigned to Starting soon can announce ticket sales are closed for both regular and month-final drawings. Save and activate after changing assignments.
 
-The final event uses its month-final pool throughout promotion, including promotion that starts in the previous month. If no messages for the combination are marked month-final, regular messages are used instead. Once a special pool exists, its phase checkboxes are respected; an empty special phase intentionally has no messages. Regular and month-final messages can each have several random variations.
+The final event uses its month-final pool throughout promotion, including promotion that starts in the previous month. All events messages join both pools within their selected phases. If no messages for the combination are marked month-final, regular messages are used instead, together with All events messages. Once a special pool exists, its phase checkboxes are respected; a phase with neither month-final nor All events messages intentionally has no messages. Each pool can have several random variations. Full import/export preserves All events, including the personal assignments of locked messages.
 
 ### Test a message before using it
 
@@ -154,7 +154,7 @@ In a scheduling phase, click the **message text** to test that specific message 
 - **Before event day:** normally the event's clock time on the previous calendar day, adjusted to fit the configured phase.
 - **Event day:** midway through the eligible event-day period before Starting soon.
 - **Starting soon:** midway through the configured Starting soon period.
-- **Until end:** midway between the event start and promotion end.
+- **After event starts:** midway between the event start and promotion end. With a duration of 0 there is no time in this phase to preview.
 - **While active:** midway through a window or reminder occurrence.
 
 All event substitutions and countdowns share that simulated clock and the same occurrence, including recurrence and faction rotation. If a phase has no time in the configured promotion window, the test explains that instead. Configure valid dates and times before testing scheduled messages. A message need not be enabled for that phase to test it.
@@ -216,7 +216,7 @@ At 5 PM this reads: **The raffle is today at 08:00 PM EDT (3h). Ticket sales clo
 
 When any valid explicit `%eventcountdown%` token is present, automatic embedded-time countdown insertion is suppressed for the entire message to avoid duplicate or misplaced countdowns. Templates without explicit countdowns keep their existing automatic behavior; an offset event time receives a countdown to that offset deadline. Unknown/malformed tokens remain literal. Event tokens require a schedule for the command/guild. Incoming matching accepts changing explicit countdowns but still requires the event and offset clock times to match. Full export/import preserves these templates without any additional configuration.
 
-For the raffle, set **Starting soon begins** to **60 minutes**. Include ticket-sales messages in Before event day and On event day, and use sales-closed messages in Starting soon and Until end.
+For the raffle, set **Starting soon begins** to **60 minutes**. Include ticket-sales messages in Before event day and On event day, and use sales-closed messages in Starting soon. Under After event starts, set Promote after start to 0 to stop at the drawing time. For an ongoing activity such as PvP, use a positive duration and messages such as "We're already in Cyrodiil; come join us!" in After event starts. Existing Until end selections are retained under this clearer phase name. Changing the duration to 0 keeps those selections saved for later, but they cannot run until the duration is positive again. Zero is included in full import/export. A midnight event with 0 promotion days and 0 post-start minutes has no promotion time and must use an earlier promotion start or a positive post-start duration.
 
 ## Cooldowns when an event phase changes
 

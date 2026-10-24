@@ -1,8 +1,10 @@
-# SmartChatMsg (v2.0.12)
+# SmartChatMsg (v2.0.13)
 
-**[Open the standalone HTML help guide v2.0.12](SmartChatMsg_Help_Guide_v2.0.12.html)** (included with the addon).
+**[Open the standalone HTML help guide v2.0.13](SmartChatMsg_Help_Guide_v2.0.13.html)** (included with the addon).
 
 **[Read the complete SmartChatMsg 2.0 user guide](docs/SmartChatMsg-2.0.md)** for all configuration options, examples, timezone changes, recurrence, message groups, and phase behavior.
+
+**2.0.13:** Adds **All events** to month-final message groups. One message can serve both regular and month-final occurrences in its selected phases. The Group button cycles Regular events → Month-final events → All events; import/export preserves the choice. **After event starts** replaces the Until end phase label and contains **Promote after start (minutes)**: 0 stops at the event start; a positive duration keeps ongoing-event messages eligible afterward. Existing message selections are preserved.
 
 **2.0.12:** Fixes `/scm retry` when chat is already empty at timeout. Ready scheduled reminders enter the queue in random order. Use `/scm send <command> [guild number]` (or `/scm <command> [guild number]`) to request an extra current-phase reminder, overriding its own interval while respecting peer cooldowns and shared pacing. Usage and once-only completion are recorded after a confirmed send.
 
@@ -196,7 +198,7 @@ several messages to each phase and assign one message to several phases:
   earlier phase at that threshold and runs until the event starts, within the
   promotion window. Select its messages and a Message interval override, such
   as five minutes. It can begin the previous evening for an early-morning event.
-- **From event start until promotion ends:** event start until promotion ends.
+- **After event starts:** event start until the post-start duration ends. Set Promote after start (minutes) in this section to 0 to stop exactly at event start, or a positive value such as 120 to promote for two hours afterward. Its interval override controls frequency within that duration.
 
 SmartChatMsg randomly selects from the messages eligible in the current phase,
 using its existing message rotation. Each phase can use its own interval; a
@@ -428,7 +430,7 @@ Multiple eligible messages are chosen randomly as before.
 
 Choose Last event of month with any repeating event schedule; Every other week
 is not required. Add regular and month-final announcements under the same command.
-In each message row click the Group button to choose Regular events or Month-final events. Unassigned
+In each message row click the Group button to cycle Regular events, Month-final events, or All events. Unassigned
 messages default to Regular events. Select each message's desired promotion phases.
 The last scheduled event in each calendar month uses the month-final pool throughout
 its promotion. This follows your recurrence, not a fixed weekday or raffle rule.
@@ -437,6 +439,8 @@ and month-final messages October 24.
 If no messages are marked month-final for this command/guild, regular messages
 are used for every event. Once special messages are configured, their phase
 selections apply; an intentionally empty special phase does not use regular text.
+All events messages join either pool within their selected phases. Use one All events
+Starting soon message when the same reminder applies to both kinds of drawing.
 Mark only the special messages, once per message; the choice is shared across phases.
 
 Save and activate after reviewing the next events and their faction/group labels.

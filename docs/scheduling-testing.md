@@ -284,6 +284,12 @@ Changing to a window/non-repeating schedule turns the special pattern off.
 
 ## Conditional section expansion
 
+- In After event starts, set Promote after start (minutes) to 0. Save/reopen and export/import: zero must remain valid. At the event time promotion must stop, queued requests must be removed, and untouched unsent pre-event text must be withdrawn. Negative/fractional values must be rejected. A midnight event with no lead and no duration has no promotion window and must be rejected with an explanation.
+- Set 120 minutes and assign a distinct ongoing-event message to After event starts with a 15-minute interval. At the start, verify it uses that pool with fresh phase cooldowns; confirmed sends repeat at 15 minutes until the exclusive two-hour stop. Phase previews and status must use After event starts consistently. Existing Until end assignments must survive the update.
+
+- With Last event of month selected, cycle a message's Group button through Regular events, Month-final events, All events, then back to Regular events. Check the phase summary uses the same label. Save and reopen; the choice should persist.
+- Assign one All events message to Starting soon. Preview/test it on a regular occurrence and the month-final occurrence: the same entry should be eligible for both, respecting phase selections. Export/import should retain All events; locked local messages should keep it too. Faction rotation must still say All selected factions.
+
 - Select Scheduled, then each schedule type: the scheduling and corresponding timing sections should open.
 - Select Faction rotation: its frequency and order controls should be visible immediately. Select a repeating schedule: repeat options and applicable weekday controls should open. Enable Starting soon: its phase list should open. Change special message patterns: relevant phase group choices should be revealed.
 - Collapse these sections manually, edit an unrelated field or save: they should stay collapsed. Disable the governing option, then enable it again: the newly relevant section should reopen.
