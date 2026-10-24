@@ -284,14 +284,18 @@ end)
 test("multiple Repeat schedules share chat and retain separate confirmed deadlines", function()
     savedRuntime(); f.entry("o","other","Blue Traders","Blue Traders event.")
     local d=draft(); d.messagePhases={}; assert(scm:SaveGuildSchedule("other","Blue Traders",d))
-    scm:TickSchedules(); eq(scm.pendingRestoreState.metadata.commandId,"ad")
+    scm:TickSchedules()
+    local first=scm.pendingRestoreState.metadata.commandId
+    local firstGuild=first=="ad" and "Amber Traders" or "Blue Traders"
+    local second=first=="ad" and "other" or "ad"
+    local secondGuild=second=="ad" and "Amber Traders" or "Blue Traders"
     sent(); scm:TickSchedules(); eq(scm.pendingRestoreState,nil)
-    local firstDue=scm:GetGuildSchedule("ad","Amber Traders").nextDueAt
+    local firstDue=scm:GetGuildSchedule(first,firstGuild).nextDueAt
     now=now+299;scm:TickSchedules();eq(scm.pendingRestoreState,nil)
-    now=now+1;scm:TickSchedules();eq(scm.pendingRestoreState.metadata.commandId,"other")
+    now=now+1;scm:TickSchedules();eq(scm.pendingRestoreState.metadata.commandId,second)
     sent(); scm:TickSchedules(); eq(scm.pendingRestoreState,nil)
-    eq(scm:GetGuildSchedule("ad","Amber Traders").nextDueAt,firstDue)
-    eq(scm:GetGuildSchedule("other","Blue Traders").nextDueAt,now+300)
+    eq(scm:GetGuildSchedule(first,firstGuild).nextDueAt,firstDue)
+    eq(scm:GetGuildSchedule(second,secondGuild).nextDueAt,now+300)
 end)
 test("discarded stale startup requests release their current ownership", function()
     scm:SetGuildRunAt("ad","Amber Traders","STARTUP")

@@ -14,6 +14,11 @@ end
 
 function SmartChatMsg:HandleScheduledSendConfirmed(metadata)
     if not metadata or not metadata.scheduledDelivery then return end
+    if metadata.autoPopulate then self:ScheduleNextScheduledDelivery(metadata.commandId,metadata.guildName) end
+    local schedule=self:GetGuildSchedule(metadata.commandId,metadata.guildName)
+    if schedule and (schedule.mode=="REMINDER" or (schedule.phaseOnce or {})[metadata.scheduledPhase]) and metadata.scheduledOccurrence then
+        schedule.completedOccurrences={[metadata.scheduledOccurrence..":"..metadata.scheduledPhase]=true}
+    end
     self.scheduledSendPause={senderKey=self:GetReminderStateKey(metadata.commandId,metadata.guildName),endsAt=GetTimeStamp()+300}
     self:ShowStatusMessage(self:GetSlashCommandDisplayName(metadata.commandId).." / "..metadata.guildName
         ..": scheduled message sent. Other schedules pause for 5 minutes, until "..self:FormatScheduleDateTime(self.scheduledSendPause.endsAt,self:GetGuildSchedule(metadata.commandId,metadata.guildName))..".")
@@ -81,8 +86,8 @@ function SmartChatMsg:ProcessChatPopulationQueue()
             if valid and request.schedule.delivery=="ZONE" then
                 local zone=self:GetEffectiveAutoPopulateZoneId(self:GetPlayerZoneId())
                 valid=zone and zone==request.metadata.zoneId
-                    and not self:ShouldSkipAutoPopulateForZone(request.commandId,request.guildName,zone)
-            elseif valid then
+                    and (request.metadata.manualScheduled or not self:ShouldSkipAutoPopulateForZone(request.commandId,request.guildName,zone))
+            elseif valid and not request.metadata.manualScheduled then
                 valid=GetTimeStamp()>=self:GetScheduledDueAt(request.commandId,request.guildName,phase)
             end
         end
@@ -107,11 +112,6 @@ function SmartChatMsg:ProcessChatPopulationQueue()
             if ok and self.pendingRestoreState and request.metadata.scheduledDelivery then
                 self:ShowStatusMessage(self:GetSlashCommandDisplayName(request.commandId).." / "..request.guildName
                     ..": scheduled message ready in chat. Press Enter to send (chat timeout: "..tostring(self.pendingRestoreState.timeoutSeconds).." seconds).")
-                local schedule=request.schedule
-                if schedule.mode=="REMINDER" or (schedule.phaseOnce or {})[phase] then
-                    local o=self:GetScheduleOccurrence(schedule,GetTimeStamp())
-                    schedule.completedOccurrences={[o.occurrenceKey..":"..phase]=true}
-                end
             end
             if ok and self.pendingRestoreState then return end
         end
@@ -201,6 +201,7 @@ function SmartChatMsg:GetScheduledDueAt(commandId,guildName,phase)
     local token=occurrence.occurrenceKey..":"..phase
     if once and (schedule.completedOccurrences or {})[token] then return math.huge end
     local lastUsedAt=self:GetGuildLastUsedAt(commandId,guildName)
+    if once and lastUsedAt and lastUsedAt>=phaseStart then return math.huge end
     local peerDelay=lastUsedAt and self:GetScheduledPeerDelay(commandId,guildName,lastUsedAt) or 0
     if schedule.nextDueAt and schedule.nextDuePhase==phase and (not schedule.nextDueOccurrence and (schedule.recurrence or "NONE")=="NONE" or schedule.nextDueOccurrence==occurrence.occurrenceKey) then
         if peerDelay>0 and lastUsedAt>=phaseStart then
@@ -231,21 +232,25 @@ function SmartChatMsg:RequestScheduledDelivery(commandId,guildName,manual)
     if pacingEndsAt then return false,pacingReason end
     local schedule=self:GetGuildSchedule(commandId,guildName)
     if #self:GetScheduledMessageEntries(commandId,guildName)==0 then return false,"No message for this phase." end
+    if manual then
+        local observed=self:GetObservedCommandCooldownEndsAt(commandId,guildName,self:GetSavedChatChannel(commandId,guildName))
+        if observed and GetTimeStamp()<observed then return false,"A matching announcement from another player is still on cooldown." end
+    end
     local zoneId
     if schedule.delivery=="ZONE" then
         zoneId=self:GetEffectiveAutoPopulateZoneId(self:GetPlayerZoneId())
         if not zoneId then return false,"Current zone is not eligible." end
-        if self:ShouldSkipAutoPopulateForZone(commandId,guildName,zoneId) then
+        if not manual and self:ShouldSkipAutoPopulateForZone(commandId,guildName,zoneId) then
             self:NotifyCooldownDelay(commandId,guildName,self:GetAutoPopulateCooldownEndsAt(commandId,guildName,zoneId))
             return false,"Zone cooldown."
         end
-    elseif GetTimeStamp()<self:GetScheduledDueAt(commandId,guildName,phase) then
+    elseif not manual and GetTimeStamp()<self:GetScheduledDueAt(commandId,guildName,phase) then
         self:NotifyCooldownDelay(commandId,guildName,self:GetObservedCommandCooldownEndsAt(commandId,guildName,self:GetSavedChatChannel(commandId,guildName)))
         return false,"Repeat cooldown."
     end
     local pending=self.pendingRestoreState and self.pendingRestoreState.metadata
     if pending and pending.commandId==commandId and self:StringsEqualIgnoreCase(pending.guildName or "",guildName) then return true end
-    return self:QueueChatPopulation(commandId,guildName,nil,{scheduledDelivery=true,scheduledPhase=phase,scheduledOccurrence=(self:GetScheduleOccurrence(schedule,GetTimeStamp()) or {}).occurrenceKey,
+    return self:QueueChatPopulation(commandId,guildName,nil,{scheduledDelivery=true,manualScheduled=manual==true,scheduledPhase=phase,scheduledOccurrence=(self:GetScheduleOccurrence(schedule,GetTimeStamp()) or {}).occurrenceKey,
         autoPopulate=schedule.delivery=="ZONE",zoneId=zoneId,commandId=commandId,guildName=guildName,
         guildIndex=self:GetGuildSlotByName(guildName),paramText=tostring(self:GetGuildSlotByName(guildName))},manual and 1 or 3)
 end
@@ -362,6 +367,12 @@ function SmartChatMsg:TickSchedules()
         end
     end
     table.sort(combinations,function(a,b) return a.key<b.key end)
+    -- Shuffle once as each batch enters the queue. Queue sequence then preserves
+    -- that order across ticks, chat drafts, and the pause between schedules.
+    for i=#combinations,2,-1 do
+        local j=zo_random(1,i)
+        combinations[i],combinations[j]=combinations[j],combinations[i]
+    end
     local seen={}
     for _,combination in ipairs(combinations) do
         local id,guild,key=combination.commandId,combination.guildName,combination.key

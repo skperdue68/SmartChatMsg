@@ -2478,7 +2478,7 @@ function SmartChatMsg:HandleRestoreWatcherChatMessage(eventCode, messageType, fr
     self:ClearPendingRestoreState("watcher matched outgoing message")
 end
 
--- Only untouched text actually cleared by the timeout is recoverable.
+-- Recover untouched text, including input ESO already cleared before timeout.
 -- Keep identity, not rendered countdowns or stale startup-queue callbacks.
 function SmartChatMsg:RetryTimedOutMessage()
     local record=self.lastTimedOutMessage
@@ -2564,7 +2564,9 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
         local pendingTimeoutSeconds = pendingState and pendingState.timeoutSeconds or timeoutSeconds
         SmartChatMsg:DebugLog("Restore watcher timed out after " .. tostring(pendingTimeoutSeconds) .. " seconds")
         local edit=self:GetChatEditControl()
-        local untouched=edit and edit.GetText and edit:GetText()==pendingState.rawExpectedText
+        local currentText=edit and edit.GetText and edit:GetText()
+        local untouched=currentText==pendingState.rawExpectedText
+        local alreadyEmpty=currentText==""
         if untouched and pendingState.previousChannel then
             SmartChatMsg:DebugLog("Timeout restore attempting previous channel: " .. SmartChatMsg:FormatChatChannelInfo(pendingState.previousChannel))
             local restored = SmartChatMsg:RestoreChatChannel(pendingState.previousChannel)
@@ -2574,7 +2576,7 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
         local cleared = untouched and SmartChatMsg:ClearPendingChatBuffer()
         SmartChatMsg:DebugLog("Timeout clear pending chat result=" .. tostring(cleared))
         local metadata=pendingState.metadata
-        if cleared and metadata and metadata.commandId and metadata.guildName and metadata.selectedEntryId then
+        if (cleared or alreadyEmpty) and metadata and metadata.commandId and metadata.guildName and metadata.selectedEntryId then
             SmartChatMsg.lastTimedOutMessage={commandId=metadata.commandId,guildName=metadata.guildName,
                 entryId=metadata.selectedEntryId,channel=metadata.outputChannel or SmartChatMsg:GetSavedChatChannel(metadata.commandId,metadata.guildName),
                 autoPopulate=metadata.autoPopulate==true,expiredAt=GetTimeStamp()}
@@ -3605,25 +3607,7 @@ local function OnAddonLoaded(event, addonName)
     end
 
     SLASH_COMMANDS["/scm"] = function(paramText)
-        local normalized = zo_strlower(SmartChatMsg:Trim(paramText or ""))
-        if normalized == "status" then
-            SmartChatMsg:ToggleStatusPanel()
-            return
-        elseif normalized == "schedule" then
-            SmartChatMsg:OpenSettings()
-            return
-        elseif normalized == "retry" then
-            SmartChatMsg:RetryTimedOutMessage()
-            return
-        elseif normalized == "resetcooldowns" then
-            SmartChatMsg:ResetAllCooldowns()
-            return
-        elseif normalized ~= "" then
-            SmartChatMsg:AddLocalChatMessage("[SmartChatMsg] Usage: /scm, /scm schedule, /scm status, /scm retry, or /scm resetcooldowns")
-            return
-        end
-
-        SmartChatMsg:OpenSettings()
+        SmartChatMsg:HandleScmCommand(paramText)
     end
 
     SLASH_COMMANDS["/scmdebug"] = function(paramText)

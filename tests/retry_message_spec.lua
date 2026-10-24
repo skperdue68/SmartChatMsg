@@ -80,3 +80,41 @@ EVENT_MANAGER.updates[s.restoreWatcherTimeoutName].callback()
 assert(s:RetryTimedOutMessage())
 eq(s.pendingRestoreState.metadata.startupQueue,nil);eq(s.pendingRestoreState.metadata.queueItemId,nil)
 print("retry retains Zone accounting without replaying completed startup actions")
+
+-- ESO can have already cleared the input before our timeout callback runs.
+f.reset();s.lastTimedOutMessage=nil
+f.entry("emptied","ad","Amber Traders","Remember %guild%.","Guild")
+assert(s:SaveGuildSchedule("ad","Amber Traders",{mode="EVENT",enabled=true,eventDate="2026-10-24",eventTime="08:00 PM",promotionDays=2,endDelayMinutes=60,intervalMinutes=180}))
+now=s:GetGuildSchedule("ad","Amber Traders").eventAtUtc-3600
+s:TickSchedules()
+assert(s.pendingRestoreState)
+CHAT_SYSTEM.textEntry.editControl.text=""
+EVENT_MANAGER.updates[s.restoreWatcherTimeoutName].callback()
+assert(s:RetryTimedOutMessage(),"empty input at scheduled timeout must retain retry recovery")
+eq(CHAT_SYSTEM.textEntry.editControl.text,"Remember Amber Traders.")
+eq(s:GetGuildLastUsedAt("ad","Amber Traders"),nil)
+print("scheduled timeout retains recovery when ESO already emptied chat")
+
+-- A once-only phase is complete after sending, never merely preparing text.
+f.reset();s.lastTimedOutMessage=nil
+f.entry("once","ad","Amber Traders","One reminder.","Guild")
+assert(s:SaveGuildSchedule("ad","Amber Traders",{mode="EVENT",enabled=true,eventDate="2026-10-24",eventTime="08:00 PM",promotionDays=2,endDelayMinutes=60,intervalMinutes=5,phaseOnce={DAY=true}}))
+cfg=s:GetGuildSchedule("ad","Amber Traders");now=cfg.eventAtUtc-3600
+s:TickSchedules()
+EVENT_MANAGER.updates[s.restoreWatcherTimeoutName].callback()
+now=now+300;s:TickSchedules()
+assert(s.pendingRestoreState,"unsent once-only reminder must retry after its timeout delay")
+s:HandleRestoreWatcherChatMessage(EVENT_CHAT_MESSAGE_CHANNEL,CHAT_CHANNEL_GUILD_1,"My Character",CHAT_SYSTEM.textEntry.editControl.text,false,"@Me")
+CHAT_SYSTEM.textEntry.editControl.text="";now=now+300;s:TickSchedules()
+eq(s.pendingRestoreState,nil,"confirmed once-only reminder must not automatically repeat")
+eq(s:GetScheduledDueAt("ad","Amber Traders","DAY"),math.huge)
+print("once-only phases retry unsent text and complete only after confirmed send")
+
+f.reset();s.lastTimedOutMessage=nil
+f.entry("peeronce","ad","Amber Traders","Only one notice.","Guild")
+assert(s:SaveGuildSchedule("ad","Amber Traders",{mode="EVENT",enabled=true,eventDate="2026-10-24",eventTime="08:00 PM",promotionDays=2,endDelayMinutes=60,intervalMinutes=5,phaseOnce={DAY=true}}))
+cfg=s:GetGuildSchedule("ad","Amber Traders");now=cfg.eventAtUtc-3600
+f.incoming(CHAT_CHANNEL_GUILD_1,"Only one notice.")
+now=now+600;s:TickSchedules()
+eq(s.pendingRestoreState,nil,"a matching peer send completes a once-only phase too")
+print("peer announcements complete once-only phases without preparing local text")
