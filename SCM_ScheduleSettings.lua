@@ -184,7 +184,7 @@ function SmartChatMsg:GetScheduleMessagePhaseText(messageId,schedule)
     local text=#result>0 and table.concat(result," · ") or "Not selected for any phase"
     if schedule.specialPattern and schedule.specialPattern~="NONE" then
         local variant=self:GetScheduleMessageVariant(schedule,messageId)
-        text=text.." · "..self:GetScheduleVariantLabel(variant)
+        text=text.." · "..self:GetScheduleVariantLabel(variant,schedule.specialPattern)
         if schedule.specialPattern=="FACTION_ROTATION" and variant~="ALL" then
             local selected=false;for _,code in ipairs(schedule.rotationFactions or {}) do if code==variant then selected=true end end
             if not selected then text=text.." (not in rotation)" end
@@ -239,7 +239,7 @@ function SmartChatMsg:GetScheduleMessageChecklist(phase)
     for _,entry in ipairs(self:SortScheduledMessageEntries(self:GetMessageEntriesForCommandAndGuild(id,guild),schedule)) do
         local messageId=entry.id
         local d=self:GetScheduleEditorDraft()
-        local variantChoices=d.specialPattern=="MONTH_FINAL" and {"REGULAR","FINAL"} or nil
+        local variantChoices=d.specialPattern=="MONTH_FINAL" and {"REGULAR","FINAL","ALL"} or nil
         if d.specialPattern=="FACTION_ROTATION" then
             variantChoices={"ALL"};local seen={}
             for i=1,3 do
@@ -410,9 +410,10 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
             row.variantButton:SetHidden(false);row.variantButton:ClearAnchors()
             row.variantButton:SetAnchor(TOPLEFT,row.phaseLinkContainer,BOTTOMLEFT,0,4)
             row.variantButton:SetWidth(math.max(100,contentWidth-50))
-            row.variantButton:SetText("Group: "..self:GetScheduleVariantLabel(choice.variant))
+            row.variantButton:SetText("Group: "..self:GetScheduleVariantLabel(choice.variant,"MONTH_FINAL"))
             row.variantButton:SetHandler("OnClicked",function()
-                choice.setVariant(choice.variant=="FINAL" and "REGULAR" or "FINAL")
+                local nextVariant={REGULAR="FINAL",FINAL="ALL",ALL="REGULAR"}
+                choice.setVariant(nextVariant[choice.variant] or "REGULAR")
             end)
             if row.variantControl then row.variantControl:SetHidden(true) end
             height=height+42
@@ -576,7 +577,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
     controls[#controls+1]={type="description",text=function()
         local d=draft()
         if d.specialPattern=="FACTION_ROTATION" then return "In each message row, choose All selected factions or a faction. Keep using the phase checkboxes for when it runs." end
-        if d.specialPattern=="MONTH_FINAL" then return "Works with any repeating event schedule. Existing messages automatically use Regular events. Click the Group button beneath a message to switch it between Regular events and Month-final events. Mark only your special announcements Month-final events. The last scheduled event in each month uses that pool throughout promotion. If none are marked month-final, regular messages are used instead." end
+        if d.specialPattern=="MONTH_FINAL" then return "Works with any repeating event schedule. Unmarked messages use Regular events. Click the Group button beneath a message to cycle through Regular events, Month-final events, and All events. All events messages are eligible for both kinds of occurrence, within their selected phases. The last scheduled event in each month uses the month-final pool throughout promotion. If none are marked month-final, regular messages are used instead, together with All events messages." end
         return "Special patterns are optional. Message group choices appear in each phase's message list when enabled."
     end}
     controls[#controls+1]={type="description",reference="SCM_NextScheduleOccurrence",text=function() return self:GetNextScheduleOccurrenceText(draft()) end}

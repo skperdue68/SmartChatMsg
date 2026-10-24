@@ -141,9 +141,9 @@ The **Event date under Event and promotion timing** starts the first faction's b
 
 Select **Special event pattern → Last event of month**. This finds the last actual scheduled event in each calendar month, using your recurrence and scheduling timezone. It is not tied to raffles, a fixed weekday, or the month's last calendar day.
 
-Under each phase, click the **Group: Regular events** button beneath a message to switch it to **Group: Month-final events**. Click again to switch back. Existing/unmarked messages are regular by default. Mark only the special month-final announcements; you do not need to change every message.
+Under each phase, click the **Group** button beneath a message to cycle **Regular events → Month-final events → All events → Regular events**. Existing/unmarked messages remain regular by default. Mark special month-final announcements as Month-final events. Choose All events when the same text should be eligible for either kind of occurrence; its phase checkboxes still control when it runs. For example, one All events message assigned to Starting soon can announce ticket sales are closed for both regular and month-final drawings. Save and activate after changing assignments.
 
-The final event uses its month-final pool throughout promotion, including promotion that starts in the previous month. If no messages for the combination are marked month-final, regular messages are used instead. Once a special pool exists, its phase checkboxes are respected; an empty special phase intentionally has no messages. Regular and month-final messages can each have several random variations.
+The final event uses its month-final pool throughout promotion, including promotion that starts in the previous month. All events messages join both pools within their selected phases. If no messages for the combination are marked month-final, regular messages are used instead, together with All events messages. Once a special pool exists, its phase checkboxes are respected; a phase with neither month-final nor All events messages intentionally has no messages. Each pool can have several random variations. Full import/export preserves All events, including the personal assignments of locked messages.
 
 ### Test a message before using it
 

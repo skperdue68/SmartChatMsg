@@ -34,7 +34,7 @@ function SmartChatMsg:NormalizeEventPattern(data,result)
     local variants={ALL=true,REGULAR=true,FINAL=true,AD=true,EP=true,DC=true}
     for id,variant in pairs(type(data.messageVariants)=='table' and data.messageVariants or {}) do
         if type(id)~='string' or not variants[variant] then return false,'Invalid message event group.' end
-        result.messageVariants[id]=result.specialPattern=='MONTH_FINAL' and variant=='ALL' and 'REGULAR' or variant
+        result.messageVariants[id]=variant
     end
     return true
 end
@@ -59,13 +59,14 @@ function SmartChatMsg:GetScheduleFactionName(schedule,eventAt)
     return factions[self:GetScheduleEventVariant(schedule,eventAt)]
 end
 
-function SmartChatMsg:GetScheduleVariantLabel(variant)
+function SmartChatMsg:GetScheduleVariantLabel(variant,pattern)
+    if variant=='ALL' and pattern=='MONTH_FINAL' then return 'All events' end
     return factions[variant] or ({ALL='All selected factions',REGULAR='Regular events',FINAL='Month-final events'})[variant] or variant
 end
 
 function SmartChatMsg:GetScheduleMessageVariant(schedule,messageId)
     local value=(schedule.messageVariants or {})[messageId]
     if schedule.specialPattern=='FACTION_ROTATION' then return (value=='ALL' or factions[value]) and value or 'ALL' end
-    if schedule.specialPattern=='MONTH_FINAL' then return (value=='REGULAR' or value=='FINAL') and value or 'REGULAR' end
+    if schedule.specialPattern=='MONTH_FINAL' then return (value=='REGULAR' or value=='FINAL' or value=='ALL') and value or 'REGULAR' end
     return 'ALL'
 end
