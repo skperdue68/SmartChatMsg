@@ -266,6 +266,16 @@ Changing to a window/non-repeating schedule turns the special pattern off.
 - Type another draft before retrying: it must be preserved and a local reason shown. Editing the original prepared text before timeout must not make that draft recoverable.
 - Test another timeout, confirmed send, deleted original message, paused schedule, phase exclusion, peer observation and startup/shared pacing. Old startup-queue callbacks must not run again.
 - Reload UI: retry should report no recoverable message for the new session.
+- Let the chat input become empty before the timeout callback, then run /scm retry after the timeout notice: the original message should still be recoverable.
+- Enable Prepare only once for the current phase. Let the message time out: it should remain eligible to retry while that phase is active. Send it: automatic preparation must stop for that phase. A matching message from another player should also complete it.
+
+## Extra reminders and ready-message order (2.0.12)
+
+- With an enabled active schedule on cooldown, run /scm send <command> <guild number>. It should prepare a current-phase message through the saved channel. Usage and Next Send change only after Enter confirms the send. Try /scm <command> too.
+- Omit the guild number for a command with one scheduled guild. With multiple scheduled guilds, check the configured Default guild is selected or a guild number is requested. Try a reserved name using /scm send retry 1.
+- Verify startup and cross-schedule pauses, peer cooldowns, disabled/paused schedules and closed windows still block requests with a local explanation. Own interval and once-only completion may be overridden explicitly.
+- Keep a typed draft while requesting: it must be protected. Clear it during the same phase: the reminder should prepare. Cross a phase boundary first: that queued request should be discarded. Observe a peer announcement while waiting: the duplicate should be canceled.
+- Make three schedules ready together and repeat the test with resetcooldowns: their initial order should vary. Each should be served once before its interval, with five minutes between different scheduled sends; explicit manual requests keep priority. An unsent timeout does not start that five-minute pause.
 
 ## Schedule control names
 

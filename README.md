@@ -1,8 +1,10 @@
-# SmartChatMsg (v2.0.11)
+# SmartChatMsg (v2.0.12)
 
-**[Open the standalone HTML help guide v2.0.11](SmartChatMsg_Help_Guide_v2.0.11.html)** (included with the addon).
+**[Open the standalone HTML help guide v2.0.12](SmartChatMsg_Help_Guide_v2.0.12.html)** (included with the addon).
 
 **[Read the complete SmartChatMsg 2.0 user guide](docs/SmartChatMsg-2.0.md)** for all configuration options, examples, timezone changes, recurrence, message groups, and phase behavior.
+
+**2.0.12:** Fixes `/scm retry` when chat is already empty at timeout. Ready scheduled reminders enter the queue in random order. Use `/scm send <command> [guild number]` (or `/scm <command> [guild number]`) to request an extra current-phase reminder, overriding its own interval while respecting peer cooldowns and shared pacing. Usage and once-only completion are recorded after a confirmed send.
 
 **2.0.11:** Fixes duplicate MungeOverlay control errors while opening settings. Schedule rows and their templated children now have stable unique names across phase lists, refreshes and message-group changes. Newly relevant settings sections open automatically, including faction rotation, mode timing, repeat options and phase lists; ordinary refreshes preserve manual collapse.
 

@@ -34,6 +34,18 @@ Dates and times in settings are readable calendar values; stored UTC timestamps 
 
 A name used exclusively for Scheduled combinations has no custom slash command. Changing a combination to On Demand or Startup restores the command. If another guild uses the same name for an ordinary combination, its command remains available.
 
+### Request an extra scheduled reminder
+
+Use **`/scm send <command> [guild number]`**, for example `/scm send mafiapvp 1`. The shorter `/scm mafiapvp 1` also works. Names are case-insensitive and may include the leading slash. Use the explicit `send` form if a name conflicts with built-in actions such as `retry` or `status`.
+
+The guild number is optional when the command has only one Scheduled guild. If it has several, the configured Default guild is used when that guild has a Scheduled combination; otherwise specify a guild number from 1 to 5. The saved output channel remains in effect.
+
+This requests one randomly selected message for the **current phase and occurrence**, with normal substitutions/countdowns. The schedule must be enabled, unpaused, and inside its active window. It overrides its own repeat interval, zone cooldown, and prepare-only-once completion so you can call an extra reminder. It still respects matching messages from other players, the three-minute startup delay, the five-minute pause after another schedule, and zone eligibility. A request during a pacing delay is rejected with an explanation; try again after that delay.
+
+If your chat contains a draft or another prepared message, the request waits without replacing it. If its phase, occurrence, or schedule changes while waiting, it is discarded. Request it again for the new phase. A reminder already waiting in chat is kept rather than duplicated.
+
+**Press Enter to send.** Preparing or requesting alone does not record a send. A confirmed send updates usage, resets the next automatic send to the current phase's normal interval, and pauses other schedules for five minutes. It does not enable a disabled schedule, resume a paused one, or change phase assignments. A phase set to prepare only once remains complete after an extra manual send.
+
 ### Ordinary On Demand and Startup behavior
 
 - **Repeat Every (mins):** after you send a prepared message, wait this long before preparing another. Leave repeating disabled for a one-time command.
@@ -224,7 +236,7 @@ Older `SCM_EXPORT_V1` files remain readable. Where a named record identifies the
 
 Use **`/scm retry`** after an announcement disappears because it timed out before you pressed Enter. The timeout notification also tells you this command. It restores the same saved message to its original output channel and recalculates substitutions/countdowns for the current time. Press Enter to send; restoring alone does not mark it used or sent.
 
-Only the most recent untouched message actually cleared by the timeout can be retried. An edited draft is preserved instead and is not stored for recovery. The recovery is session-only and ends on UI reload/logout. A newer timeout replaces it; a matching confirmed send consumes it.
+Only the most recent expired message can be retried. Recovery is retained when the timeout clears unchanged text **or when the chat input is already empty when the timeout fires**. A nonempty edited draft is preserved instead and is not stored for recovery. The recovery is session-only and ends on UI reload/logout. A newer recoverable timeout replaces it; a matching confirmed send consumes it.
 
 Retry leaves typed chat and existing pending messages alone. It explains if the command/guild or message is gone, the scheduled window has ended, the schedule is paused, the message is excluded from the current phase, or another announcement was used after the timeout. Current startup/shared pacing and incoming-message cooldown protections still apply. The command does not revive completed startup-queue actions or reset cooldowns. It can restore an unsent timed-out scheduled message before its automatic retry interval.
 
@@ -235,3 +247,9 @@ Faction frequency is under **Scheduling > Faction rotation > Faction frequency (
 When a setting makes another section relevant, that section opens automatically. This includes selecting Scheduled in Run At, changing the schedule type, selecting Faction rotation, choosing a repeating schedule with weekday options, enabling Starting soon, and revealing message group choices in the phase lists. Enclosing sections open as needed so the newly relevant controls are visible.
 
 You can collapse any section afterward. Ordinary refreshes, message edits, and saves preserve that choice. Switching to a different command/guild reveals its relevant settings again. Selecting another option and then returning to a previously disabled section opens it again. Sections that remain irrelevant stay disabled through the normal settings behavior.
+
+## Order of ready schedules and once-only reminders
+
+When several scheduled combinations are ready, their initial queue order is shuffled. Waiting requests retain that order across scheduler ticks; manual requests keep priority over automatic ones. Chat protection, per-command intervals, and the five-minute pause between different schedules still apply.
+
+Prepare only once completes after a **confirmed send** or a matching announcement from another player during the phase. Merely placing text in chat does not complete it. An unsent message may retry after its timeout delay while the same phase and occurrence remain eligible. A set-time reminder still expires after its two-minute eligibility window; missed occurrences are not queued as a backlog.

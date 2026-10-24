@@ -21,7 +21,7 @@ assert(s:GetEasternParts(upcoming[3].startsAtUtc).day==19)
 d.mode='WINDOW';d.recurrence='NONE';d.endDate='2026-10-05';d.endTime='09:00 PM'
 n=normalize(d);assert(n.eventAtUtc==n.startsAtUtc)
 print('PASS recurring civil dates, DST, modes and immutable anchors')
--- Scheduler integration: a reminder prepares once, reload retains the marker,
+-- Scheduler integration: a reminder sends once, reload retains the marker,
 -- and a missed occurrence cannot create a backlog.
 f.reset(); f.entry('r','ad','Amber Traders','Reminder')
 now=s:ParseEasternDateTime('2026-10-08','08:00 PM')
@@ -29,6 +29,9 @@ local reminder={mode='REMINDER',enabled=true,startDate='2026-10-08',startTime='0
 assert(s:SaveGuildSchedule('ad','Amber Traders',reminder))
 local saved=s:GetGuildSchedule('ad','Amber Traders')
 assert(s.pendingRestoreState,'online occurrence prepared')
+local text=s.pendingRestoreState.rawExpectedText
+CHAT_SYSTEM:GetEditControl():SetText('')
+s:HandleRestoreWatcherChatMessage(2,CHAT_CHANNEL_ZONE,'My Character',text,false,'@Me')
 assert(s:GetScheduledDueAt('ad','Amber Traders','ANY')==math.huge,'once per occurrence')
 local reloaded=normalize(saved)
 assert(reloaded.completedOccurrences[next(saved.completedOccurrences)],'once marker survives reload')
