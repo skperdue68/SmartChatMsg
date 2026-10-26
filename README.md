@@ -1,8 +1,10 @@
-# SmartChatMsg (v2.0.13)
+# SmartChatMsg (v2.1.0)
 
-**[Open the standalone HTML help guide v2.0.13](SmartChatMsg_Help_Guide_v2.0.13.html)** (included with the addon).
+**[Open the standalone HTML help guide v2.1.0](SmartChatMsg_Help_Guide_v2.1.0.html)** (included with the addon).
 
-**[Read the complete SmartChatMsg 2.0 user guide](docs/SmartChatMsg-2.0.md)** for all configuration options, examples, timezone changes, recurrence, message groups, and phase behavior.
+**[Read the complete SmartChatMsg 2.1.0 user guide](docs/SmartChatMsg-2.1.0.md)** for all configuration options, examples, timezone changes, recurrence, message groups, and phase behavior.
+
+**2.1.0:** Adds event reminder timelines, named important times, time-sensitive milestones, the optional Node web editor, preserving helper consolidation and timeline transfer. Long status countdowns include days; Next Send includes the local clock.
 
 **2.0.13:** Adds **All events** to month-final message groups. One message can serve both regular and month-final occurrences in its selected phases. The Group button cycles Regular events → Month-final events → All events; import/export preserves the choice. **After event starts** replaces the Until end phase label and contains **Promote after start (minutes)**: 0 stops at the event start; a positive duration keeps ongoing-event messages eligible afterward. Existing message selections are preserved.
 
@@ -448,3 +450,13 @@ Pattern settings, order, block length and message groups are included in setting
 export/import. Local locked messages keep their personal group and phase choices.
 Incoming matching resolves %eventfaction% to the expected occurrence's faction.
 Changing to a window/non-repeating schedule turns the special pattern off.
+
+## Version 2.1.0 event timelines
+
+One scheduled event can now contain multiple reminder periods and time-sensitive milestones, each with its own frequency and random message pool. Actual event dates remain separate from promotion timing. Existing schedules continue working until explicitly converted.
+
+Named important times support cutoff date/day/time/countdown substitutions. Matching accepts recognized changing countdowns and recent midnight wording without treating arbitrary dates as wildcards.
+
+The separate [SmartChatMsg-Web](https://github.com/skperdue68/SmartChatMsg-Web) Node application offers the same event structure plus a week/month overview and cooldown-preserving SavedVariables editing. Both addon and web editor retain full scheduling. Read the HTML guide for migration and installation details.
+
+Status cards show days in long countdowns, compact promotion details and local-clock Next Send estimates. Equally eligible queued automatic reminders randomize their order without starving older queued work.

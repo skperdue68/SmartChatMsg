@@ -104,7 +104,7 @@ function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName, commandId
     local source = tostring(template or "")
     -- Avoid interpreting a literal marker supplied by a user as a wildcard.
     if zo_strlower(source):find("scmmatchfield", 1, true) then return nil end
-    source = source:gsub("%%([%a][%w+%-]*)%%", function(token)
+    source = source:gsub("%%([%a][%w_:+%-]*)%%", function(token)
         token = zo_strlower(token)
         if token == "guild" then return guildName end
         if token == "time" or token == "timeofday" or token == "greeting" then return field("greeting") end
@@ -116,13 +116,13 @@ function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName, commandId
         if commandId and eventKind=="eventtime" then
             return self:GetScheduledEventTokenValue(token,commandId,guildName) or "%"..token.."%"
         end
-        if commandId and (token == "eventdate" or token == "eventtime" or token == "eventfaction") then
+        if commandId and (eventKind == "eventdate" or eventKind == "eventtime" or eventKind == "eventfaction") then
             return self:GetScheduledEventTokenValue(token,commandId,guildName) or "%"..token.."%"
         end
-        if commandId and token == "eventwhen" then
+        if commandId and eventKind == "eventwhen" then
             local schedule=self:GetGuildSchedule(commandId,guildName)
             if schedule then
-                return self:GetScheduledEventTokenValue(token,commandId,guildName)
+                return field("eventwhen",{token=token,commandId=commandId,guildName=guildName})
             end
         end
         return "%" .. token .. "%"
@@ -184,8 +184,8 @@ function SmartChatMsg:MatchesIncomingMessage(entry, guildName, normalizedText)
     local eventAt=occurrence and occurrence.eventAtUtc or (schedule and schedule.eventAtUtc)
     local eventWhen=schedule and self:GetScheduledEventTokenValue("eventwhen",entry.commandId,guildName)
     local eventFaction=schedule and self:GetScheduledEventTokenValue("eventfaction",entry.commandId,guildName)
-    if not cached or cached.text ~= entry.text or cached.guildName ~= guildName or cached.eventAt~=eventAt or cached.eventWhen~=eventWhen or cached.eventFaction~=eventFaction then
-        cached = { text = entry.text, guildName = guildName,eventAt=eventAt,eventWhen=eventWhen,eventFaction=eventFaction, matcher = self:BuildIncomingMessageMatcher(entry.text, guildName,entry.commandId) }
+    if not cached or cached.schedule~=schedule or cached.text ~= entry.text or cached.guildName ~= guildName or cached.eventAt~=eventAt or cached.eventWhen~=eventWhen or cached.eventFaction~=eventFaction then
+        cached = { schedule=schedule,text = entry.text, guildName = guildName,eventAt=eventAt,eventWhen=eventWhen,eventFaction=eventFaction, matcher = self:BuildIncomingMessageMatcher(entry.text, guildName,entry.commandId) }
         self.incomingMessageMatchCache[entry] = cached
     end
     local matcher = cached.matcher
@@ -200,12 +200,14 @@ function SmartChatMsg:MatchesIncomingMessage(entry, guildName, normalizedText)
             if value ~= "morning" and value ~= "afternoon" and value ~= "evening" then return false end
         elseif capture.kind == "zone" then
             if not self:IsKnownIncomingZoneName(value) then return false end
+        elseif capture.kind=="eventwhen" then
+            if not self:IsMatchingEventWhen(value,capture.details) then return false end
         elseif capture.kind=="eventcountdown" then
             if value~="now" and value~="passed" and not self:IsGeneratedCountdownText(value,"soon") then return false end
         elseif not self:IsGeneratedTimeAddition(value, capture.details) then
             return false
         end
-        if capture.kind ~= "countdown" and capture.kind~="eventcountdown" then
+        if capture.kind ~= "countdown" and capture.kind~="eventcountdown" and capture.kind~="eventwhen" then
             if substitutions[capture.kind] and substitutions[capture.kind] ~= value then return false end
             substitutions[capture.kind] = value
         end
@@ -329,4 +331,23 @@ function SmartChatMsg:RegisterIncomingChatWatcher()
     EVENT_MANAGER:RegisterForEvent(self.name .. "_IncomingChat", EVENT_CHAT_MESSAGE_CHANNEL, function(...)
         SmartChatMsg:HandleIncomingChatMessage(...)
     end)
+end
+
+-- Relative words may change while a prepared message waits across midnight.
+-- Validate against this occurrence, never turn arbitrary date text into a wildcard.
+function SmartChatMsg:IsMatchingEventWhen(value,details)
+    local schedule=self:GetGuildSchedule(details.commandId,details.guildName)
+    local now=GetTimeStamp()
+    local occurrence=schedule and self:GetScheduleOccurrence(schedule,now)
+    if not occurrence then return false end
+    local function formatted(clock)
+        return self:NormalizeIncomingChatText(self:GetScheduledEventTokenValue(details.token,details.commandId,details.guildName,{schedule=schedule,occurrence=occurrence,now=clock}) or "")
+    end
+    if value==formatted(now) or value==formatted(now-15*60) then return true end
+    local _,offset,mark=self:ParseScheduledEventToken(details.token)
+    if mark then local important=(schedule.importantTimes or {})[mark];if not important then return false end;offset=important.offsetMinutes*60 end
+    local event=self:GetScheduleParts(occurrence.eventAtUtc+(offset or 0),schedule)
+    local days={"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"}
+    local absolute=string.format("%s %02d/%02d/%04d",days[event.wday],event.month,event.day,event.year)
+    return value==self:NormalizeIncomingChatText(absolute)
 end

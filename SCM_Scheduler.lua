@@ -64,7 +64,7 @@ function SmartChatMsg:QueueChatPopulation(commandId,guildName,channelOverride,me
     end
     self.chatPopulationSequence=(self.chatPopulationSequence or 0)+1
     self.chatPopulationQueue[key]={commandId=commandId,guildName=guildName,channelOverride=channelOverride,
-        metadata=metadata or {},priority=priority,sequence=self.chatPopulationSequence,
+        metadata=metadata or {},priority=priority,sequence=self.chatPopulationSequence,queuedAt=GetTimeStamp(),
         runAt=self:GetGuildRunAt(commandId,guildName),schedule=self:GetGuildSchedule(commandId,guildName)}
     return true
 end
@@ -73,7 +73,26 @@ function SmartChatMsg:ProcessChatPopulationQueue()
     if self:IsChatPopulationBusy() then return end
     local ordered={}
     for key,request in pairs(self.chatPopulationQueue or {}) do request.key=key; ordered[#ordered+1]=request end
-    table.sort(ordered,function(a,b) return a.priority==b.priority and a.sequence<b.sequence or a.priority<b.priority end)
+    table.sort(ordered,function(a,b)
+        if a.priority~=b.priority then return a.priority<b.priority end
+        if (a.queuedAt or 0)~=(b.queuedAt or 0) then return (a.queuedAt or 0)<(b.queuedAt or 0) end
+        return a.sequence<b.sequence
+    end)
+    -- Choose anew among equal automatic priorities when delivery is available.
+    -- Stable input order prevents the collection shuffle from canceling this shuffle.
+    local first=1
+    while first<=#ordered do
+        local last=first
+        while last<#ordered and ordered[last+1].priority==ordered[first].priority and ordered[last+1].queuedAt==ordered[first].queuedAt do last=last+1 end
+        if ordered[first].priority==0 or ordered[first].priority>=3 then
+            local group={}
+            for index=first,last do group[#group+1]=ordered[index] end
+            table.sort(group,function(a,b) return a.key<b.key end)
+            for index=#group,2,-1 do local other=zo_random(1,index);group[index],group[other]=group[other],group[index] end
+            for index=first,last do ordered[index]=group[index-first+1] end
+        end
+        first=last+1
+    end
     for _,request in ipairs(ordered) do
         self.chatPopulationQueue[request.key]=nil
         local state,phase=self:GetGuildScheduleState(request.commandId,request.guildName)
@@ -266,6 +285,16 @@ function SmartChatMsg:HandleScheduledPopulateTimeout(metadata)
     schedule.nextDuePhase=self:GetSchedulePhase(schedule,GetTimeStamp())
     local occurrence=self:GetScheduleOccurrence(schedule,GetTimeStamp())
     schedule.nextDueOccurrence=occurrence and occurrence.occurrenceKey
+    if schedule.timelineVersion==1 then
+        local row=self:GetActiveTimelineReminder(schedule,GetTimeStamp())
+        if row then
+            if row.timeSensitive and retry<=0 then schedule.nextDueAt=GetTimeStamp()+60 end
+            local key=occurrence.occurrenceKey..":"..row.id
+            schedule.timelineUsage=schedule.timelineUsage or {}
+            local usage=schedule.timelineUsage[key] or {};schedule.timelineUsage[key]=usage
+            usage.nextDueAt=schedule.nextDueAt
+        end
+    end
     local runtime=self.scheduleRuntime and self.scheduleRuntime[self:GetReminderStateKey(metadata.commandId,metadata.guildName)]
     self:ShowStatusMessage(self:GetSlashCommandDisplayName(metadata.commandId).." / "..metadata.guildName
         ..": scheduled message was not sent before the chat timeout. Next attempt: "..self:FormatScheduleDateTime(schedule.nextDueAt,schedule)..".")
@@ -290,6 +319,7 @@ function SmartChatMsg:ResetAllCooldowns()
             if schedule then
                 schedule.nextDueAt=nil;schedule.nextDuePhase=nil;schedule.nextDueOccurrence=nil
                 schedule.completedOccurrences={}
+                schedule.timelineUsage={}
             end
             if active and settings.runAt~="SCHEDULED" then repeats[#repeats+1]={command.id,guild} end
         end
@@ -510,8 +540,10 @@ function SmartChatMsg:ParseScheduledEventToken(token)
     token=zo_strlower(tostring(token or ""))
     local valid={eventdate=true,eventtime=true,eventwhen=true,eventfaction=true,eventcountdown=true}
     if valid[token] then return token,0 end
+    local named,mark=token:match("^(event%a+):([%a][%w_]*)$")
+    if valid[named] and named~="eventfaction" then return named,0,mark end
     local kind,sign,amount,unit=token:match("^(event%a+)([+%-])(%d+)([mhd])$")
-    if kind~="eventtime" and kind~="eventcountdown" then return nil end
+    if kind~="eventtime" and kind~="eventcountdown" and kind~="eventwhen" and kind~="eventdate" then return nil end
     amount=tonumber(amount)
     local seconds=amount*({m=60,h=3600,d=86400})[unit]
     if seconds>36500*86400 then return nil end
@@ -519,18 +551,19 @@ function SmartChatMsg:ParseScheduledEventToken(token)
 end
 
 function SmartChatMsg:HasExplicitEventCountdown(text)
-    for token in tostring(text or ""):gmatch("%%([%a][%w+%-]*)%%") do
+    for token in tostring(text or ""):gmatch("%%([%a][%w_:+%-]*)%%") do
         if self:ParseScheduledEventToken(token)=="eventcountdown" then return true end
     end
     return false
 end
 
 function SmartChatMsg:GetScheduledEventTokenValue(token,commandId,guildName,context)
-    local kind,offset=self:ParseScheduledEventToken(token)
+    local kind,offset,mark=self:ParseScheduledEventToken(token)
     if not kind then return nil end
     token=kind
     local schedule=context and context.schedule or self:GetGuildSchedule(commandId,guildName)
     if not schedule then return nil end
+    if mark then local important=(schedule.importantTimes or {})[mark];if not important then return nil end;offset=important.offsetMinutes*60 end
     local now=context and context.now or GetTimeStamp()
     local occurrence=context and context.occurrence or self:GetScheduleOccurrence(schedule,now)
     if token=="eventfaction" then
@@ -555,7 +588,7 @@ function SmartChatMsg:GetScheduledEventTokenValue(token,commandId,guildName,cont
 end
 
 function SmartChatMsg:ResolveScheduledEventTokens(text,commandId,guildName,context)
-    return tostring(text or ""):gsub("%%([%a][%w+%-]*)%%",function(token)
+    return tostring(text or ""):gsub("%%([%a][%w_:+%-]*)%%",function(token)
         return self:GetScheduledEventTokenValue(zo_strlower(token),commandId,guildName,context) or "%"..token.."%"
     end)
 end

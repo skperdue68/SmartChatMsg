@@ -228,6 +228,8 @@ function SmartChatMsg:InitializeSavedVars()
     local seenMessageIds = {}
     for _, entry in ipairs(self.savedVars.messages) do
         if type(entry) == "table" then
+            entry.name = self:NormalizeMessageName(entry.name)
+            entry.displayOrder = self:NormalizeMessageDisplayOrder(entry.displayOrder)
             local entryId = entry.id
             if type(entryId) ~= "string" or entryId == "" or seenMessageIds[entryId] then
                 entryId = self:GenerateUuid()
@@ -240,6 +242,21 @@ function SmartChatMsg:InitializeSavedVars()
             seenMessageIds[entryId] = true
         end
     end
+end
+
+-- Optional editor metadata never changes message text or randomized selection.
+function SmartChatMsg:NormalizeMessageName(value)
+    if type(value) ~= "string" then return nil end
+    local name = self:Trim(value)
+    if name == "" or #name > 240 then return nil end
+    return name
+end
+
+function SmartChatMsg:NormalizeMessageDisplayOrder(value)
+    if type(value) == "number" and value >= 1 and value <= 1000000 and value == math.floor(value) then
+        return value
+    end
+    return nil
 end
 
 function SmartChatMsg:Trim(value)
@@ -457,6 +474,8 @@ function SmartChatMsg:BuildSlotExportString()
                 self:EscapeImportExportField(entry.text or ""),
                 self:EscapeImportExportField(entry.lastUsedAt or ""),
                 self:EscapeImportExportField(entry.useCount or ""),
+                self:EscapeImportExportField(self:NormalizeMessageName(entry.name) or ""),
+                self:EscapeImportExportField(self:NormalizeMessageDisplayOrder(entry.displayOrder) or ""),
             }, "|"))
         end
     end
@@ -650,7 +669,7 @@ function SmartChatMsg:ImportSlotSettingsFromString(rawText, transfer)
 
         local recordType = table.remove(parts, 1)
 
-        if recordType == "SCHEDULE_V1" or recordType == "SCHEDULEMESSAGE_V1" or recordType == "SCHEDULEOPTIONS_V1" or recordType=="SCHEDULEPATTERN_V1" or recordType=="SCHEDULEVARIANT_V1" then
+        if recordType == "SCHEDULE_V1" or recordType == "SCHEDULEMESSAGE_V1" or recordType == "SCHEDULEOPTIONS_V1" or recordType=="SCHEDULEPATTERN_V1" or recordType=="SCHEDULEVARIANT_V1" or recordType=="SCHEDULETIMELINE_V1" or recordType=="SCHEDULEMARK_V1" or recordType=="SCHEDULEROW_V1" or recordType=="SCHEDULEPOOL_V1" or recordType=="SCHEDULEUSAGE_V1" then
             table.insert(parts, 1, recordType)
             scheduleRecords[#scheduleRecords + 1] = parts
         elseif recordType == "DEFAULT" then
@@ -715,6 +734,8 @@ function SmartChatMsg:ImportSlotSettingsFromString(rawText, transfer)
             local messageText = self:Trim(self:UnescapeImportExportField(parts[5] or ""))
             local lastUsedAt = tonumber(self:UnescapeImportExportField(parts[6] or ""))
             local useCount = tonumber(self:UnescapeImportExportField(parts[7] or ""))
+            local messageName = self:NormalizeMessageName(self:UnescapeImportExportField(parts[8] or ""))
+            local displayOrder = self:NormalizeMessageDisplayOrder(tonumber(self:UnescapeImportExportField(parts[9] or "")))
 
             if id ~= "" and not messageIds[id] and commandIds[commandId] and messageText ~= "" then
                 messageIds[id] = true
@@ -726,6 +747,8 @@ function SmartChatMsg:ImportSlotSettingsFromString(rawText, transfer)
                     text = messageText,
                     lastUsedAt = lastUsedAt and math.floor(lastUsedAt) or nil,
                     useCount = useCount and math.floor(useCount) or nil,
+                    name = messageName,
+                    displayOrder = displayOrder,
                 })
             end
         elseif recordType == "CHANNEL" then

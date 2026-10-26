@@ -1,0 +1,13 @@
+local f=dofile('tests/eso_fixture.lua');local s,eq=f.scm,f.eq;f.reset()
+f.entry('early','other','Amber Traders','Tours %eventtime+1d% (%eventcountdown+1d%).','Guild')
+f.entry('day','ad','Amber Traders','Tours %eventtime%','Guild')
+assert(s:SaveGuildSchedule('other','Amber Traders',{mode='WINDOW',enabled=true,startDate='2026-10-26',startTime='08:00 PM',endDate='2026-10-27',endTime='01:00 PM',recurrence='WEEKLY',intervalMinutes=240}))
+assert(s:SaveGuildSchedule('ad','Amber Traders',{mode='EVENT',enabled=true,eventDate='2026-10-27',eventTime='08:00 PM',promotionDays=0,endDelayMinutes=30,recurrence='WEEKLY',intervalMinutes=120,timelineVersion=1,reminders={{id='day',label='Day',start={kind='DAY',days=0,time='01:00 PM'},finish={kind='OFFSET',minutes=0},intervalMinutes=120,messageIds={'day'}}}}))
+local entry=s.savedVars.messages[1];entry.lastUsedAt=1793110000;entry.useCount=7
+assert(s:MergeTimelineEvents('ad','Amber Traders',{'other'}))
+local cfg=s:GetGuildSchedule('ad','Amber Traders');eq(#cfg.reminders,2);eq(entry.commandId,'ad');eq(entry.id,'early');eq(entry.useCount,7)
+eq(entry.text,'Tours %eventtime% (%eventcountdown%).')
+eq(s:GetGuildSchedule('other','Amber Traders').enabled,false)
+assert(cfg.legacyTimelineBackup.merged.other,'retain source settings backup')
+local early=cfg.reminders[2];eq(early.start.kind,'DAY');eq(early.start.days,-1);eq(early.start.time,'08:00 PM')
+print('explicit helper consolidation retains IDs, usage, windows and actual event tokens')
