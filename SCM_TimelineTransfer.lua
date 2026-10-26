@@ -185,9 +185,8 @@ function S:MapLegacyTimelineUsage(source,target,rows,commandId,guild)
  local occurrence=self:GetScheduleOccurrence(target,last)
  if not occurrence then return end
  for _,row in ipairs(rows) do
-  local start=self:ResolveTimelineAnchor(target,occurrence,row.start)
-  local finish=row.once and not row.onceUntilFinish and start+row.lateMinutes*60 or self:ResolveTimelineAnchor(target,occurrence,row.finish)
-  if last>=start and last<finish then
+  local start,finish=self:GetTimelineReminderWindow(target,occurrence,row)
+  if start and finish and last>=start and last<finish then
    local key=occurrence.occurrenceKey..':'..row.id
    local usage={lastSentAt=last,completed=row.once or nil,nextDueAt=last+row.intervalMinutes*60}
    if source.nextDueAt and (not row.legacyPhase or source.nextDuePhase==row.legacyPhase) then usage.nextDueAt=math.max(usage.nextDueAt,source.nextDueAt) end

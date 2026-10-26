@@ -86,8 +86,8 @@ function S:BuildScheduleOccurrence(config,event)
  local first,last
  for _,row in ipairs(config.reminders or {}) do
   local start,finish=self:GetTimelineReminderWindow(config,occurrence,row)
-  if not start or not finish then return nil end
-  if finish>start then first=math.min(first or start,start);last=math.max(last or finish,finish) end
+  -- A future civil clock can fall in the DST gap; other rows still apply.
+  if start and finish and finish>start then first=math.min(first or start,start);last=math.max(last or finish,finish) end
  end
  occurrence.eventEndsAtUtc=config.eventDurationMinutes~=nil and event+config.eventDurationMinutes*60 or nil
  occurrence.startsAtUtc,occurrence.endsAtUtc=first or event,last or event;return occurrence
@@ -99,7 +99,7 @@ function S:GetActiveTimelineReminder(config,utc)
  for _,row in ipairs(config.reminders) do
   local start,finish=self:GetTimelineReminderWindow(config,occurrence,row)
   local usage=(config.timelineUsage or {})[occurrence.occurrenceKey..':'..row.id]
-  if row.enabled~=false and not row.paused and utc>=start and utc<finish and not(row.once and usage and usage.completed) then
+  if start and finish and row.enabled~=false and not row.paused and utc>=start and utc<finish and not(row.once and usage and usage.completed) then
    if not picked or row.timeSensitive and not picked.timeSensitive or row.timeSensitive==picked.timeSensitive and (start>from or start==from and row.once and not picked.once) then picked,from,to=row,start,finish end
   end
  end
@@ -196,7 +196,7 @@ function S:MarkObservedChatUsage(entry,guild,channel)
   for _,row in ipairs(config.reminders) do
    for _,messageId in ipairs(row.messageIds) do if messageId==entry.id then
     local start,finish=self:GetTimelineReminderWindow(config,occurrence,row)
-    if row.enabled~=false and not row.paused and GetTimeStamp()>=start and GetTimeStamp()<finish then
+    if start and finish and row.enabled~=false and not row.paused and GetTimeStamp()>=start and GetTimeStamp()<finish then
      local key=occurrence.occurrenceKey..':'..row.id;local usage=config.timelineUsage[key] or {};config.timelineUsage[key]=usage
      usage.peerAt=GetTimeStamp();usage.completed=row.once or nil;usage.nextDueAt=GetTimeStamp()+row.intervalMinutes*60+zo_random(30,90)
     end
