@@ -1,1 +1,3 @@
-* text=auto eol=lf
+/SCM_Timeline*.lua text eol=lf
+/tests/timeline*_spec.lua text eol=lf
+/.github/** text eol=lf
