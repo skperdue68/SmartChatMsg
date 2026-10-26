@@ -8,11 +8,12 @@ function S:ExportScheduleRecords()
  local function add(fields) for i,value in ipairs(fields) do fields[i]=self:EscapeImportExportField(tostring(value)) end;lines[#lines+1]=table.concat(fields,'|') end
  for id,byGuild in pairs(self.savedVars.commandGuildSettings or {}) do for guild,settings in pairs(byGuild) do local config=settings.schedule
   if config and config.timelineVersion==1 then
-   add({'SCHEDULETIMELINE_V1',id,guild,1})
+   add({'SCHEDULETIMELINE_V1',id,guild,1,config.eventDurationMinutes or ''})
    for name,mark in pairs(config.importantTimes or {}) do add({'SCHEDULEMARK_V1',id,guild,name,mark.label,mark.offsetMinutes}) end
    for _,row in ipairs(config.reminders) do
     local fields={'SCHEDULEROW_V1',id,guild,row.id,row.label,row.once and '1' or '0',row.timeSensitive and '1' or '0',row.intervalMinutes,row.lateMinutes,row.onceUntilFinish and '1' or '0'}
     for _,a in ipairs({row.start,row.finish or {}}) do for _,k in ipairs({'kind','minutes','days','time','name','fold'}) do fields[#fields+1]=a[k] or '' end end
+    fields[#fields+1]=row.enabled==false and '0' or '1';fields[#fields+1]=row.paused and '1' or '0';fields[#fields+1]=row.allowAfterEventEnd and '1' or '0'
     add(fields)
     for _,messageId in ipairs(row.messageIds) do if not self:IsMessageLocked(messageId) then add({'SCHEDULEPOOL_V1',id,guild,row.id,messageId}) end end
    end
@@ -32,10 +33,10 @@ function S:ImportScheduleRecords(records,imported)
   if settings and settings.schedule then
    local key=id..'\n'..guild;local d=candidates[key]
    if not d then d=clone(settings.schedule);d.importantTimes={};d.reminders={};d.timelineUsage={};candidates[key]={draft=d,settings=settings};else d=d.draft end
-   if row[1]=='SCHEDULETIMELINE_V1' then if row[4]~='1' then return false,'Unsupported timeline version.' end;d.timelineVersion=1
+   if row[1]=='SCHEDULETIMELINE_V1' then if row[4]~='1' then return false,'Unsupported timeline version.' end;d.timelineVersion=1;d.eventDurationMinutes=tonumber(row[5])
    elseif row[1]=='SCHEDULEMARK_V1' then if d.importantTimes[row[4]] then return false,'Duplicate important time.' end;d.importantTimes[row[4]]={label=row[5],offsetMinutes=tonumber(row[6])}
    elseif row[1]=='SCHEDULEROW_V1' then
-    local reminder={id=row[4],label=row[5],once=row[6]=='1',timeSensitive=row[7]=='1',intervalMinutes=tonumber(row[8]),lateMinutes=tonumber(row[9]),onceUntilFinish=row[10]=='1',messageIds={}}
+    local reminder={id=row[4],label=row[5],once=row[6]=='1',timeSensitive=row[7]=='1',intervalMinutes=tonumber(row[8]),lateMinutes=tonumber(row[9]),onceUntilFinish=row[10]=='1',enabled=row[23]~='0',paused=row[24]=='1',allowAfterEventEnd=row[25]=='1',messageIds={}}
     local index=11;for _,name in ipairs({'start','finish'}) do local a={};for _,field in ipairs({'kind','minutes','days','time','name','fold'}) do local value=row[index];index=index+1;if value and value~='' then a[field]=(field=='minutes' or field=='days') and tonumber(value) or value end end;reminder[name]=next(a) and a or nil end
     d.reminders[#d.reminders+1]=reminder
    elseif row[1]=='SCHEDULEUSAGE_V1' then d.timelineUsage[row[4]]={lastSentAt=tonumber(row[5]),nextDueAt=tonumber(row[6]),peerAt=tonumber(row[7]),completed=row[8]=='1'} end

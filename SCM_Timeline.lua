@@ -21,6 +21,17 @@ function S:ResolveTimelineAnchor(config,occurrence,a)
   return self:ParseScheduleDateTime(string.format('%04d-%02d-%02d',civil.year,civil.month,civil.day),a.time,a.fold or 'FIRST',config)
  end
 end
+-- One definition is shared by selection, queue revalidation and peer matching.
+-- A once notice exactly on the event end retains its short delivery grace.
+function S:GetTimelineReminderWindow(config,occurrence,row)
+ local start=self:ResolveTimelineAnchor(config,occurrence,row.start)
+ local finish=row.once and not row.onceUntilFinish and start and start+row.lateMinutes*60 or self:ResolveTimelineAnchor(config,occurrence,row.finish)
+ if start and finish and config.eventDurationMinutes~=nil and not row.allowAfterEventEnd then
+  local ending=occurrence.eventAtUtc+config.eventDurationMinutes*60
+  if not (row.once and start==ending) then finish=math.min(finish,ending) end
+ end
+ return start,finish
+end
 local normalize=S.NormalizeSchedule
 function S:NormalizeSchedule(data)
  local candidate=data
@@ -30,6 +41,10 @@ function S:NormalizeSchedule(data)
  if not result or not data.timelineVersion then return result,reason end
  if data.timelineVersion~=1 or result.mode~='EVENT' then return nil,'Unsupported event timeline version or mode.' end
  result.legacyTimelineBackup=copy(data.legacyTimelineBackup)
+ if data.eventDurationMinutes~=nil then
+  if not integer(data.eventDurationMinutes,0,5256000) then return nil,'Event duration must be a whole number of minutes, zero or more, or blank.' end
+  result.eventDurationMinutes=data.eventDurationMinutes
+ end
  result.timelineVersion=1;result.importantTimes={};result.reminders={};result.timelineUsage={}
  if type(data.reminders)~='table' or data.importantTimes~=nil and type(data.importantTimes)~='table' then return nil,'Choose reminder rows and valid important times.' end
  for key,usage in pairs(type(data.timelineUsage)=='table' and data.timelineUsage or {}) do
@@ -47,7 +62,7 @@ function S:NormalizeSchedule(data)
  for _,raw in ipairs(data.reminders or {}) do
   if type(raw)~='table' then return nil,'Invalid reminder row.' end
   if type(raw.id)~='string' or raw.id=='' or ids[raw.id] then return nil,'Reminder IDs must be unique.' end;ids[raw.id]=true
-  local row={id=raw.id,label=tostring(raw.label or 'Reminder'),start=anchor(raw.start,result.importantTimes),finish=anchor(raw.finish,result.importantTimes),once=raw.once==true,onceUntilFinish=raw.onceUntilFinish==true,timeSensitive=raw.timeSensitive==true,lateMinutes=raw.lateMinutes or 5,intervalMinutes=raw.intervalMinutes or 60,messageIds={}}
+  local row={id=raw.id,label=tostring(raw.label or 'Reminder'),start=anchor(raw.start,result.importantTimes),finish=anchor(raw.finish,result.importantTimes),once=raw.once==true,onceUntilFinish=raw.onceUntilFinish==true,timeSensitive=raw.timeSensitive==true,enabled=raw.enabled~=false,paused=raw.paused==true,allowAfterEventEnd=raw.allowAfterEventEnd==true,lateMinutes=raw.lateMinutes or 5,intervalMinutes=raw.intervalMinutes or 60,messageIds={}}
   if not row.start or (not row.once or row.onceUntilFinish) and not row.finish or not integer(row.intervalMinutes,1,5256000) or not integer(row.lateMinutes,1,1440) then return nil,'Check reminder times, interval and lateness allowance.' end
   if raw.messageIds~=nil and type(raw.messageIds)~='table' then return nil,'Choose a valid message pool.' end
   local messages={};for _,id in ipairs(raw.messageIds or {}) do if type(id)~='string' or messages[id] then return nil,'Invalid reminder message selection.' end;messages[id]=true;row.messageIds[#row.messageIds+1]=id end
@@ -59,9 +74,10 @@ function S:NormalizeSchedule(data)
   local start=self:ResolveTimelineAnchor(result,occurrence,row.start)
   local finish=row.once and not row.onceUntilFinish and start and start+row.lateMinutes*60 or self:ResolveTimelineAnchor(result,occurrence,row.finish)
   if not start or not finish or finish<=start then return nil,'Reminder end must be after its start.' end
-  first=math.min(first or start,start);last=math.max(last or finish,finish)
+  start,finish=self:GetTimelineReminderWindow(result,occurrence,row)
+  if finish>start then first=math.min(first or start,start);last=math.max(last or finish,finish) end
  end
- result.startsAtUtc,result.endsAtUtc=first,last
+ result.startsAtUtc,result.endsAtUtc=first or result.eventAtUtc,last or result.eventAtUtc
  return result
 end
 local build=S.BuildScheduleOccurrence
@@ -69,22 +85,21 @@ function S:BuildScheduleOccurrence(config,event)
  local occurrence=build(self,config,event);if not occurrence or not config.timelineVersion then return occurrence end
  local first,last
  for _,row in ipairs(config.reminders or {}) do
-  local start=self:ResolveTimelineAnchor(config,occurrence,row.start)
-  local finish=row.once and not row.onceUntilFinish and start and start+row.lateMinutes*60 or self:ResolveTimelineAnchor(config,occurrence,row.finish)
-  if not start or not finish or finish<=start then return nil end
-  first=math.min(first or start,start);last=math.max(last or finish,finish)
+  local start,finish=self:GetTimelineReminderWindow(config,occurrence,row)
+  if not start or not finish then return nil end
+  if finish>start then first=math.min(first or start,start);last=math.max(last or finish,finish) end
  end
- occurrence.startsAtUtc,occurrence.endsAtUtc=first,last;return occurrence
+ occurrence.eventEndsAtUtc=config.eventDurationMinutes~=nil and event+config.eventDurationMinutes*60 or nil
+ occurrence.startsAtUtc,occurrence.endsAtUtc=first or event,last or event;return occurrence
 end
 function S:GetActiveTimelineReminder(config,utc)
  if not config or config.timelineVersion~=1 then return nil end
  local occurrence=self:GetScheduleOccurrence(config,utc);if not occurrence then return nil end
  local picked,from,to
  for _,row in ipairs(config.reminders) do
-  local start=self:ResolveTimelineAnchor(config,occurrence,row.start)
-  local finish=row.once and not row.onceUntilFinish and start+row.lateMinutes*60 or self:ResolveTimelineAnchor(config,occurrence,row.finish)
+  local start,finish=self:GetTimelineReminderWindow(config,occurrence,row)
   local usage=(config.timelineUsage or {})[occurrence.occurrenceKey..':'..row.id]
-  if utc>=start and utc<finish and not(row.once and usage and usage.completed) then
+  if row.enabled~=false and not row.paused and utc>=start and utc<finish and not(row.once and usage and usage.completed) then
    if not picked or row.timeSensitive and not picked.timeSensitive or row.timeSensitive==picked.timeSensitive and (start>from or start==from and row.once and not picked.once) then picked,from,to=row,start,finish end
   end
  end
@@ -180,9 +195,8 @@ function S:MarkObservedChatUsage(entry,guild,channel)
   config.timelineUsage=config.timelineUsage or {}
   for _,row in ipairs(config.reminders) do
    for _,messageId in ipairs(row.messageIds) do if messageId==entry.id then
-    local start=self:ResolveTimelineAnchor(config,occurrence,row.start)
-    local finish=row.once and not row.onceUntilFinish and start+row.lateMinutes*60 or self:ResolveTimelineAnchor(config,occurrence,row.finish)
-    if GetTimeStamp()>=start and GetTimeStamp()<finish then
+    local start,finish=self:GetTimelineReminderWindow(config,occurrence,row)
+    if row.enabled~=false and not row.paused and GetTimeStamp()>=start and GetTimeStamp()<finish then
      local key=occurrence.occurrenceKey..':'..row.id;local usage=config.timelineUsage[key] or {};config.timelineUsage[key]=usage
      usage.peerAt=GetTimeStamp();usage.completed=row.once or nil;usage.nextDueAt=GetTimeStamp()+row.intervalMinutes*60+zo_random(30,90)
     end

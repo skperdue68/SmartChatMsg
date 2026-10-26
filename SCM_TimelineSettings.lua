@@ -84,8 +84,8 @@ function S:GetTimelinePreviewContext(id)
  local occurrence=self:GetUpcomingScheduleOccurrences(c,GetTimeStamp(),1,true)[1] or self:BuildScheduleOccurrence(c,c.eventAtUtc)
  if not occurrence then return nil,'No event occurrence is available.' end
  for _,r in ipairs(c.reminders) do if r.id==id then
-  local first=self:ResolveTimelineAnchor(c,occurrence,r.start)
-  local last=r.once and not r.onceUntilFinish and first+r.lateMinutes*60 or self:ResolveTimelineAnchor(c,occurrence,r.finish)
+  local first,last=self:GetTimelineReminderWindow(c,occurrence,r)
+  if not first or not last or last<=first then return nil,'This reminder is outside the event duration. Adjust its window or enable its explicit after-event exception.' end
   return {schedule=c,occurrence=occurrence,now=first+math.floor((last-first)/2),phase=r.id,reminderId=r.id}
  end end
  return nil,'Choose a reminder to test.'
@@ -147,7 +147,7 @@ function S:RefreshTimelineCards(control,marks)
  for _,r in ipairs(control.timelineRows) do r:SetHidden(true) end
  local items={}
  if marks then for id,m in pairs(d.importantTimes or {}) do items[#items+1]={id=id,label=m.label,detail=tostring(m.offsetMinutes)..' minutes from event - token key: '..id} end table.sort(items,function(a,b) return a.id<b.id end)
- else for _,r in ipairs(d.reminders or {}) do items[#items+1]={id=r.id,label=r.label,detail=self:DescribeTimelineAnchor(r.start,d)..(r.once and not r.onceUntilFinish and '' or ' → '..self:DescribeTimelineAnchor(r.finish,d))..'\n'..(r.once and (r.onceUntilFinish and 'Once within window' or 'Once') or 'Every '..tostring(r.intervalMinutes)..' minutes')..' · '..(r.timeSensitive and 'Time-sensitive' or 'Normal')..' · '..#(r.messageIds or {})..' messages'} end end
+ else for _,r in ipairs(d.reminders or {}) do items[#items+1]={id=r.id,label=r.label,detail=(r.paused and 'Paused' or r.enabled==false and 'Disabled' or 'Enabled')..' · '..self:DescribeTimelineAnchor(r.start,d)..(r.once and not r.onceUntilFinish and '' or ' → '..self:DescribeTimelineAnchor(r.finish,d))..'\n'..(r.once and (r.onceUntilFinish and 'Once within window' or 'Once') or 'Every '..tostring(r.intervalMinutes)..' minutes')..' · '..(r.timeSensitive and 'Time-sensitive' or 'Normal')..' · '..#(r.messageIds or {})..' messages'} end end
  local y=0
  for i,item in ipairs(items) do
   local card=control.timelineRows[i]
@@ -201,7 +201,10 @@ function S:BuildScheduleOptionControls()
   {type='editbox',name='Important time minutes before / after event',getFunc=function() local m=selectedMark();return m and tostring(m.offsetMinutes) or '' end,setFunc=function(v) local m=selectedMark();if m then m.offsetMinutes=tonumber(v) or v;refresh() end end},
   {type='button',name='Remove important time',func=function() local _,id=selectedMark();if not self:RemoveTimelineImportantTime(id) then self:ShowStatusMessage('Choose another start or end for reminders using this important time before removing it.') end end},
  }
+ local duration={type='editbox',name='Event duration (minutes, optional)',tooltip='Whole minutes from the actual event start to its end. Leave blank to retain only reminder windows. Invitations stop at event end; a one-time notice exactly on the end boundary retains its grace.',getFunc=function()return tostring(draft().eventDurationMinutes or '')end,setFunc=function(value)if value=='' then draft().eventDurationMinutes=nil else draft().eventDurationMinutes=tonumber(value) or value end;refresh()end}
+ local rowState={type='dropdown',name='Reminder state',tooltip='Pause or disable only this period without deleting messages or cooldown history.',choices={'Enabled','Paused','Disabled'},getFunc=function()local r=row();return r and (r.paused and 'Paused' or r.enabled==false and 'Disabled' or 'Enabled') or 'Enabled'end,setFunc=function(value)local r=row();if r then r.enabled=value~='Disabled';r.paused=value=='Paused';refresh()end end}
  local pane={
+  duration,
   {type='description',text='Keep the actual event date and time above. Add as many reminder periods or one-time milestones as you need. The latest active normal period wins an overlap; one-time milestones keep their own delivery. You always press Enter to send.'},
   {type='submenu',name='Important times',controls=named},
   {type='header',name='Reminders'},
@@ -233,7 +236,7 @@ function S:BuildScheduleOptionControls()
   append({type='button',name='Use selected important time for '..suffix,tooltip='Select a card under Important times, then click here.',func=function() local _,id=selectedMark();if row() and id then row()[key]={kind='MARK',name=id};refresh() end end,disabled=function() return not row() or not selectedMark() or key=='finish' and row().once and not row().onceUntilFinish end})
   append({type='description',text=function() local a=anchor();local mark=a and a.kind=='MARK' and (draft().importantTimes or {})[a.name];return mark and title..': '..mark.label or '' end})
  end
- append(flag('Prepare only once','once'));append(flag('Keep entire reminder window available until sent','onceUntilFinish'));append(field('Repeat every (minutes)','intervalMinutes',true));append(flag('Time-sensitive reminder','timeSensitive'))
+ append(rowState);append(flag('Allow brief notice after event end (advanced)','allowAfterEventEnd'));append(flag('Prepare only once','once'));append(flag('Keep entire reminder window available until sent','onceUntilFinish'));append(field('Repeat every (minutes)','intervalMinutes',true));append(flag('Time-sensitive reminder','timeSensitive'))
  append({type='description',text='Time-sensitive reminders can bypass ordinary reminder pacing. Lateness allowance is the number of minutes a one-time reminder remains available. Offline or expired milestones are skipped.'})
  append(field('Lateness allowance (minutes)','lateMinutes',true))
  append({type='custom',minHeight=230,maxHeight=230,createFunc=function(c) self:RefreshScheduleMessagePool(c,'TIMELINE') end,refreshFunc=function(c) self:RefreshScheduleMessagePool(c,'TIMELINE') end})
