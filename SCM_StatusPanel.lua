@@ -103,10 +103,12 @@ function SmartChatMsg:FormatStatusDuration(secondsRemaining)
     end
 
     local total = math.max(0, math.floor(secondsRemaining))
-    local hours = math.floor(total / 3600)
+    local days = math.floor(total / 86400)
+    local hours = math.floor((total % 86400) / 3600)
     local minutes = math.floor((total % 3600) / 60)
     local seconds = total % 60
 
+    if days > 0 then return string.format("%dd %02d:%02d:%02d",days,hours,minutes,seconds) end
     if hours > 0 then
         return string.format("%d:%02d:%02d", hours, minutes, seconds)
     end
@@ -141,7 +143,7 @@ end
 
 
 function SmartChatMsg:GetStatusPanelRepeatCardHeight()
-    return 164
+    return 142
 end
 
 function SmartChatMsg:GetStatusSectionExpanded(section,hasContent)
@@ -162,7 +164,12 @@ end
 
 function SmartChatMsg:GetRepeatCardTimingText(row)
     local text="Last Sent: "..tostring(row.lastSentText)
-    if row.isActive then text=text.." | Next Send: "..tostring(row.nextSendText) end
+    if row.isActive then
+        text=text.." | Next Send: "..tostring(row.nextSendText)
+        if row.nextSendAt and row.nextSendAt<math.huge then
+            text=text.." at "..(os.date("%I:%M %p",row.nextSendAt) or "Unknown time"):gsub("^0", "")
+        end
+    end
     return text
 end
 
@@ -200,7 +207,7 @@ function SmartChatMsg:GetScheduledCardDetails(commandId,guildName,controlState)
     local due=self:GetScheduledDueAt(commandId,guildName,phase)
     if due==math.huge then return "Active — Complete for this occurrence","No further delivery" end
     if pacingAt then return "Active — "..(self.scheduleStartupEndsAt==pacingAt and "Startup delay" or "5-minute pause"),
-        self:FormatStatusDuration(math.max(due,pacingAt)-GetTimeStamp()) end
+        self:FormatStatusDuration(math.max(due,pacingAt)-GetTimeStamp()),math.max(due,pacingAt) end
     if due>GetTimeStamp() then return "Active — Cooldown",self:FormatStatusDuration(due-GetTimeStamp()) end
     local runtime=self.scheduleRuntime and self.scheduleRuntime[self:GetReminderStateKey(commandId,guildName)]
     if runtime and runtime.reason then return "Active — "..runtime.reason,runtime.reason end
@@ -255,9 +262,11 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                         local lastUsedAt = self:GetGuildLastUsedAt(command.id, guildName)
                         local nextSendText = "—"
                         local nextSendSeconds = nil
+                        local nextSendAt = nil
 
                         if isActive then
                             if type(nextTriggerAt) == "number" and nextTriggerAt > 0 then
+                                nextSendAt=nextTriggerAt
                                 nextSendSeconds = math.max(0, nextTriggerAt - now)
                                 nextSendText = self:FormatStatusDuration(nextSendSeconds)
                             else
@@ -266,7 +275,7 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                         end
 
                         local statusText=controlState=="PAUSED" and "Paused" or controlState=="ON" and "Active" or "Inactive"
-                        if scheduled then statusText,nextSendText=self:GetScheduledCardDetails(command.id,guildName,controlState)
+                        if scheduled then statusText,nextSendText,nextSendAt=self:GetScheduledCardDetails(command.id,guildName,controlState)
                         elseif controlState=="PAUSED" then nextSendText="Paused" end
                         isActive=controlState=="ON"
                         local schedule=scheduled and self:GetGuildSchedule(command.id,guildName)
@@ -298,6 +307,7 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                             lastSentText = self:FormatStatusTimeOfDay(lastUsedAt),
                             nextSendText = nextSendText,
                             nextSendSeconds = nextSendSeconds,
+                            nextSendAt = nextSendAt,
                             toggleText = nextState=="PAUSED" and "Pause" or nextState=="ON" and "Enable" or "Disable",
                         })
                     end
@@ -965,7 +975,7 @@ function SmartChatMsg:ApplyStatusPanelLayout(panel, width)
         row.commandLabel:ClearAnchors()
         row.commandLabel:SetAnchor(TOPLEFT, row, TOPLEFT, 8, 8)
 
-        row.statusLabel:SetDimensions(childWidth-16, 60)
+        row.statusLabel:SetDimensions(childWidth-16, 38)
         row.statusLabel:ClearAnchors()
         row.statusLabel:SetAnchor(TOPLEFT, row.commandLabel, BOTTOMLEFT, 0, 2)
 

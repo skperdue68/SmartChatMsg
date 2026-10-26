@@ -4822,13 +4822,15 @@ end
 function SmartChatMsg:ApplyMessageSubstitutions(text, commandId, guildName, context)
     local eventAtUtc
     local eventOffset
-    for token in tostring(text or ""):gmatch("%%([%a][%w+%-]*)%%") do
-        local kind,offset=self:ParseScheduledEventToken(token)
-        if kind=="eventtime" then eventOffset=offset;break end
+    local eventMark
+    for token in tostring(text or ""):gmatch("%%([%a][%w_:+%-]*)%%") do
+        local kind,offset,mark=self:ParseScheduledEventToken(token)
+        if kind=="eventtime" then eventOffset=offset;eventMark=mark;break end
     end
     if eventOffset then
         local schedule=context and context.schedule or self:GetGuildSchedule(commandId,guildName)
         local occurrence=context and context.occurrence or (schedule and self:GetScheduleOccurrence(schedule,GetTimeStamp()))
+        if eventMark and schedule and (schedule.importantTimes or {})[eventMark] then eventOffset=schedule.importantTimes[eventMark].offsetMinutes*60 end
         eventAtUtc=occurrence and occurrence.eventAtUtc+eventOffset
     end
     local result = self:ResolveScheduledEventTokens(text,commandId,guildName,context)

@@ -1,0 +1,10 @@
+local f=dofile('tests/eso_fixture.lua');local s,eq=f.scm,f.eq;f.reset()
+f.entry('a','ad','Amber Traders','Raffle %eventtime:tickets%','Guild');f.entry('private','ad','Amber Traders','Private','Guild');s:SetMessageLocked('private',true)
+assert(s:SaveGuildSchedule('ad','Amber Traders',{mode='EVENT',enabled=true,eventDate='2026-11-07',eventTime='08:00 PM',promotionDays=2,endDelayMinutes=5,recurrence='BIWEEKLY',timelineVersion=1,importantTimes={tickets={label='Ticket sales close',offsetMinutes=-60}},reminders={{id='deadline',label='Closing',start={kind='MARK',name='tickets'},once=true,lateMinutes=5,timeSensitive=true,intervalMinutes=60,messageIds={'a','private'}}}}))
+local text=s:BuildExportString();assert(text:find('SCHEDULETIMELINE_V1',1,true),'timeline must export')
+assert(not text:find('SCHEDULEPOOL_V1|ad|Amber Traders|deadline|private',1,true),'locked pool reference must not export')
+ZO_SavedVars={NewAccountWide=function()return s.savedVars end}
+assert(s:ImportSettingsFromString(text))
+local c=s:GetGuildSchedule('ad','Amber Traders');eq(c.timelineVersion,1);eq(c.importantTimes.tickets.offsetMinutes,-60);eq(c.reminders[1].timeSensitive,true);eq(c.reminders[1].messageIds[1],'a')
+local hasPrivate=false;for _,id in ipairs(c.reminders[1].messageIds) do if id=='private' then hasPrivate=true end end;assert(hasPrivate,'local locked pool selection survives import')
+print('timeline and named times roundtrip portable settings with private pool preservation')

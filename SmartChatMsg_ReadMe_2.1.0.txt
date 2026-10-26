@@ -253,3 +253,7 @@ You can collapse any section afterward. Ordinary refreshes, message edits, and s
 When several scheduled combinations are ready, their initial queue order is shuffled. Waiting requests retain that order across scheduler ticks; manual requests keep priority over automatic ones. Chat protection, per-command intervals, and the five-minute pause between different schedules still apply.
 
 Prepare only once completes after a **confirmed send** or a matching announcement from another player during the phase. Merely placing text in chat does not complete it. An unsent message may retry after its timeout delay while the same phase and occurrence remain eligible. A set-time reminder still expires after its two-minute eligibility window; missed occurrences are not queued as a backlog.
+
+
+VERSION 2.1.0 REMINDER TIMELINES
+See SmartChatMsg_Help_Guide_v2.1.0.html for the full timeline and web editor guide. Configure the actual event once, then add repeat windows or once-only milestones. Time-sensitive milestones bypass ordinary cooldown/pacing but retain startup hold, peer duplicate protection and your typed chat. Test each row with simulated time inside its window. Named important time tickets supports %eventwhen:tickets%, %eventdate:tickets%, %eventtime:tickets% and %eventcountdown:tickets%. Existing schedules remain usable without conversion. Review helper consolidation before saving.
