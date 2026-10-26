@@ -3742,9 +3742,13 @@ local function scm_resolve_timezone_context(token, eventEpoch, defaultTimezone)
     if family then
         local isDst = false
         if type(eventEpoch) == "number" then
-            local eventTable = os.date("*t", eventEpoch)
-            if eventTable and eventTable.isdst ~= nil then
-                isDst = eventTable.isdst == true
+            local zone = ({EASTERN="ET",CENTRAL="CT",MOUNTAIN="MT",PACIFIC="PT"})[family]
+            if SmartChatMsg.GetTimeZoneParts and zone then
+                local parts = SmartChatMsg:GetTimeZoneParts(eventEpoch,zone)
+                isDst = parts and (parts.timezone=="EDT" or parts.timezone=="CDT" or parts.timezone=="MDT" or parts.timezone=="PDT") or false
+            else
+                local eventTable = os.date("*t", eventEpoch)
+                isDst = eventTable and eventTable.isdst == true or false
             end
         end
 
