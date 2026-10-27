@@ -49,13 +49,13 @@ If your chat contains a draft or another prepared message, the request waits wit
 ### Ordinary On Demand and Startup behavior
 
 - **Repeat Every (mins):** after you send a prepared message, wait this long before preparing another. Leave repeating disabled for a one-time command.
-- **Retry Delay (mins):** when a prepared repeated message times out unsent, controls the retry delay. Zero or blank uses the normal repeat interval. An explicit retry is capped to Cooldown and may exceed Repeat Every; automatic retry is inactive when repeating is off. Scheduled combinations retain their schedule interval cap.
+- **Retry Delay (mins):** when a prepared repeated message times out unsent, controls the retry delay. Zero or blank uses the normal repeat interval. An explicit retry cannot exceed either Repeat Every or Cooldown; the smaller limit applies. Lowering either limit also clamps saved Retry Delay. Automatic retry is inactive when repeating is off. Scheduled combinations retain their schedule interval cap.
 - **Auto Populate Chat on Zone:** prepares messages on eligible zone arrivals instead of ordinary repeating. Only one Zone automation owner can be active at a time.
 - **Cooldown (mins):** prevents another automatic message for the same zone until that zone's cooldown has elapsed. It is separate from Repeat Every.
 - **Open Status Panel on Run:** opens the status window when the combination runs.
 - **Notify Sound:** plays the chosen sound when a message is prepared; **None** is silent, and **Preview** lets you hear the selection.
 
-For example, Repeat Every 10, Retry Delay 40 and Cooldown 60 waits 10 minutes after a confirmed send, while an untouched unsent message retries after 40 minutes. Lowering Cooldown to 25 caps Retry Delay to 25 without changing Repeat Every. Zone delivery uses its own per-zone cooldown instead of this repeat loop. Scheduled combinations use the delivery and intervals inside Scheduling.
+For example, Repeat Every 10 and Cooldown 60 caps Retry Delay to 10 minutes. Repeat Every 60 and Cooldown 10 also caps Retry Delay to 10 minutes. Zero or blank still resumes the normal repeat interval after timeout. Zone delivery uses its own per-zone cooldown instead of this repeat loop. Scheduled combinations use the delivery and intervals inside Scheduling.
 
 ## Scheduling
 

@@ -1094,24 +1094,15 @@ function SmartChatMsg:GetGuildReminderRetryMinutes(commandId, guildName)
     return 0
 end
 
-function SmartChatMsg:GetGuildEffectiveReminderRetryMinutes(commandId, guildName)
-    local retryMinutes = self:GetGuildReminderRetryMinutes(commandId, guildName)
-    if retryMinutes == nil or retryMinutes <= 0 then
-        return 0
-    end
-
-    local reminderMinutes = self:GetGuildReminderMinutes(commandId, guildName)
-    if reminderMinutes == nil or reminderMinutes <= 0 then
-        return 0
-    end
-
+function SmartChatMsg:GetGuildReminderRetryCapMinutes(commandId,guildName)
+    local repeatMinutes=self:GetGuildReminderMinutes(commandId,guildName)
     local cooldownMinutes=self:GetGuildAutoPopulateCooldownMinutes(commandId,guildName)
-    if not cooldownMinutes or cooldownMinutes<=0 then return 0 end
-    if retryMinutes > cooldownMinutes then
-        return cooldownMinutes
-    end
+    if not repeatMinutes or repeatMinutes<=0 or not cooldownMinutes or cooldownMinutes<=0 then return 0 end
+    return math.min(repeatMinutes,cooldownMinutes)
+end
 
-    return retryMinutes
+function SmartChatMsg:GetGuildEffectiveReminderRetryMinutes(commandId,guildName)
+    return math.min(self:GetGuildReminderRetryMinutes(commandId,guildName),self:GetGuildReminderRetryCapMinutes(commandId,guildName))
 end
 
 function SmartChatMsg:GetGuildAutoPopulateCooldownMinutes(commandId, guildName)
@@ -1240,6 +1231,7 @@ function SmartChatMsg:SetGuildReminderMinutes(commandId, guildName, reminderMinu
     end
 
     settings.reminderMinutes = self:NormalizeReminderMinutes(reminderMinutes)
+    settings.reminderRetryMinutes=math.min(self:NormalizeReminderRetryMinutes(settings.reminderRetryMinutes),self:GetGuildReminderRetryCapMinutes(commandId,guildName))
     return true
 end
 
@@ -1255,10 +1247,7 @@ function SmartChatMsg:SetGuildReminderRetryMinutes(commandId, guildName, retryMi
     end
 
     local normalizedRetryMinutes = self:NormalizeReminderRetryMinutes(retryMinutes)
-    local cooldownMinutes = self:GetGuildAutoPopulateCooldownMinutes(commandId, guildName)
-    if cooldownMinutes and normalizedRetryMinutes > cooldownMinutes then
-        normalizedRetryMinutes = cooldownMinutes
-    end
+    normalizedRetryMinutes=math.min(normalizedRetryMinutes,self:GetGuildReminderRetryCapMinutes(commandId,guildName))
 
     settings.reminderRetryMinutes = normalizedRetryMinutes
     return true
@@ -1291,8 +1280,7 @@ function SmartChatMsg:SetGuildAutoPopulateCooldownMinutes(commandId, guildName, 
     end
 
     settings.autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(cooldownMinutes)
-    local cap=self:GetGuildAutoPopulateCooldownMinutes(commandId,guildName)
-    if cap and self:NormalizeReminderRetryMinutes(settings.reminderRetryMinutes)>cap then settings.reminderRetryMinutes=cap end
+    settings.reminderRetryMinutes=math.min(self:NormalizeReminderRetryMinutes(settings.reminderRetryMinutes),self:GetGuildReminderRetryCapMinutes(commandId,guildName))
     return true
 end
 
