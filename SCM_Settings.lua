@@ -88,6 +88,8 @@ local function GetUsefulSoundOptions()
 end
 
 
+function SmartChatMsg:GetUsefulSoundOptions() return GetUsefulSoundOptions() end
+
 local function GetRunAtOptions()
     return {
         { value = "ON_DEMAND", label = "On Demand" },
@@ -2055,6 +2057,12 @@ function SmartChatMsg:CreateSettingsPanel()
             type = "description",
             text = "Allows you to create custom command(s) that can be filtered by guild and used to output one of several random messages to the appropriate chat type.",
             width = "full",
+        },
+        {
+            type = "button",
+            name = "Open Event Planner (new window)",
+            tooltip = "Open the wider, resizable event and period editor. Existing settings remain available.",
+            func = function() SmartChatMsg:OpenEventPlanner() end,
         },
         {
             type = "submenu",
