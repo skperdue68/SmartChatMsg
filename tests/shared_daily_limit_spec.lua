@@ -34,7 +34,7 @@ print('PASS shared quota scopes, peer deduplication, hours disabled, mode switch
 s.savedVars.selectedMessagesCommand='ad';s.GetSelectedGuildNameForMessages=function()return 'Amber Traders'end;s.RefreshSettingsUI=function()end;s.scheduleEditor=nil
 local controls=s:BuildScheduleOptionControls()
 local function find(list,name) for _,v in ipairs(list) do if v.reference==name or v.name==name then return v end;if v.controls then local hit=find(v.controls,name);if hit then return hit end end end end
-local pane=find(controls,'SCM_TimelineSubmenu').controls;local slider=find(pane,'SCM_PeriodDailyLimitSlider');local checkbox=find(pane,'Share daily limit across this command and guild')
+local pane=find(controls,'SCM_TimelineSubmenu').controls;local slider=find(pane,'SCM_PeriodDailyLimitSlider');local checkbox=find(pane,'Share Limit to ALL periods')
 assert(slider and checkbox and slider.tooltip:find('midnight',1,true));assert(not find(find(pane,'Reminder availability').controls,'SCM_PeriodDailyLimitSlider'))
 local frequencyIndex;for i,v in ipairs(pane) do if v.reference=='SCM_PeriodFrequencySlider' then frequencyIndex=i end end;eq(pane[frequencyIndex+1],slider);eq(pane[frequencyIndex+2],checkbox)
 checkbox.setFunc(false);slider.setFunc(3);local editor=s:GetScheduleEditorDraft();eq(editor.reminders[1].availability.maxPerDay,3)
