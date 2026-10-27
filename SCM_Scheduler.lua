@@ -1,5 +1,11 @@
 SmartChatMsg = SmartChatMsg or {}
 
+-- Local scheduled notices identify the guild before the command label.
+function SmartChatMsg:GetScheduledNoticeLabel(commandId,guildName)
+    local commandName=self:GetSlashCommandDisplayName(commandId):gsub("^/", "")
+    return guildName.." ("..commandName..")"
+end
+
 -- Session-only pacing; saved event dates and per-command cooldowns stay intact.
 function SmartChatMsg:GetSchedulePacingDelay(commandId,guildName)
     local now=GetTimeStamp()
@@ -20,8 +26,8 @@ function SmartChatMsg:HandleScheduledSendConfirmed(metadata)
         schedule.completedOccurrences={[metadata.scheduledOccurrence..":"..metadata.scheduledPhase]=true}
     end
     self.scheduledSendPause={senderKey=self:GetReminderStateKey(metadata.commandId,metadata.guildName),endsAt=GetTimeStamp()+300}
-    self:ShowStatusMessage(self:GetSlashCommandDisplayName(metadata.commandId).." / "..metadata.guildName
-        ..": scheduled message sent. Other schedules pause for 5 minutes, until "..self:FormatScheduleDateTime(self.scheduledSendPause.endsAt,self:GetGuildSchedule(metadata.commandId,metadata.guildName))..".")
+    self:ShowStatusMessage(self:GetScheduledNoticeLabel(metadata.commandId,metadata.guildName)
+        ..": Scheduled message sent. Other schedules pause for 5 minutes, until "..self:FormatScheduleDateTime(self.scheduledSendPause.endsAt,self:GetGuildSchedule(metadata.commandId,metadata.guildName))..".")
 end
 
 function SmartChatMsg:GetChatEditControl()
@@ -129,8 +135,8 @@ function SmartChatMsg:ProcessChatPopulationQueue()
             request.metadata.queuedDelivery=true
             local ok=self:PopulateChatBufferForCommand(request.commandId,request.guildName,request.channelOverride,request.metadata)
             if ok and self.pendingRestoreState and request.metadata.scheduledDelivery then
-                self:ShowStatusMessage(self:GetSlashCommandDisplayName(request.commandId).." / "..request.guildName
-                    ..": scheduled message ready in chat. Press Enter to send (chat timeout: "..tostring(self.pendingRestoreState.timeoutSeconds).." seconds).")
+                self:ShowStatusMessage(self:GetScheduledNoticeLabel(request.commandId,request.guildName)
+                    ..": Scheduled message ready in chat. Press Enter to send (chat timeout: "..tostring(self.pendingRestoreState.timeoutSeconds).." seconds).")
             end
             if ok and self.pendingRestoreState then return end
         end
@@ -296,8 +302,8 @@ function SmartChatMsg:HandleScheduledPopulateTimeout(metadata)
         end
     end
     local runtime=self.scheduleRuntime and self.scheduleRuntime[self:GetReminderStateKey(metadata.commandId,metadata.guildName)]
-    self:ShowStatusMessage(self:GetSlashCommandDisplayName(metadata.commandId).." / "..metadata.guildName
-        ..": scheduled message was not sent before the chat timeout. Next attempt: "..self:FormatScheduleDateTime(schedule.nextDueAt,schedule)..".")
+    self:ShowStatusMessage(self:GetScheduledNoticeLabel(metadata.commandId,metadata.guildName)
+        ..": Scheduled message was not sent before the chat timeout. Next attempt: "..self:FormatScheduleDateTime(schedule.nextDueAt,schedule)..".")
     if runtime and schedule.delivery=="ZONE" then runtime.zonePending=retry>0 end
 end
 
@@ -357,18 +363,18 @@ function SmartChatMsg:NotifyScheduleTransition(commandId,guildName,state)
     local occurrence=config and self:GetScheduleOccurrence(config,GetTimeStamp())
     local description,phase
     if state=="RUNNING" then description,phase=self:GetSchedulePhaseDescription(commandId,guildName) end
-    local prefix=self:GetSlashCommandDisplayName(commandId).." / "..guildName..": "
+    local prefix=self:GetScheduledNoticeLabel(commandId,guildName)..": "
     if previous and previous.occurrence and not previous.ended and GetTimeStamp()>=previous.occurrence.endsAtUtc then
-        self:ShowStatusMessage(prefix.."schedule ended at "..self:FormatScheduleDateTime(previous.occurrence.endsAtUtc,previous.occurrence)..".")
+        self:ShowStatusMessage(prefix.."Schedule ended at "..self:FormatScheduleDateTime(previous.occurrence.endsAtUtc,previous.occurrence)..".")
         previous.ended=true
     end
     if state=="RUNNING" and occurrence and (not previous or previous.state~="RUNNING" or previous.occurrence.occurrenceKey~=occurrence.occurrenceKey) then
-        self:ShowStatusMessage(prefix.."schedule "..(previous and previous.state=="PAUSED" and "resumed" or "started").."; "..description.."; active until "..self:FormatScheduleDateTime(occurrence.endsAtUtc,occurrence)..".")
+        self:ShowStatusMessage(prefix.."Schedule "..(previous and previous.state=="PAUSED" and "resumed" or "started").."; "..description.."; active until "..self:FormatScheduleDateTime(occurrence.endsAtUtc,occurrence)..".")
         previous={config=config,occurrence=occurrence,ended=false}
     elseif state=="RUNNING" and previous and previous.description~=description then
-        self:ShowStatusMessage(prefix.."schedule changed to "..description.."; active until "..self:FormatScheduleDateTime(occurrence.endsAtUtc,occurrence)..".")
+        self:ShowStatusMessage(prefix.."Schedule changed to "..description.."; active until "..self:FormatScheduleDateTime(occurrence.endsAtUtc,occurrence)..".")
     elseif state=="PAUSED" and previous and previous.state=="RUNNING" then
-        self:ShowStatusMessage(prefix.."schedule paused.")
+        self:ShowStatusMessage(prefix.."Schedule paused.")
     end
     previous=previous or {config=config}
     previous.state=state
@@ -382,7 +388,11 @@ function SmartChatMsg:NotifyCooldownDelay(commandId,guildName,endsAt)
     local key=self:GetReminderStateKey(commandId,guildName)
     if self.cooldownNoticeDeadlines[key]==endsAt then return end
     self.cooldownNoticeDeadlines[key]=endsAt
-    self:ShowStatusMessage(self:GetSlashCommandDisplayName(commandId).." / "..guildName..": message delayed by cooldown until "..self:FormatScheduleDateTime(endsAt,self:GetGuildSchedule(commandId,guildName))..".")
+    local prefix=self:GetSlashCommandDisplayName(commandId).." / "..guildName..": message"
+    if self:GetGuildRunAt(commandId,guildName)=="SCHEDULED" then
+        prefix=self:GetScheduledNoticeLabel(commandId,guildName)..": Message"
+    end
+    self:ShowStatusMessage(prefix.." delayed by cooldown until "..self:FormatScheduleDateTime(endsAt,self:GetGuildSchedule(commandId,guildName))..".")
 end
 
 function SmartChatMsg:TickSchedules()

@@ -94,7 +94,7 @@ test('phase transitions announce once with the active frequency and ET end time'
     now=config.eventAtUtc;s:NotifyScheduleTransition('ad','Amber Traders','RUNNING')
     assert(CHAT_SYSTEM.messages[#CHAT_SYSTEM.messages]:find('one announcement',1,true))
     now=config.endsAtUtc;s:NotifyScheduleTransition('ad','Amber Traders','FINISHED')
-    assert(CHAT_SYSTEM.messages[#CHAT_SYSTEM.messages]:find('schedule ended',1,true))
+    assert(CHAT_SYSTEM.messages[#CHAT_SYSTEM.messages]:find('Schedule ended',1,true))
 end)
 local failures=0
 for _,t in ipairs(tests) do local ok,err=pcall(t[2]);if ok then print('PASS '..t[1]) else failures=failures+1;print('FAIL '..t[1]..': '..tostring(err)) end end
