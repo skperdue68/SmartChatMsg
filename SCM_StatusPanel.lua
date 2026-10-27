@@ -77,16 +77,7 @@ end
 
 
 function SmartChatMsg:ShouldOpenStatusPanelOnRun(commandId, guildName)
-    if self:GetGuildOpenStatusPanelOnRun(commandId, guildName) ~= true then
-        return false
-    end
-
-    if self:GetGuildAutoPopulateOnZone(commandId, guildName) == true then
-        return true
-    end
-
-    local repeatMinutes = self:GetGuildReminderMinutes(commandId, guildName)
-    return type(repeatMinutes) == "number" and repeatMinutes > 0
+    return self:GetGuildOpenStatusPanelOnRun(commandId, guildName) == true
 end
 
 

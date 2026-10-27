@@ -62,3 +62,12 @@ local day=widget("SCM_PhaseDAYSubmenu")
 draft.mode="EVENT";draft.specialPattern="NONE";s:RefreshEventTimingExpansion()
 day.open=false;draft.specialPattern="MONTH_FINAL";s:RefreshEventTimingExpansion();eq(day.open,true)
 print("mode timing, weekday ancestors and newly relevant phase group controls expand")
+
+local editable=true
+local generic=widget('SCM_TestEditableSection');local readonly=widget('SCM_TestReadonlySection');readonly.open=true
+s.settings=s.settings or {};s.settings.optionDefinitions={{type='submenu',reference='SCM_TestEditableSection',disabled=function()return not editable end,controls={{type='editbox'}}},{type='submenu',reference='SCM_TestReadonlySection',controls={{type='description'}}}}
+s:RefreshEventTimingExpansion();eq(generic.open,true);eq(readonly.open,false)
+generic.open=false;s:RefreshEventTimingExpansion();eq(generic.open,false,'manual collapse stays respected')
+editable=false;generic.open=true;s:RefreshEventTimingExpansion();eq(generic.open,false,'unavailable submenu closes')
+editable=true;s:RefreshEventTimingExpansion();eq(generic.open,true,'newly relevant submenu opens')
+print('PASS generic editable-only submenu expansion and unavailable-section collapse')

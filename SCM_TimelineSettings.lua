@@ -11,8 +11,13 @@ function S:FormatSchedulingMinutes(value,zero)
  return table.concat(parts,' ')
 end
 function S:BuildSchedulingSlider(label,reference,min,max,get,set,describe,disabled)
+ local explanations={
+  ['Event duration']='How long the event runs after its start. Not set is no event-end cap. A positive duration enables underway invitations and limits them to the event end.',
+  ['Recurrence interval']='Multiplier for the selected event recurrence. Every week with interval 2 means every two weeks; every other week with interval 2 means every four weeks. It does not set announcement frequency.',
+  ['Repeat Frequency']='How often an eligible message is prepared during this period. All selected messages share the interval. Send once uses its own deadline instead.',
+ }
  return {type='slider',reference=reference,name=function()return label..' — '..describe(tonumber(get()) or min)end,min=min,max=max,step=1,decimals=0,clampInput=true,
-  tooltip='Drag or use the mouse wheel. Existing saved values outside this slider range are retained until you change them.',
+  tooltip=(explanations[label] and explanations[label]..' ' or '')..'Drag or use the mouse wheel. Existing saved values outside this slider range are retained until you change them.',
   getFunc=function()return tonumber(get()) or min end,setFunc=function(value)local n=tonumber(value);if not n or n~=math.floor(n) or n<min or n>max then self:ShowStatusMessage(label..': choose a whole number from '..min..' to '..max..'.');return end;set(n)end,disabled=disabled}
 end
 function S:GetSelectedTimelineReminder()
@@ -200,11 +205,19 @@ function S:BuildScheduleOptionControls()
  end end
 
  controls[#controls+1]={type='description',reference='SCM_NextScheduleOccurrence',text=function()return self:GetNextScheduleOccurrenceText(draft())end}
+ local helpText={
+  label='A short name for this announcement period. It is shown in status and previews, not sent in chat.',
+  lateMinutes='How many minutes a one-time announcement remains eligible after its scheduled start. If it expires while offline, it is skipped.',
+  once='Prepare one announcement for this period per event occurrence. Only a confirmed send or matching peer announcement completes it; preparing or timing out does not.',
+  onceUntilFinish='With Send once enabled, allow the announcement anywhere between Period Starts and Period Stops. Otherwise its lateness allowance defines the short deadline. It still sends only once.',
+  timeSensitive='Prioritize a start/deadline notice and bypass ordinary spacing between schedules. Startup delay, player chat protection, peer cooldowns and daily limits still apply.',
+  allowAfterEventEnd='Advanced exception for a brief closing announcement after the event ends. Usually use Send once and a short deadline; this does not extend the actual event duration.',
+ }
  local function field(name,key,numeric)
-  return {type='editbox',name=name,getFunc=function() return tostring(row() and row()[key] or '') end,setFunc=function(v) if row() then row()[key]=numeric and (tonumber(v) or v) or v;refresh() end end,disabled=function() return not active() or not row() end}
+  return {type='editbox',name=name,tooltip=helpText[key],getFunc=function() return tostring(row() and row()[key] or '') end,setFunc=function(v) if row() then row()[key]=numeric and (tonumber(v) or v) or v;refresh() end end,disabled=function() return not active() or not row() end}
  end
  local function flag(name,key)
-  return {type='checkbox',name=name,getFunc=function() return row() and row()[key]==true end,setFunc=function(v) if row() then row()[key]=v;refresh() end end,disabled=function() return not active() or not row() or key=='onceUntilFinish' and not row().once end}
+  return {type='checkbox',name=name,width='full',tooltip=helpText[key],getFunc=function() return row() and row()[key]==true end,setFunc=function(v) if row() then row()[key]=v;refresh() end end,disabled=function() return not active() or not row() or key=='onceUntilFinish' and not row().once end}
  end
  local function selectedMark()
   local marks=draft().importantTimes or {};local id=self.scheduleEditor.markId
@@ -231,12 +244,12 @@ function S:BuildScheduleOptionControls()
   {type='button',name='Add important time',func=function() self:AddTimelineImportantTime() end},
   {type='editbox',name='Important time name',getFunc=function() local m=selectedMark();return m and m.label or '' end,setFunc=function(v) local m=selectedMark();if m then m.label=v;refresh() end end},
   {type='description',text=function() local m,id=selectedMark();if not m then return 'Add an important time to see its message substitutions.' end return 'Message substitutions for '..m.label..': %eventwhen:'..id..'% - %eventdate:'..id..'% - %eventtime:'..id..'% - %eventcountdown:'..id..'%' end},
-  {type='datepicker',name='Important time date',datePickerType='normal',getFunc=function()local date=markClock();return self:ScheduleDateToPicker(date)end,setFunc=function(v)local _,time=markClock();setMarkClock(self:ScheduleDateFromPicker(v),time)end,disabled=function()return not selectedMark()end},
+  {type='datepicker',name='Important time date',tooltip='Select the date of this named moment relative to the next event. Its saved offset follows recurring events; use the displayed key in message substitutions.',datePickerType='normal',getFunc=function()local date=markClock();return self:ScheduleDateToPicker(date)end,setFunc=function(v)local _,time=markClock();setMarkClock(self:ScheduleDateFromPicker(v),time)end,disabled=function()return not selectedMark()end},
   {type='button',name='Remove important time',func=function() local _,id=selectedMark();if not self:RemoveTimelineImportantTime(id) then self:ShowStatusMessage('Choose another start or end for reminders using this important time before removing it.') end end},
  }
  for index,part in ipairs({'hour','minute','AM/PM'}) do
   local choices={};if index==1 then for n=1,12 do choices[#choices+1]=string.format('%02d',n)end elseif index==2 then for n=0,59 do choices[#choices+1]=string.format('%02d',n)end else choices={'AM','PM'}end
-  table.insert(named,#named,{type='dropdown',name='Important time '..part,choices=choices,getFunc=function()local _,time=markClock();local h,m,a=tostring(time):match('^(%d%d?):(%d%d) ([AP]M)$');return ({h or '08',m or '00',a or 'PM'})[index]end,setFunc=function(value)local date,time=markClock();local h,m,a=tostring(time):match('^(%d%d?):(%d%d) ([AP]M)$');local parts={h or '08',m or '00',a or 'PM'};parts[index]=value;setMarkClock(date,parts[1]..':'..parts[2]..' '..parts[3])end,disabled=function()return not selectedMark()end})
+  table.insert(named,#named,{type='dropdown',name='Important time '..part,tooltip='Clock for this named moment in the guild scheduling timezone. It is converted to an offset from the next actual event occurrence.',choices=choices,getFunc=function()local _,time=markClock();local h,m,a=tostring(time):match('^(%d%d?):(%d%d) ([AP]M)$');return ({h or '08',m or '00',a or 'PM'})[index]end,setFunc=function(value)local date,time=markClock();local h,m,a=tostring(time):match('^(%d%d?):(%d%d) ([AP]M)$');local parts={h or '08',m or '00',a or 'PM'};parts[index]=value;setMarkClock(date,parts[1]..':'..parts[2]..' '..parts[3])end,disabled=function()return not selectedMark()end})
  end
  local duration=self:BuildSchedulingSlider('Event duration','SCM_PeriodDurationSlider',0,240,function()return draft().eventDurationMinutes or 0 end,function(n)draft().eventDurationMinutes=n>0 and n or nil;refresh()end,function(n)return self:FormatSchedulingMinutes(n,'Not set')end)
  local rowState={type='dropdown',name='Period Status',tooltip='Pause or disable only this period without deleting messages or cooldown history.',choices={'Enabled','Paused','Disabled'},getFunc=function()local r=row();return r and (r.paused and 'Paused' or r.enabled==false and 'Disabled' or 'Enabled') or 'Enabled'end,setFunc=function(value)local r=row();if r then r.enabled=value~='Disabled';r.paused=value=='Paused';refresh()end end}
@@ -289,14 +302,14 @@ function S:BuildScheduleOptionControls()
   local key=which;local title=key=='start' and 'Period Starts' or 'Period Stops'
   local function unavailable() return not row() or key=='finish' and row().once and not row().onceUntilFinish end
   append({type='header',name=title})
-  append({type='datepicker',name=title..' date',datePickerType='normal',getFunc=function()local date=boundary(key);return self:ScheduleDateToPicker(date)end,setFunc=function(v)local _,time=boundary(key);setBoundary(key,self:ScheduleDateFromPicker(v),time)end,disabled=unavailable})
+  append({type='datepicker',name=title..' date',tooltip='Calendar boundary of this announcement period in the guild scheduling timezone. The relationship to the event follows future recurring occurrences.',datePickerType='normal',getFunc=function()local date=boundary(key);return self:ScheduleDateToPicker(date)end,setFunc=function(v)local _,time=boundary(key);setBoundary(key,self:ScheduleDateFromPicker(v),time)end,disabled=unavailable})
   for i,part in ipairs({'hour','minute','AM / PM'}) do
    local index=i;local choices={};if i==3 then choices={'AM','PM'} else for n=i==1 and 1 or 0,i==1 and 12 or 59 do choices[#choices+1]=string.format('%02d',n) end end
-   append({type='dropdown',name=title..' '..part,choices=choices,getFunc=function()local _,time=boundary(key);local h,m,a=tostring(time):match('^(%d%d?):(%d%d) ([AP]M)$');return ({h or '08',m or '00',a or 'PM'})[index]end,setFunc=function(value)local date,time=boundary(key);local h,m,a=tostring(time):match('^(%d%d?):(%d%d) ([AP]M)$');local parts={h or '08',m or '00',a or 'PM'};parts[index]=value;setBoundary(key,date,parts[1]..':'..parts[2]..' '..parts[3])end,disabled=unavailable})
+   append({type='dropdown',name=title..' '..part,tooltip='Server clock in the guild scheduling timezone, including daylight saving for this date. Period Stops must not be before Period Starts.',choices=choices,getFunc=function()local _,time=boundary(key);local h,m,a=tostring(time):match('^(%d%d?):(%d%d) ([AP]M)$');return ({h or '08',m or '00',a or 'PM'})[index]end,setFunc=function(value)local date,time=boundary(key);local h,m,a=tostring(time):match('^(%d%d?):(%d%d) ([AP]M)$');local parts={h or '08',m or '00',a or 'PM'};parts[index]=value;setBoundary(key,date,parts[1]..':'..parts[2]..' '..parts[3])end,disabled=unavailable})
   end
  end
- append({type='checkbox',name='Allow promotion after event starts',getFunc=function()local r=row();if not r then return false end;local _,_,at=boundary('start');local starts=at and self:ResolveTimelineAnchor(draft(),{eventAtUtc=at},r.start);return (self.scheduleEditor.allowAfterStart or {})[r.id]==true or starts and starts>at or false end,setFunc=function(v)local r=row();if r then self.scheduleEditor.allowAfterStart=self.scheduleEditor.allowAfterStart or {};self.scheduleEditor.allowAfterStart[r.id]=v;refresh()end end,disabled=function()return not row() or not (tonumber(draft().eventDurationMinutes) and tonumber(draft().eventDurationMinutes)>0)end})
- append(rowState);append(flag('Allow a closing announcement after the event ends','allowAfterEventEnd'));append(flag('Send once','once'));append(flag('Keep entire reminder window available until sent','onceUntilFinish'));append(self:BuildSchedulingSlider('Repeat Frequency','SCM_PeriodFrequencySlider',1,1440,function()return row() and row().intervalMinutes or 30 end,function(n)if row() then row().intervalMinutes=n;refresh()end end,function(n)return 'Every '..self:FormatSchedulingMinutes(n)end,function()return not row() or row().once end));append(flag('Time-sensitive reminder','timeSensitive'))
+ append({type='checkbox',name='Allow promotion after event starts',tooltip='Allow underway invitations after the event starts. Set a positive Event duration first; periods stop at the event end unless a closing exception is enabled.',getFunc=function()local r=row();if not r then return false end;local _,_,at=boundary('start');local starts=at and self:ResolveTimelineAnchor(draft(),{eventAtUtc=at},r.start);return (self.scheduleEditor.allowAfterStart or {})[r.id]==true or starts and starts>at or false end,setFunc=function(v)local r=row();if r then self.scheduleEditor.allowAfterStart=self.scheduleEditor.allowAfterStart or {};self.scheduleEditor.allowAfterStart[r.id]=v;refresh()end end,disabled=function()return not row() or not (tonumber(draft().eventDurationMinutes) and tonumber(draft().eventDurationMinutes)>0)end})
+ append(rowState);append(flag('Allow a closing announcement after the event ends','allowAfterEventEnd'));append(flag('Send once','once'));append(flag('Send once anytime in this period','onceUntilFinish'));append(self:BuildSchedulingSlider('Repeat Frequency','SCM_PeriodFrequencySlider',1,1440,function()return row() and row().intervalMinutes or 30 end,function(n)if row() then row().intervalMinutes=n;refresh()end end,function(n)return 'Every '..self:FormatSchedulingMinutes(n)end,function()return not row() or row().once end));append(flag('Time-sensitive reminder','timeSensitive'))
  append({type='description',text='Time-sensitive reminders can bypass ordinary reminder pacing. Lateness allowance is the number of minutes a one-time reminder remains available. Offline or expired milestones are skipped.'})
  append(field('Lateness allowance (minutes)','lateMinutes',true))
  append({type='custom',minHeight=230,maxHeight=230,createFunc=function(c) self:RefreshScheduleMessagePool(c,'TIMELINE') end,refreshFunc=function(c) self:RefreshScheduleMessagePool(c,'TIMELINE') end})

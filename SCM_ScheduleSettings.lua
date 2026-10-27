@@ -37,12 +37,43 @@ function SmartChatMsg:RefreshEventTimingExpansion()
         if control and not control.open then control.open=true;control.animation:PlayFromStart() end
         return true
     end
+    -- Include all current and future submenus, including Period Timeline,
+    -- important times and Availability. Sections with no enabled editor close.
+    local known={};for _,rule in ipairs(rules) do known[rule[1]]=true end
+    local function disabled(option)
+        local value=option.disabled
+        if type(value)=='function' then local ok,result=pcall(value);return not ok or result==true end
+        return value==true
+    end
+    local function editable(list)
+        for _,option in ipairs(list) do if not disabled(option) then
+            if option.type=='submenu' then if editable(option.controls or {}) then return true end
+            elseif option.type~='description' and option.type~='header' and option.type~='divider' then return true end
+        end end
+        return false
+    end
+    local function collect(list,parent,parentActive)
+        for _,option in ipairs(list) do if option.type=='submenu' then
+            local enabled=parentActive and not disabled(option) and editable(option.controls or {})
+            if option.reference then
+                parents[option.reference]=parent
+                if not known[option.reference] then rules[#rules+1]={option.reference,enabled,parent} end
+            end
+            collect(option.controls or {},option.reference or parent,enabled)
+        end end
+    end
+    collect(self.settings and self.settings.optionDefinitions or {},nil,true)
     for _,rule in ipairs(rules) do
         local name,active,parent,variant=unpack(rule)
         local control=_G[name]
         if control then
             local previous=state.controls[name]
-            if not active then state.controls[name]={control=control,active=false}
+            if not active or control.disabled then
+                if control.open then
+                    control.open=false
+                    if control.animation and control.animation.PlayFromEnd then control.animation:PlayFromEnd() end
+                end
+                state.controls[name]={control=control,active=false}
             elseif not control.disabled and (not previous or previous.control~=control or not previous.active or previous.variant~=variant) then
                 if reveal(parent) then reveal(name);state.controls[name]={control=control,active=true,variant=variant} end
             end

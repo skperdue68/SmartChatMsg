@@ -97,3 +97,15 @@ for _,name in ipairs({'SCM_MessagesReminderSlider','SCM_MessagesReminderRetrySli
 end
 assert(named.SCM_MessagesReminderLabel.text:find('Repeat Frequency: ',1,true))
 print('PASS ordinary sliders use LAM backdrop track and ASCII labels')
+
+local originalRunAt=s.GetGuildRunAt;s.GetGuildRunAt=function()return 'SCHEDULED'end
+s.settings.pendingGuildOpenStatusPanelOnRun=true
+container:RefreshEditor();option.refreshFunc(holder)
+eq(container.height,140);eq(holder.height,140)
+for _,name in ipairs({'SCM_MessagesReminderSlider','SCM_MessagesReminderRetrySlider','SCM_MessagesAutoPopulateCooldownSlider','SCM_MessagesAutoPopulateCheckbox'})do eq(named[name].hidden,true)end
+eq(repeatSlider.mouse,false);eq(retry.mouse,false);eq(cooldown.mouse,false)
+eq(named.SCM_MessagesOpenStatusPanelOnRunCheckbox.mouse,true);eq(s.settings.pendingGuildOpenStatusPanelOnRun,true)
+s.GetGuildRunAt=function()return 'ON_DEMAND'end;container:RefreshEditor();option.refreshFunc(holder)
+eq(container.height,370);eq(holder.height,370);eq(repeatSlider.hidden,false);eq(cooldown.hidden,false)
+s.GetGuildRunAt=originalRunAt
+print('PASS scheduled delivery hides ordinary sliders, reclaims height and retains status-panel preference')

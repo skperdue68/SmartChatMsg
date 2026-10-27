@@ -35,3 +35,8 @@ find(controls,'Important time date').setFunc(s:ScheduleDateToPicker('2026-11-03'
 find(controls,'Important time hour').setFunc('07');find(controls,'Important time minute').setFunc('00');find(controls,'Important time AM/PM').setFunc('PM')
 eq(mark.offsetMinutes,-60)
 print('PASS important time calendar follows event and after-start duration requirement')
+
+for _,name in ipairs({'Send once','Send once anytime in this period','Allow a closing announcement after the event ends','Time-sensitive reminder','Lateness allowance (minutes)'})do
+ local control=assert(find(controls,name),name);assert(type(control.tooltip)=='string' and #control.tooltip>40,name..' needs contextual help')
+end
+print('PASS period flags have full contextual tooltips')

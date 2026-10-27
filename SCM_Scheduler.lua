@@ -370,6 +370,7 @@ function SmartChatMsg:NotifyScheduleTransition(commandId,guildName,state)
     end
     if state=="RUNNING" and occurrence and (not previous or previous.state~="RUNNING" or previous.occurrence.occurrenceKey~=occurrence.occurrenceKey) then
         self:ShowStatusMessage(prefix.."Schedule "..(previous and previous.state=="PAUSED" and "resumed" or "started").."; "..description.."; active until "..self:FormatScheduleDateTime(occurrence.endsAtUtc,occurrence)..".")
+        self:OpenStatusPanelOnRunIfConfigured(commandId,guildName)
         previous={config=config,occurrence=occurrence,ended=false}
     elseif state=="RUNNING" and previous and previous.description~=description then
         self:ShowStatusMessage(prefix.."Schedule changed to "..description.."; active until "..self:FormatScheduleDateTime(occurrence.endsAtUtc,occurrence)..".")
