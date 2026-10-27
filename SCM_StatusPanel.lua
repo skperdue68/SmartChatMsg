@@ -196,8 +196,40 @@ function SmartChatMsg:IsScheduledOccurrenceCurrent(commandId,guildName)
     return occurrence and GetTimeStamp()>=occurrence.startsAtUtc and GetTimeStamp()<occurrence.endsAtUtc or false
 end
 
+-- Quotas are a delivery wait, not completion of the event occurrence.
+function SmartChatMsg:GetScheduledDailyLimitNotice(commandId,guildName,utc)
+    local config=self:GetGuildSchedule(commandId,guildName);utc=utc or GetTimeStamp()
+    if not config or config.timelineVersion~=1 or not config.enabled or config.paused or not self.GetReminderDailyLimit then return nil end
+    local occurrence=self:GetScheduleOccurrence(config,utc)
+    if not occurrence or utc<occurrence.startsAtUtc or utc>=occurrence.endsAtUtc then return nil end
+    -- A capped period must not obscure another period that can still run.
+    if self:GetActiveTimelineReminder(config,utc) then return nil end
+    local selected,selectedInfo,selectedStart
+    for _,row in ipairs(config.reminders or {}) do
+        local first,last=self:GetTimelineReminderWindow(config,occurrence,row)
+        local usage=(config.timelineUsage or {})[occurrence.occurrenceKey..':'..row.id]
+        if row.enabled~=false and not row.paused and first and last and utc>=first and utc<last and not (row.once and usage and usage.completed) then
+            local info=self:GetReminderDailyLimit(config,row,utc)
+            if info.reached and (not selected or row.timeSensitive and not selected.timeSensitive or row.timeSensitive==selected.timeSensitive and first>selectedStart) then selected,selectedInfo,selectedStart=row,info,first end
+        end
+    end
+    if not selected then return nil end
+    local scope=selectedInfo.shared and 'Command' or 'Period'
+    local text=scope..' daily limit reached ('..tostring(selectedInfo.count)..'/'..tostring(selectedInfo.limit)..')'
+    if not selectedInfo.shared then text=text..' — '..tostring(selected.label or 'Period') end
+    return text,selected,selectedInfo
+end
+local previousScheduleStatusText=SmartChatMsg.GetScheduleStatusText
+function SmartChatMsg:GetScheduleStatusText(commandId,guildName)
+    local notice=self:GetScheduledDailyLimitNotice(commandId,guildName)
+    if notice then return 'Active — '..notice end
+    return previousScheduleStatusText(self,commandId,guildName)
+end
+
 function SmartChatMsg:GetScheduledCardDetails(commandId,guildName,controlState)
     if controlState=="OFF" then return "Inactive","Off" end
+    local dailyLimit=self:GetScheduledDailyLimitNotice(commandId,guildName)
+    if dailyLimit then return 'Active — '..dailyLimit,'Waiting for an eligible period' end
     local wait=self:GetScheduleChatWaitText(commandId,guildName)
     if wait then return "Active — "..wait,wait end
     local pacingAt,pacingReason=self:GetSchedulePacingDelay(commandId,guildName)

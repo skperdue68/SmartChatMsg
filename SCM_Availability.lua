@@ -31,6 +31,9 @@ end
 local normalize=S.NormalizeSchedule
 function S:NormalizeSchedule(data)
  local result,reason=normalize(self,data);if not result or result.timelineVersion~=1 then return result,reason end
+ if data.dailyLimitShared~=nil and type(data.dailyLimitShared)~='boolean' then return nil,'Choose a valid daily limit scope.' end
+ if data.sharedDailyLimit~=nil and not integer(data.sharedDailyLimit,1,1000) then return nil,'Shared daily maximum must be a whole number from 1 to 1000 or blank.' end
+ result.dailyLimitShared=data.dailyLimitShared==true;result.sharedDailyLimit=data.sharedDailyLimit
  local byId={};for _,raw in ipairs(data.reminders or {}) do byId[raw.id]=raw end
  for _,row in ipairs(result.reminders) do
   local value,error=self:NormalizeReminderAvailability(byId[row.id].availability,result)
@@ -95,10 +98,38 @@ function S:RecordReminderAvailabilityUsage(config,row,utc)
  local count=self:GetReminderAvailabilityCount(config,row,utc)
  config.availabilityUsage=config.availabilityUsage or {};config.availabilityUsage[row.id..':'..self:GetScheduleOccurrenceDate(config,utc)]={count=count+1,lastAt=utc}
 end
+-- The aggregate is maintained even when unlimited or using per-period caps.
+function S:GetScheduleDailyLimitCount(config,utc)
+ local today=self:GetScheduleOccurrenceDate(config,utc);local key='_command:'..today
+ config.availabilityUsage=config.availabilityUsage or {}
+ local usage=config.availabilityUsage[key]
+ if not usage then
+  -- Older versions stored only period counters; sum their known daily usage.
+  local count,lastAt=0,utc
+  for _,row in ipairs(config.reminders or {}) do
+   count=count+self:GetReminderAvailabilityCount(config,row,utc)
+   local localUsage=config.availabilityUsage[row.id..':'..today]
+   if localUsage then lastAt=math.max(lastAt,localUsage.lastAt) end
+  end
+  usage={count=count,lastAt=lastAt};config.availabilityUsage[key]=usage
+ end
+ return usage.count
+end
+function S:GetReminderDailyLimit(config,row,utc)
+ local shared=config.dailyLimitShared==true
+ local limit=shared and config.sharedDailyLimit or nil
+ if not shared then limit=row and row.availability and row.availability.maxPerDay or nil end
+ local count=shared and self:GetScheduleDailyLimitCount(config,utc) or self:GetReminderAvailabilityCount(config,row,utc)
+ return {shared=shared,limit=limit,count=count,reached=limit~=nil and count>=limit}
+end
+function S:RecordScheduleDailyLimitUsage(config,utc)
+ local count=self:GetScheduleDailyLimitCount(config,utc)
+ config.availabilityUsage['_command:'..self:GetScheduleOccurrenceDate(config,utc)]={count=count+1,lastAt=utc}
+end
 function S:GetReminderAvailabilityStatus(config,row,occurrence,utc)
  local a=row.availability
+ if self:GetReminderDailyLimit(config,row,utc).reached then return false,nil,nil,'CAP' end
  if not a or not a.enabled then return true end
- if a.maxPerDay and self:GetReminderAvailabilityCount(config,row,utc)>=a.maxPerDay then return false,nil,nil,'CAP' end
  local windows=self:GetEffectiveReminderWindows(config,row,occurrence,utc,utc+1)
  for _,w in ipairs(windows) do if utc>=w.start and utc<w.finish then return true,w.start,w.finish,w.availabilitySource,w.availabilityDate end end
  return false,nil,nil,'HOURS'
@@ -107,7 +138,8 @@ local confirmed=S.HandleScheduledSendConfirmed
 function S:HandleScheduledSendConfirmed(metadata)
  if metadata and metadata.scheduledDelivery then
   local config=self:GetGuildSchedule(metadata.commandId,metadata.guildName)
-  for _,row in ipairs(config and config.reminders or {}) do if row.id==metadata.scheduledPhase and row.availability and row.availability.enabled then self:RecordReminderAvailabilityUsage(config,row,GetTimeStamp()) end end
+  if config and config.timelineVersion==1 then self:RecordScheduleDailyLimitUsage(config,GetTimeStamp()) end
+  for _,row in ipairs(config and config.reminders or {}) do if row.id==metadata.scheduledPhase then self:RecordReminderAvailabilityUsage(config,row,GetTimeStamp()) end end
  end
  return confirmed(self,metadata)
 end
@@ -130,11 +162,21 @@ function S:MarkObservedChatUsage(entry,guild,channel,matchingEntries)
  local config=self:GetGuildSchedule(entry.commandId,guild);local utc=GetTimeStamp()
  local occurrence=config and config.timelineVersion==1 and self:GetScheduleOccurrence(config,utc)
  if occurrence then
-  for _,row in ipairs(config.reminders) do if row.availability and row.availability.enabled then
+  local relevantRows={}
+  for _,row in ipairs(config.reminders) do
+   -- Freeze legacy bootstrap before downstream peer cooldown history changes.
+   -- Otherwise an irrelevant variant with hours off could become a false count.
+   local count=self:GetReminderAvailabilityCount(config,row,utc)
+   local key=row.id..':'..self:GetScheduleOccurrenceDate(config,utc)
+   if not config.availabilityUsage[key] then config.availabilityUsage[key]={count=count,lastAt=utc} end
    local relevant=false;for _,candidate in ipairs(matchingEntries or {entry}) do if self:IsReminderMessageVariantEligible(config,row,candidate,guild,occurrence) then relevant=true;break end end
    local first,last=self:GetTimelineReminderWindow(config,occurrence,row)
-   if relevant and first and last and utc>=first and utc<last then self:RecordReminderAvailabilityUsage(config,row,utc) end
-  end end
+   if relevant and first and last and utc>=first and utc<last then relevantRows[#relevantRows+1]=row end
+  end
+  if #relevantRows>0 then
+   self:RecordScheduleDailyLimitUsage(config,utc)
+   for _,row in ipairs(relevantRows) do self:RecordReminderAvailabilityUsage(config,row,utc) end
+  end
  end
  return observed(self,entry,guild,channel,matchingEntries)
 end
@@ -152,7 +194,7 @@ function S:ApplyImportedSettings(imported)
   for guild,settings in pairs(guilds) do if settings.schedule then
    local old=self:GetGuildSchedule(oldId,guild);settings.schedule.availabilityUsage={}
    local rows={};for _,row in ipairs(settings.schedule.reminders or {}) do rows[row.id]=true end
-   for key,value in pairs(old and old.availabilityUsage or {}) do local rowId=key:match('^(.*):%d%d%d%d%-%d%d%-%d%d$');if rows[rowId] then settings.schedule.availabilityUsage[key]=copy(value) end end
+   for key,value in pairs(old and old.availabilityUsage or {}) do local rowId=key:match('^(.*):%d%d%d%d%-%d%d%-%d%d$');if rowId=='_command' or rows[rowId] then settings.schedule.availabilityUsage[key]=copy(value) end end
    -- Imported legacy usage can still carry ordinary cooldown history, but it
    -- must never bootstrap another player's announcements into recipient caps.
    local oldCopy=old and copy(old)
@@ -183,6 +225,7 @@ function S:ExportScheduleRecords()
  local lines=export(self)
  local function add(fields) for i,v in ipairs(fields) do fields[i]=self:EscapeImportExportField(tostring(v)) end;lines[#lines+1]=table.concat(fields,'|') end
  for id,guilds in pairs(self.savedVars.commandGuildSettings or {}) do for guild,settings in pairs(guilds) do
+  if settings.schedule and settings.schedule.timelineVersion==1 then add({'SCHEDULEDAILYLIMIT_V1',id,guild,settings.schedule.dailyLimitShared and '1' or '0',settings.schedule.sharedDailyLimit or ''}) end
   for _,row in ipairs(settings.schedule and settings.schedule.reminders or {}) do local a=row.availability;if a then
    local days='*';if a.weekdays then local bits={};for day=1,7 do bits[day]=a.weekdays[day] and '1' or '0' end;days=table.concat(bits) end
    add({'SCHEDULEAVAILABILITY_V1',id,guild,row.id,a.enabled and '1' or '0',a.startMinute,a.endMinute,a.maxPerDay or '',days})
@@ -194,9 +237,16 @@ end
 local import=S.ImportScheduleRecords
 function S:ImportScheduleRecords(records,imported)
  local legacy,new={},{}
- for _,row in ipairs(records) do if row[1]=='SCHEDULEAVAILABILITY_V1' or row[1]=='SCHEDULEAVAILABILITYDAY_V1' then local decoded={};for i,v in ipairs(row) do decoded[i]=self:UnescapeImportExportField(v) end;new[#new+1]=decoded else legacy[#legacy+1]=row end end
+ for _,row in ipairs(records) do if row[1]=='SCHEDULEDAILYLIMIT_V1' or row[1]=='SCHEDULEAVAILABILITY_V1' or row[1]=='SCHEDULEAVAILABILITYDAY_V1' then local decoded={};for i,v in ipairs(row) do decoded[i]=self:UnescapeImportExportField(v) end;new[#new+1]=decoded else legacy[#legacy+1]=row end end
  local ok,reason=import(self,legacy,imported);if not ok then return false,reason end
  local seen={}
+ for _,record in ipairs(new) do if record[1]=='SCHEDULEDAILYLIMIT_V1' then
+  local id,guild=record[2],self:NormalizeKey(record[3]);local key=id..'\n'..tostring(guild)
+  local settings=guild and imported.commandGuildSettings[id] and imported.commandGuildSettings[id][guild]
+  local limit=record[5]~='' and tonumber(record[5]) or nil
+  if #record~=5 or not settings or not settings.schedule or seen[key] or (record[4]~='0' and record[4]~='1') or record[5]~='' and not integer(limit,1,1000) then return false,'Invalid or duplicate shared daily limit record.' end
+  seen[key]=true;settings.schedule.dailyLimitShared=record[4]=='1';settings.schedule.sharedDailyLimit=limit
+ end end
  for _,record in ipairs(new) do if record[1]=='SCHEDULEAVAILABILITY_V1' then
   local id,guild,rowId=record[2],self:NormalizeKey(record[3]),record[4]
   local settings=guild and imported.commandGuildSettings[id] and imported.commandGuildSettings[id][guild]
@@ -238,7 +288,7 @@ function S:BuildScheduleOptionControls()
  end
  local function refresh() if self.scheduleEditor then self.scheduleEditor.dirty=true end;self:RefreshSettingsUI() end
  local pane={
-  {type='description',text='Limit this reminder to selected server weekdays/hours and a daily maximum. Promotion boundaries and Send once still apply. Overnight hours belong to their opening day; the daily maximum counts the actual send day. Time-sensitive reminders obey these limits. Confirmed sends and relevant peer announcements count; preparation and timeout do not.'},
+  {type='description',text='Limit this reminder to selected server weekdays and hours. Overnight hours belong to their opening day; promotion boundaries and Send once still apply.'},
   {type='checkbox',name='Limit reminder availability',getFunc=function() return a() and a().enabled or false end,setFunc=function(v) local value=a(true);if value then value.enabled=v;refresh() end end},
  }
  local function inheritedHours(value,scope,key)
@@ -268,7 +318,6 @@ function S:BuildScheduleOptionControls()
   end,disabled=function() return not selected() end}
  end
  pane[#pane+1]=hourField('Allowed from (HH:MM)','startMinute');pane[#pane+1]=hourField('Allowed until (HH:MM, 24:00 is midnight)','endMinute')
- pane[#pane+1]=self:BuildSchedulingSlider('Maximum announcements per server day','SCM_PeriodDailyLimitSlider',0,20,function()return a() and a().maxPerDay or 0 end,function(n)local value=a(true);if value then value.maxPerDay=n>0 and n or nil;refresh()end end,function(n)return n==0 and 'Unlimited' or tostring(n)end,function()return not selected()end)
  for day,name in ipairs({'Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'}) do local index=day
   pane[#pane+1]={type='checkbox',name='Available on '..name,getFunc=function() return not a() or not a().weekdays or a().weekdays[index]==true end,setFunc=function(v)
    local value=a(true);if not value then return end;if not value.weekdays then value.weekdays={};for n=1,7 do value.weekdays[n]=true end end;value.weekdays[index]=v==true or nil;refresh()
@@ -283,6 +332,20 @@ function S:BuildScheduleOptionControls()
  pane[#pane+1]={type='description',text=function() local row=selected();local config=self:GetScheduleEditorDraft();return row and 'Today: '..self:GetReminderAvailabilityCount(config,row,GetTimeStamp())..' counted announcements. Date overrides take priority over weekday overrides, then usual hours. Resetting hours keeps counts.' or 'Select a reminder.' end}
  local target
  for _,control in ipairs(result) do if control.reference=='SCM_TimelineSubmenu' then target=control.controls end end
+ if target then
+  local tooltip='Counts confirmed sends and matching announcements from other players, including while paused. Preparing chat and timeouts do not count. Resets at midnight in the schedule timezone. By default each period has its own limit; sharing uses one limit across every period for this command and guild. Unlimited keeps counting so changing scope preserves today’s usage.'
+  local slider=self:BuildSchedulingSlider('Daily announcement limit','SCM_PeriodDailyLimitSlider',0,20,function()
+   local config=self:GetScheduleEditorDraft();return config.dailyLimitShared and (config.sharedDailyLimit or 0) or (a() and a().maxPerDay or 0)
+  end,function(n)
+   local config=self:GetScheduleEditorDraft()
+   if config.dailyLimitShared then config.sharedDailyLimit=n>0 and n or nil else local value=a(true);if value then value.maxPerDay=n>0 and n or nil end end
+   refresh()
+  end,function(n)return n==0 and 'Unlimited' or tostring(n)end,function()return not selected()end)
+  slider.tooltip=tooltip
+  local shared={type='checkbox',name='Share daily limit across this command and guild',tooltip=tooltip,getFunc=function()return self:GetScheduleEditorDraft().dailyLimitShared==true end,setFunc=function(v)self:GetScheduleEditorDraft().dailyLimitShared=v==true;refresh()end,disabled=function()return not selected()end}
+  local index=#target+1;for n,control in ipairs(target) do if control.reference=='SCM_PeriodFrequencySlider' then index=n+1;break end end
+  table.insert(target,index,slider);table.insert(target,index+1,shared)
+ end
  if target then target[#target+1]={type='submenu',name='Reminder availability',controls=pane,disabled=function() return not selected() end} end
  return result
 end
