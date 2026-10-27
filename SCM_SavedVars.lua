@@ -22,6 +22,7 @@ SmartChatMsg.defaults = {
     revertChatSeconds = 60,
     activeAutoPopulate = nil, -- { commandId = "...", guildName = "..." }
     globalExecutionStatus = "available",
+    scheduledSendingEnabled = true,
     statusPanelState = {
         visible = false,
         offsetX = -40,
@@ -677,6 +678,8 @@ function SmartChatMsg:ApplyImportedSettings(imported)
         if settings.schedule and (type(settings.schedule)~='table' or settings.schedule.timelineVersion~=1) then return false,'Unsupported schedule format. Only Period Timeline schedules can be imported; older schedules are not converted.' end
     end end
 
+    for _,command in ipairs(imported.commands or {}) do if self:IsReservedCommandName(command.name) then return false,'Imported command name is reserved: '..tostring(command.name) end end
+
     -- Resolve a locked activity by stable ID first, then by a unique exact name.
     -- This supports portable imports from independently created rotations without
     -- orphaning the local locked message's group.
@@ -817,6 +820,7 @@ function SmartChatMsg:ImportSlotSettingsFromString(rawText, transfer)
         elseif recordType == "COMMAND" then
             local id = self:UnescapeImportExportField(parts[1] or "")
             local name = self:SanitizeCommandName(self:UnescapeImportExportField(parts[2] or ""))
+            if self:IsReservedCommandName(name) then return false,"Imported command name is reserved: "..name end
             local reminderMinutes = self:NormalizeReminderMinutes(self:UnescapeImportExportField(parts[3] or ""))
             local lastUsedAt = nil
 
@@ -1616,6 +1620,7 @@ end
 
 function SmartChatMsg:AddCommand(name, reminderMinutes, autoPopulateOnZone)
     local sanitized = self:SanitizeCommandName(name)
+    if self:IsReservedCommandName(sanitized) then return false,"That name is reserved for a built-in SmartChatMsg command." end
 
     if sanitized == "" then
         return false, "Command must contain at least one alphanumeric character."
@@ -2161,6 +2166,7 @@ end
 
 function SmartChatMsg:RenameCommand(commandId, newName, reminderMinutes, autoPopulateOnZone)
     local sanitizedNew = self:SanitizeCommandName(newName)
+    if self:IsReservedCommandName(sanitizedNew) then return false,"That name is reserved for a built-in SmartChatMsg command." end
 
     if sanitizedNew == "" then
         return false, "Command must contain at least one alphanumeric character."

@@ -2961,6 +2961,7 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
         metadata.startupQueue=true; restoreMetadata=metadata
     end
     local isScheduled = self:GetGuildRunAt(commandId, guildName) == "SCHEDULED"
+    if isScheduled and not self:IsScheduledSendingEnabled() then return false,"Scheduled sending is OFF. Use /scm on to resume." end
     if isScheduled and self:GetGuildScheduleState(commandId, guildName) ~= "RUNNING" then
         return false, "Schedule is outside its active window or paused."
     end
@@ -3372,7 +3373,7 @@ function SmartChatMsg:RegisterDynamicCommands()
 
     for _, command in ipairs(self:GetCommands()) do
         if type(command) == "table" and type(command.id) == "string" and type(command.name) == "string"
-            and self:ShouldRegisterCommand(command.id) then
+            and not self:IsReservedCommandName(command.name) and self:ShouldRegisterCommand(command.id) then
             local slashCommandName = self:BuildSlashCommandName(command.name)
 
             if slashCommandName and not seenCommands[slashCommandName] then

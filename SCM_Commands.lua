@@ -1,4 +1,23 @@
 SmartChatMsg = SmartChatMsg or {}
+local reserved={scm=true,scmdebug=true,on=true,off=true,schedule=true,status=true,retry=true,resetcooldowns=true,send=true}
+function SmartChatMsg:IsReservedCommandName(name)
+    return reserved[zo_strlower(self:SanitizeCommandName(name or ''))]==true
+end
+function SmartChatMsg:IsScheduledSendingEnabled()
+    return not self.savedVars or self.savedVars.scheduledSendingEnabled~=false
+end
+function SmartChatMsg:SetScheduledSendingEnabled(enabled)
+    self.savedVars.scheduledSendingEnabled=enabled==true
+    if not enabled then
+        for id,guilds in pairs(self.savedVars.commandGuildSettings or {}) do for guild,settings in pairs(guilds) do
+            if settings.runAt=='SCHEDULED' then self:StopScheduledDelivery(id,guild) end
+        end end
+    end
+    self:AddLocalChatMessage(enabled and '[SmartChatMsg] Scheduled sending is ON. Eligible schedules will resume.' or '[SmartChatMsg] Scheduled sending is OFF. Incoming monitoring and ordinary commands remain active. Use /scm on to resume schedules.')
+    self:TickSchedules()
+    if self.statusPanelVisible then self:RefreshStatusPanel() end
+    return true
+end
 
 -- A scheduled-only command has no standalone slash handler. Resolve it by name
 -- here, without changing its enabled/paused state or its saved output channel.
@@ -45,6 +64,8 @@ end
 function SmartChatMsg:HandleScmCommand(paramText)
     local normalized=zo_strlower(self:Trim(paramText or ""))
     if normalized=="" or normalized=="schedule" then self:OpenSettings();return true
+    elseif normalized=="on" then return self:SetScheduledSendingEnabled(true)
+    elseif normalized=="off" then return self:SetScheduledSendingEnabled(false)
     elseif normalized=="status" then self:ToggleStatusPanel();return true
     elseif normalized=="retry" then return self:RetryTimedOutMessage()
     elseif normalized=="resetcooldowns" then self:ResetAllCooldowns();return true end
@@ -52,7 +73,7 @@ function SmartChatMsg:HandleScmCommand(paramText)
     for word in normalized:gmatch("%S+") do parts[#parts+1]=word end
     if parts[1]=="send" then table.remove(parts,1) end
     if #parts<1 or #parts>2 then
-        self:AddLocalChatMessage("[SmartChatMsg] Usage: /scm, /scm schedule, /scm status, /scm retry, /scm resetcooldowns, or /scm send <command> [guild number 1-5].")
+        self:AddLocalChatMessage("[SmartChatMsg] Usage: /scm, /scm on, /scm off, /scm schedule, /scm status, /scm retry, /scm resetcooldowns, or /scm send <command> [guild number 1-5].")
         return false
     end
     return self:TriggerScheduledCommand(parts[1],parts[2])
