@@ -23,10 +23,21 @@ s:InitializeScheduler();assert(table.concat(notices,'\n'):find('Use /scm on',1,t
 assert(s:HandleScmCommand('on'));eq(s:IsScheduledSendingEnabled(),true)
 -- Resuming does not bypass the startup wait or observed cooldown.
 eq(s.pendingRestoreState,nil);s.scheduleStartupEndsAt=nil;s:ResetAllCooldowns();assert(s.pendingRestoreState)
-s.scheduledSendPause={senderKey='other',endsAt=now+300};assert(s:GetStatusPanelHeaderText():find('Other schedules wait',1,true));now=now+301;assert(not s:GetStatusPanelHeaderText():find('Other schedules wait',1,true))
+s.scheduledSendPause={senderKey='other',endsAt=now+300};assert(s:GetStatusPanelCountdownText():find('Other schedules wait',1,true));now=now+301;assert(not s:GetStatusPanelCountdownText():find('Other schedules wait',1,true))
 -- Every built-in action is reserved, including case/leading punctuation variants.
 for _,name in ipairs({'on','OFF','schedule','status','retry','resetcooldowns','send','scm','scmdebug','/On'})do
  local ok,reason=s:AddCommand(name);eq(ok,false);assert(reason:find('reserved',1,true));eq(s:RenameCommand('other',name),false)
 end
 local before=s.savedVars;assert(not s:ImportSettingsFromString('SCM_EXPORT_V2\nCOMMAND|bad|off||\nEND'));eq(s.savedVars,before)
 print('PASS saved scheduled switch, queue/pending protection, passive monitoring, ordinary delivery, header and reserved names')
+
+-- Startup takes priority in the top-right countdown and expires at its deadline.
+s.scheduleStartupEndsAt=now+180
+s.scheduledSendPause={endsAt=now+300}
+assert(s:GetStatusPanelCountdownText()=='Startup delay: '..s:FormatStatusDuration(180))
+now=now+1
+assert(s:GetStatusPanelCountdownText()=='Startup delay: '..s:FormatStatusDuration(179))
+now=now+179
+assert(s:GetStatusPanelCountdownText():find('Other schedules wait',1,true))
+now=now+120
+assert(s:GetStatusPanelCountdownText()=='')
