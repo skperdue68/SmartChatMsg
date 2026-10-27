@@ -10,7 +10,7 @@ s.GetSelectedMessagesChannel=function() return "Guild" end
 s.GetMessageEntriesForSelection=function() return s.savedVars.messages end
 s.settings.InitializeState=function() end
 TOPLEFT="TOPLEFT";BOTTOMLEFT="BOTTOMLEFT";TOPRIGHT="TOPRIGHT";RIGHT="RIGHT";LEFT="LEFT"
-CT_SLIDER="SLIDER";CT_TEXTURE="TEXTURE";ORIENTATION_HORIZONTAL="HORIZONTAL"
+CT_SLIDER="SLIDER";CT_TEXTURE="TEXTURE";CT_BACKDROP="BACKDROP";ORIENTATION_HORIZONTAL="HORIZONTAL"
 local named={}
 local function control(name,parent)
  local c={parent=parent,width=580,height=0,text="",hidden=false,handlers={}}
@@ -27,6 +27,7 @@ local function control(name,parent)
  function c:SetMouseEnabled(v) self.mouse=v end
  function c:SetEditEnabled(v) self.editEnabled=v end
  function c:GetText() return self.text end
+ function c:SetEdgeTexture(path,w,h)self.edgeTexture=path;self.edgeWidth=w;self.edgeHeight=h end
  function c:SetHidden(v) self.hidden=v end
  function c:IsHidden() return self.hidden end
  function c:SetHandler(k,fn) self.handlers[k]=fn end
@@ -90,3 +91,9 @@ local previous=s:GetRevertChatSeconds();timeout.setFunc(120);eq(s:GetRevertChatS
 timeout.setFunc(29);eq(s:GetRevertChatSeconds(),120);timeout.setFunc(301);eq(s:GetRevertChatSeconds(),120)
 timeout.setFunc(30);eq(s:GetRevertChatSeconds(),30);timeout.setFunc(300);eq(s:GetRevertChatSeconds(),300)
 print('PASS global timeout uses native LAM slider, persists bounds and rejects invalid changes')
+
+for _,name in ipairs({'SCM_MessagesReminderSlider','SCM_MessagesReminderRetrySlider','SCM_MessagesAutoPopulateCooldownSlider'}) do
+ local track=assert(named[name..'Track']);eq(track.edgeTexture,'EsoUI/Art/Tooltips/UI-SliderBackdrop.dds');eq(track.edgeWidth,32);eq(track.edgeHeight,4)
+end
+assert(named.SCM_MessagesReminderLabel.text:find('Repeat Frequency: ',1,true))
+print('PASS ordinary sliders use LAM backdrop track and ASCII labels')
