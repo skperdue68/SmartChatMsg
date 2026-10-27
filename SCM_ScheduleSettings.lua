@@ -17,6 +17,8 @@ function SmartChatMsg:RefreshEventTimingExpansion()
         {"SCM_ReminderTimingSubmenu",scheduled and draft.mode=="REMINDER","SCM_SchedulingSubmenu"},
         {"SCM_EventTimingSubmenu",scheduled and draft.mode=="EVENT","SCM_SchedulingSubmenu"},
         {"SCM_FactionRotationSubmenu",scheduled and draft.mode=="EVENT" and repeating and draft.specialPattern=="FACTION_ROTATION","SCM_SchedulingSubmenu"},
+        {"SCM_EventRotationSubmenu",scheduled and draft.mode=="EVENT" and repeating and draft.specialPattern=="EVENT_ROTATION","SCM_SchedulingSubmenu"},
+        {"SCM_OccurrenceCancellationSubmenu",scheduled and (next(draft.occurrenceExceptions or {})~=nil or draft.mode=="EVENT" and repeating and (draft.specialPattern=="EVENT_ROTATION" or draft.specialPattern=="FACTION_ROTATION")),"SCM_SchedulingSubmenu"},
         {"SCM_RepeatOptionsSubmenu",scheduled and repeating,"SCM_SchedulingSubmenu"},
         {"SCM_RepeatWeekdaysSubmenu",scheduled and (draft.recurrence=="DAILY" or draft.recurrence=="WEEKLY" or draft.recurrence=="BIWEEKLY"),"SCM_RepeatOptionsSubmenu"},
         {"SCM_MessageDeliverySubmenu",scheduled and draft.mode~="REMINDER","SCM_SchedulingSubmenu"},
@@ -73,7 +75,7 @@ function SmartChatMsg:GetNextScheduleOccurrenceText(draft)
     local text=label..": "..(occurrence and self:FormatScheduleDateTime(occurrence.eventAtUtc,occurrence) or "None scheduled.")
     if occurrence and schedule.specialPattern~="NONE" then
         local variant=self:GetScheduleEventVariant(schedule,occurrence.eventAtUtc)
-        text=text.."\n"..(schedule.specialPattern=="FACTION_ROTATION" and "Faction: " or "Message group: ")..self:GetScheduleVariantLabel(variant)
+        text=text.."\n"..(schedule.specialPattern=="FACTION_ROTATION" and "Faction: " or "Message group: ")..self:GetScheduleVariantLabel(variant,schedule.specialPattern,schedule)
     end
     return text
 end
@@ -93,6 +95,7 @@ function SmartChatMsg:GetScheduleEditorDraft()
         d.mode=d.mode or (source and "EVENT" or "WINDOW"); d.recurrence=d.recurrence or "NONE"
         d.messagePhases=d.messagePhases or {}; d.phaseIntervals=d.phaseIntervals or {}; d.phaseOnce=d.phaseOnce or {}; d.weekdays=d.weekdays or {}
         d.specialPattern=d.specialPattern or "NONE";d.rotationWeeks=d.rotationWeeks or 4
+        d.rotationEvery=d.rotationEvery or 1;d.rotationEvents=d.rotationEvents or {};d.occurrenceExceptions=d.occurrenceExceptions or {}
         d.rotationFactions=d.rotationFactions or {"AD","EP","DC"};d.messageVariants=d.messageVariants or {}
         for _,field in ipairs({"start","event","end"}) do
             if not d[field.."Date"] or d[field.."Date"]=="" then
@@ -184,7 +187,7 @@ function SmartChatMsg:GetScheduleMessagePhaseText(messageId,schedule)
     local text=#result>0 and table.concat(result," · ") or "Not selected for any phase"
     if schedule.specialPattern and schedule.specialPattern~="NONE" then
         local variant=self:GetScheduleMessageVariant(schedule,messageId)
-        text=text.." · "..self:GetScheduleVariantLabel(variant,schedule.specialPattern)
+        text=text.." · "..self:GetScheduleVariantLabel(variant,schedule.specialPattern,schedule)
         if schedule.specialPattern=="FACTION_ROTATION" and variant~="ALL" then
             local selected=false;for _,code in ipairs(schedule.rotationFactions or {}) do if code==variant then selected=true end end
             if not selected then text=text.." (not in rotation)" end
@@ -246,6 +249,9 @@ function SmartChatMsg:GetScheduleMessageChecklist(phase)
                 local code=d.rotationFactions[i]
                 if code and code~="NONE" and not seen[code] then variantChoices[#variantChoices+1]=code;seen[code]=true end
             end
+        end
+        if d.specialPattern=='EVENT_ROTATION' then
+            variantChoices={'ALL'};for _,activity in ipairs(d.rotationEvents or {}) do variantChoices[#variantChoices+1]=activity.id end
         end
         result[#result+1]={type="checkbox",name=entry.text,messageId=messageId,
             variantChoices=variantChoices,variant=self:GetScheduleMessageVariant(d,messageId),
@@ -432,9 +438,9 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
             row.variantCombo:ClearItems()
             for _,value in ipairs(choice.variantChoices) do
                 local variant=value
-                row.variantCombo:AddItem(row.variantCombo:CreateItemEntry(self:GetScheduleVariantLabel(value),function() choice.setVariant(variant) end))
+                row.variantCombo:AddItem(row.variantCombo:CreateItemEntry(self:GetScheduleVariantLabel(value,self:GetScheduleEditorDraft().specialPattern,self:GetScheduleEditorDraft()),function() choice.setVariant(variant) end))
             end
-            row.variantCombo:SetSelectedItem(self:GetScheduleVariantLabel(choice.variant))
+            row.variantCombo:SetSelectedItem(self:GetScheduleVariantLabel(choice.variant,self:GetScheduleEditorDraft().specialPattern,self:GetScheduleEditorDraft()))
             height=height+42
         else
             if row.variantControl then row.variantControl:SetHidden(true) end
@@ -459,6 +465,12 @@ function SmartChatMsg:RefreshScheduleMessagePool(control,phase)
     control.scheduleRefreshing=false
 end
 
+function SmartChatMsg:RefreshRotationEditorChoices()
+    for reference,provider in pairs(self.rotationEditorChoiceProviders or {}) do
+        local control=_G[reference]
+        if control and control.UpdateChoices then control:UpdateChoices(provider()) end
+    end
+end
 function SmartChatMsg:BuildScheduleOptionControls()
     local function draft() return self:GetScheduleEditorDraft() end
     local function refresh() if self.scheduleEditor then self.scheduleEditor.dirty=true end; self:RefreshSettingsUI() end
@@ -487,6 +499,10 @@ function SmartChatMsg:BuildScheduleOptionControls()
             setFunc=function(v)
                 for i,text in ipairs(labels) do if text==v then
                     draft()[key]=values[i]
+                    if key=='specialPattern' and values[i]=='EVENT_ROTATION' then
+                        local ids={ALL=true};for _,a in ipairs(draft().rotationEvents or {}) do ids[a.id]=true end
+                        for id,group in pairs(draft().messageVariants or {}) do if not ids[group] then draft().messageVariants[id]='ALL' end end
+                    end
                     if (key=="mode" and values[i]~="EVENT") or (key=="recurrence" and values[i]=="NONE") then draft().specialPattern="NONE" end
                     break
                 end end
@@ -551,7 +567,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
         controls[#controls+1]={type="submenu",reference=({WINDOW="SCM_WindowTimingSubmenu",REMINDER="SCM_ReminderTimingSubmenu",EVENT="SCM_EventTimingSubmenu"})[mode],name=({WINDOW="Window dates and times",REMINDER="First reminder date and time",EVENT="Event and promotion timing"})[mode],controls=entry[2],disabled=function() return draft().mode~=mode end}
     end
     controls[#controls+1]=dropdown("Repeat schedule",repeatLabels,repeatValues,"recurrence")
-    local pattern=dropdown("Special event pattern",{"None","Faction rotation","Last event of month"},{"NONE","FACTION_ROTATION","MONTH_FINAL"},"specialPattern")
+    local pattern=dropdown("Special event pattern",{"None","Faction rotation","Rotating event","Last event of month"},{"NONE","FACTION_ROTATION","EVENT_ROTATION","MONTH_FINAL"},"specialPattern")
     pattern.disabled=function() return draft().mode~="EVENT" or draft().recurrence=="NONE" end
     controls[#controls+1]=pattern
     local rotation={
@@ -573,8 +589,86 @@ function SmartChatMsg:BuildScheduleOptionControls()
         return string.format("Complete rotation: %d weeks (%d weeks × %d factions).",schedule.rotationWeeks*#schedule.rotationFactions,schedule.rotationWeeks,#schedule.rotationFactions)
     end}
     controls[#controls+1]={type="submenu",reference="SCM_FactionRotationSubmenu",name="Faction rotation",controls=rotation,disabled=function() return draft().specialPattern~="FACTION_ROTATION" or draft().mode~="EVENT" end}
+    local activities={
+        {type='description',text='Activities repeat in this order, counting scheduled occurrences from the Event date, including while offline. Use %eventactivity% in messages. Names may repeat; activity IDs stay stable when you rename or reorder an activity.'},
+        number('Occurrences per activity','rotationEvery','Run each activity for 1 to 1000 scheduled occurrences before advancing.'),
+        {type='editbox',name='New activity name',getFunc=function() return self.pendingRotationActivityName or '' end,setFunc=function(v) self.pendingRotationActivityName=v end},
+        {type='button',name='Add activity',func=function()
+            local d=draft();local name=self:Trim(self.pendingRotationActivityName or '')
+            if #name<1 or (select(2,name:gsub('[^\128-\191]','')))>80 or #d.rotationEvents>=50 then self:ShowStatusMessage('Enter an activity name from 1 to 80 characters; maximum 50 activities.');return end
+            self.rotationActivityIdHistory=self.rotationActivityIdHistory or {}
+            local ids=self.rotationActivityIdHistory;for _,a in ipairs(d.rotationEvents) do ids[a.id]=true end
+            local base=self:GenerateUuid();local id=base;local suffix=1
+            while ids[id] do suffix=suffix+1;id=base..'-'..suffix end
+            ids[id]=true
+            d.rotationEvents[#d.rotationEvents+1]={id=id,name=name};self.pendingRotationActivityName='';refresh()
+        end},
+    }
+    local function activityIndex() return math.min(self.selectedRotationActivityIndex or 1,#draft().rotationEvents) end
+    local function activityChoices()
+        local out={};for i,a in ipairs(draft().rotationEvents) do out[#out+1]=i..'. '..a.name end;return out
+    end
+    self.rotationEditorChoiceProviders={SCM_SelectedRotationActivity=activityChoices}
+    activities[#activities+1]={type='dropdown',reference='SCM_SelectedRotationActivity',name='Selected activity',choices=activityChoices(),getFunc=function() local i=activityIndex();local a=draft().rotationEvents[i];return a and i..'. '..a.name or '' end,
+    setFunc=function(v) self.selectedRotationActivityIndex=tonumber(v:match('^(%d+)'));refresh() end}
+    activities[#activities+1]={type='editbox',name='Activity name',getFunc=function() local a=draft().rotationEvents[activityIndex()];return a and a.name or '' end,
+    setFunc=function(v) local a=draft().rotationEvents[activityIndex()];if a then a.name=v;refresh() end end}
+    for _,entry in ipairs({{'Move activity up',-1},{'Move activity down',1}}) do
+        local delta=entry[2];activities[#activities+1]={type='button',name=entry[1],func=function()
+            local list=draft().rotationEvents;local i=activityIndex();local j=i+delta
+            if list[i] and list[j] then list[i],list[j]=list[j],list[i];self.selectedRotationActivityIndex=j;refresh() end
+        end}
+    end
+    activities[#activities+1]={type='button',name='Remove activity',func=function()
+        local d=draft();local i=activityIndex();local a=d.rotationEvents[i];if not a then return end
+        for _,variant in pairs(d.messageVariants) do if variant==a.id then self:ShowStatusMessage('Assign this activity’s messages to another group before removing it.');return end end
+        table.remove(d.rotationEvents,i);refresh()
+    end}
+    controls[#controls+1]={type='submenu',reference='SCM_EventRotationSubmenu',name='Rotating event',controls=activities,disabled=function() return draft().specialPattern~='EVENT_ROTATION' or draft().mode~='EVENT' end}
+    local function cancellationRows()
+        local normalized=self:NormalizeSchedule(draft());return normalized and self:GetNominalScheduleOccurrences(normalized,GetTimeStamp(),12) or {},normalized
+    end
+    local function cancellationChoices()
+        local rows,config=cancellationRows();local choices,seen={},{}
+        for _,o in ipairs(rows) do
+            local date=self:GetScheduleOccurrenceDate(config,o.eventAtUtc)
+            seen[date]=true
+            choices[#choices+1]=date..' — '..self:GetScheduleVariantLabel(self:GetScheduleEventVariant(config,o.eventAtUtc),config.specialPattern,config)..(o.cancelled and ' (cancelled: '..o.exceptionAction..')' or '')
+        end
+        local saved={};for date,value in pairs(draft().occurrenceExceptions or {}) do if not seen[date] then saved[#saved+1]=date..' (cancelled: '..value.action..')' end end;table.sort(saved)
+        for _,label in ipairs(saved) do choices[#choices+1]=label end
+        return choices
+    end
+    local function cancellationSelection()
+        local choices=cancellationChoices();for _,label in ipairs(choices) do if label:sub(1,10)==self.selectedCancellationDate then return label end end
+        return choices[1] or ''
+    end
+    self.rotationEditorChoiceProviders.SCM_SelectedCancellationOccurrence=cancellationChoices
+    local cancellations={
+        {type='description',text='Cancel a date with Keep rotation to advance normally, or Postpone rotation to hold that slot. Faction postponement holds the calendar span to the next nominal occurrence. Undo removes the cancellation. Changes take effect when you save the schedule.'},
+        {type='description',text=function() return table.concat(cancellationChoices(),'\n') end},
+        {type='dropdown',reference='SCM_SelectedCancellationOccurrence',name='Occurrence to cancel or undo',choices=cancellationChoices(),getFunc=cancellationSelection,setFunc=function(v) self.selectedCancellationDate=v:sub(1,10);refresh() end},
+        {type='dropdown',name='Cancellation rotation',choices={'Keep rotation','Postpone rotation'},getFunc=function() return self.pendingCancellationAction=='POSTPONE' and 'Postpone rotation' or 'Keep rotation' end,
+        setFunc=function(v) self.pendingCancellationAction=v=='Postpone rotation' and 'POSTPONE' or 'KEEP' end},
+        {type='button',name='Cancel selected occurrence',func=function()
+            local selected=cancellationSelection():sub(1,10);if selected=='' then return end
+            if selected then draft().occurrenceExceptions[selected]={action=self.pendingCancellationAction or 'KEEP'};refresh() end
+        end},
+        {type='button',name='Undo selected cancellation',func=function()
+            local selected=cancellationSelection():sub(1,10);if selected=='' then return end
+            if selected then draft().occurrenceExceptions[selected]=nil;refresh() end
+        end},
+        {type='description',text=function()
+            local dates={};for date,value in pairs(draft().occurrenceExceptions) do dates[#dates+1]=date..' ('..value.action..')' end;table.sort(dates)
+            return #dates>0 and 'Saved cancellations: '..table.concat(dates,', ') or 'No cancellations.'
+        end},
+        {type='editbox',name='Earlier cancellation date (YYYY-MM-DD)',getFunc=function() return self.earlierCancellationDate or '' end,setFunc=function(v) self.earlierCancellationDate=v end},
+        {type='button',name='Undo earlier cancellation',func=function() draft().occurrenceExceptions[self.earlierCancellationDate or '']=nil;refresh() end},
+    }
+    controls[#controls+1]={type='submenu',reference='SCM_OccurrenceCancellationSubmenu',name='Occurrence cancellations',controls=cancellations,disabled=function() return next(draft().occurrenceExceptions or {})==nil and (draft().mode~='EVENT' or (draft().specialPattern~='EVENT_ROTATION' and draft().specialPattern~='FACTION_ROTATION')) end}
     controls[#controls+1]={type="description",text=function()
         local d=draft()
+        if d.specialPattern=='EVENT_ROTATION' then return 'Choose All activities or an activity in each message row. Use %eventactivity% for its name.' end
         if d.specialPattern=="FACTION_ROTATION" then return "In each message row, choose All selected factions or a faction. Keep using the phase checkboxes for when it runs." end
         if d.specialPattern=="MONTH_FINAL" then return "Works with any repeating event schedule. Unmarked messages use Regular events. Click the Group button beneath a message to cycle through Regular events, Month-final events, and All events. All events messages are eligible for both kinds of occurrence, within their selected phases. The last scheduled event in each month uses the month-final pool throughout promotion. If none are marked month-final, regular messages are used instead, together with All events messages." end
         return "Special patterns are optional. Message group choices appear in each phase's message list when enabled."
@@ -641,7 +735,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
             local utc=normalized.mode=="EVENT" and s.eventAtUtc or s.startsAtUtc
             if utc then
                 local line=self:FormatScheduleDateTime(utc,normalized)
-                if normalized.specialPattern~="NONE" then line=line.." — "..self:GetScheduleVariantLabel(self:GetScheduleEventVariant(normalized,utc)) end
+                if normalized.specialPattern~="NONE" then line=line.." — "..self:GetScheduleVariantLabel(self:GetScheduleEventVariant(normalized,utc),normalized.specialPattern,normalized) end
                 lines[#lines+1]=line
             end
         end

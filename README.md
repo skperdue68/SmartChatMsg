@@ -460,3 +460,14 @@ Named important times support cutoff date/day/time/countdown substitutions. Matc
 The separate [SmartChatMsg-Web](https://github.com/skperdue68/SmartChatMsg-Web) Node application offers the same event structure plus a week/month overview and cooldown-preserving SavedVariables editing. Both addon and web editor retain full scheduling. Read the HTML guide for migration and installation details.
 
 Status cards show days in long countdowns, compact promotion details and local-clock Next Send estimates. Equally eligible queued automatic reminders randomize their order without starving older queued work.
+
+
+### Rotating events and cancelled occurrences
+
+Choose **Rotating event** under Special event pattern for a repeating Promote an event schedule. Add 1–50 named activities, order them with Move activity up/down, and set Occurrences per activity (1–1000). Each activity has a stable ID; renaming or moving it preserves message assignments. Use `%eventactivity%` in templates and choose All activities or a specific activity in each message row. The rotation runs from the original Event date even while offline and works with reminder timelines.
+
+In **Occurrence cancellations**, select a nominal occurrence and choose **Keep rotation** or **Postpone rotation**, then save. Both suppress that occurrence's reminders, queued requests and manual sends. Keep advances the rotation as usual; Postpone holds one nominal slot. For faction rotations, Postpone holds the schedule-zone civil-day span from that occurrence to its next nominal occurrence before applying the existing calendar-week blocks. A biweekly cancellation therefore holds two weeks; a monthly cancellation holds its actual month span. Dates outside the repeat cadence never advance or hold either rotation. DST does not change the civil-day calculation.
+
+Upcoming dates show the projected activity/faction and cancellation state. Saved cancellations remain available for Undo, including after changing patterns; Undo removes the exception without changing the recurrence anchor. Cancellation changes take effect on Save; an untouched prepared chat message is withdrawn and player-edited text is preserved. There is no automatic cancellation announcement.
+
+SavedVariables contain `specialPattern="EVENT_ROTATION"`, `rotationEvents={{id="stable-id",name="Activity"},...}`, `rotationEvery=1`, and `occurrenceExceptions={["YYYY-MM-DD"]={action="KEEP" or "POSTPONE"}}`. These are configuration, work entirely offline, and survive full import/export; message IDs and locally locked group assignments remain intact. Text backups add `SCHEDULEEVENTROTATION_V1`, ordered `SCHEDULEACTIVITY_V1`, and `SCHEDULEEXCEPTION_V1` records. Invalid counts, dates, actions, duplicate IDs and missing activity references are rejected.

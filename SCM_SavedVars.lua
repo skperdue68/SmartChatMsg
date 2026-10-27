@@ -599,7 +599,48 @@ function SmartChatMsg:ApplyImportedSettings(imported)
         return false, "Import data is invalid."
     end
 
+    -- Resolve a locked activity by stable ID first, then by a unique exact name.
+    -- This supports portable imports from independently created rotations without
+    -- orphaning the local locked message's group.
+    for _,entry in ipairs(self.savedVars.messages or {}) do
+        if entry.locked then
+            local command
+            local name=self:GetCommandNameById(entry.commandId)
+            for _,candidate in ipairs(imported.commands or {}) do
+                if candidate.id==entry.commandId or name and zo_strlower(candidate.name)==zo_strlower(name) then command=candidate;break end
+            end
+            local guild=self:NormalizeKey(entry.guildName or self:GetGuildNameByIndex(entry.guildIndex))
+            local old=guild and self:GetGuildSchedule(entry.commandId,guild)
+            local settings=command and guild and imported.commandGuildSettings[command.id] and imported.commandGuildSettings[command.id][guild]
+            local target=settings and settings.schedule
+            local group=old and (old.messageVariants or {})[entry.id]
+            local oldActivity
+            for _,activity in ipairs(old and old.rotationEvents or {}) do if activity.id==group then oldActivity=activity end end
+            if oldActivity and target then
+                local sameId,byName,count,localCount=nil,nil,0,0
+                for _,activity in ipairs(old.rotationEvents) do if activity.name==oldActivity.name then localCount=localCount+1 end end
+                for _,activity in ipairs(target.rotationEvents or {}) do
+                    if activity.id==group then sameId=activity end
+                    if activity.name==oldActivity.name then byName=activity;count=count+1 end
+                end
+                if not sameId then
+                    if count~=1 or localCount~=1 then return false,'Import cannot preserve locked activity group for '..entry.id..': activity is missing or its name is ambiguous.' end
+                    local foreignId=byName.id;byName.id=group
+                    for id,variant in pairs(target.messageVariants or {}) do if variant==foreignId then target.messageVariants[id]=group end end
+                end
+            end
+        end
+    end
     self:PreserveLockedMessages(imported)
+    for _,guilds in pairs(imported.commandGuildSettings or {}) do
+        for _,settings in pairs(guilds) do
+            if settings.schedule then
+                local normalized,reason=self:NormalizeSchedule(settings.schedule)
+                if not normalized then return false,'Import cannot preserve locked schedule groups: '..tostring(reason) end
+                settings.schedule=normalized
+            end
+        end
+    end
     self.savedVars.commands = imported.commands or {}
     self.savedVars.messages = imported.messages or {}
     self.savedVars.chatChannels = imported.chatChannels or {}
@@ -669,7 +710,7 @@ function SmartChatMsg:ImportSlotSettingsFromString(rawText, transfer)
 
         local recordType = table.remove(parts, 1)
 
-        if recordType == "SCHEDULE_V1" or recordType == "SCHEDULEMESSAGE_V1" or recordType == "SCHEDULEOPTIONS_V1" or recordType=="SCHEDULEPATTERN_V1" or recordType=="SCHEDULEVARIANT_V1" or recordType=="SCHEDULETIMELINE_V1" or recordType=="SCHEDULEMARK_V1" or recordType=="SCHEDULEROW_V1" or recordType=="SCHEDULEPOOL_V1" or recordType=="SCHEDULEUSAGE_V1" then
+        if recordType=="SCHEDULEEVENTROTATION_V1" or recordType=="SCHEDULEACTIVITY_V1" or recordType=="SCHEDULEEXCEPTION_V1" or recordType == "SCHEDULE_V1" or recordType == "SCHEDULEMESSAGE_V1" or recordType == "SCHEDULEOPTIONS_V1" or recordType=="SCHEDULEPATTERN_V1" or recordType=="SCHEDULEVARIANT_V1" or recordType=="SCHEDULETIMELINE_V1" or recordType=="SCHEDULEMARK_V1" or recordType=="SCHEDULEROW_V1" or recordType=="SCHEDULEPOOL_V1" or recordType=="SCHEDULEUSAGE_V1" then
             table.insert(parts, 1, recordType)
             scheduleRecords[#scheduleRecords + 1] = parts
         elseif recordType == "DEFAULT" then
