@@ -769,7 +769,7 @@ function SmartChatMsg:ImportSlotSettingsFromString(rawText, transfer)
 
         local recordType = table.remove(parts, 1)
 
-        if recordType=="SCHEDULEMONTHLY_V1" or recordType=="SCHEDULEEVENTROTATION_V1" or recordType=="SCHEDULEACTIVITY_V1" or recordType=="SCHEDULEEXCEPTION_V1" or recordType == "SCHEDULE_V1" or recordType == "SCHEDULEMESSAGE_V1" or recordType == "SCHEDULEOPTIONS_V1" or recordType=="SCHEDULEPATTERN_V1" or recordType=="SCHEDULEVARIANT_V1" or recordType=="SCHEDULETIMELINE_V1" or recordType=="SCHEDULEMARK_V1" or recordType=="SCHEDULEROW_V1" or recordType=="SCHEDULEPOOL_V1" or recordType=="SCHEDULEUSAGE_V1" then
+        if recordType=="SCHEDULEAVAILABILITY_V1" or recordType=="SCHEDULEAVAILABILITYDAY_V1" or recordType=="SCHEDULEMONTHLY_V1" or recordType=="SCHEDULEEVENTROTATION_V1" or recordType=="SCHEDULEACTIVITY_V1" or recordType=="SCHEDULEEXCEPTION_V1" or recordType == "SCHEDULE_V1" or recordType == "SCHEDULEMESSAGE_V1" or recordType == "SCHEDULEOPTIONS_V1" or recordType=="SCHEDULEPATTERN_V1" or recordType=="SCHEDULEVARIANT_V1" or recordType=="SCHEDULETIMELINE_V1" or recordType=="SCHEDULEMARK_V1" or recordType=="SCHEDULEROW_V1" or recordType=="SCHEDULEPOOL_V1" or recordType=="SCHEDULEUSAGE_V1" then
             table.insert(parts, 1, recordType)
             scheduleRecords[#scheduleRecords + 1] = parts
         elseif recordType == "DEFAULT" then

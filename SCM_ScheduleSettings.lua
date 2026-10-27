@@ -533,6 +533,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
     local controls={
         {type="description",text=function() return "Uses the command, guild and output channel selected above. All times are "..self:GetSchedulingTimeZoneName(draft().timeZone).." Time ("..draft().timeZone.."). Save and activate starts automatically while you are online. Press Enter to send each prepared message." end},
         {type="description",text=function() local _,id,guild=draft(); local command=self:GetCommandById(id); local channel=self.GetSelectedMessagesChannel and self:GetSelectedMessagesChannel() or ""; return (command and command.name or "No command").." / "..tostring(guild or "No guild").." / "..tostring(channel).."\n"..self:GetScheduleStatusText(id,guild)..(self.scheduleEditor and self.scheduleEditor.dirty and "\nUnsaved changes — review and save below." or "") end},
+        {type="description",text="Advanced scheduling configuration is available at https://scm.perdues.me. Open your SmartChatMsg SavedVariables file in the web editor, then download the updated file to use in ESO. You can also configure schedules here in the addon."},
         {type="dropdown",name="Guild timezone",choices={"Use global default","Eastern (ET)","Central (CT)","Mountain (MT)","Pacific (PT)"},
             tooltip="Default timezone for ALL schedules in the selected guild, across commands. Use global default follows Global Settings. Changing it keeps each existing schedule's date and clock time and moves it to the new zone.",
             getFunc=function()

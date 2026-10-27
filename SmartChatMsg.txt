@@ -22,4 +22,5 @@ SCM_IncomingChat.lua
 SCM_Timeline.lua
 SCM_TimelineSettings.lua
 SCM_TimelineTransfer.lua
+SCM_Availability.lua
 SmartChatMsg.lua

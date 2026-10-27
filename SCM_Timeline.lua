@@ -106,7 +106,10 @@ function S:GetActiveTimelineReminder(config,utc)
  for _,row in ipairs(config.reminders) do
   local start,finish=self:GetTimelineReminderWindow(config,occurrence,row)
   local usage=(config.timelineUsage or {})[occurrence.occurrenceKey..':'..row.id]
-  if start and finish and row.enabled~=false and not row.paused and utc>=start and utc<finish and not(row.once and usage and usage.completed) then
+  local available,allowedStart,allowedFinish=true
+  if self.GetReminderAvailabilityStatus then available,allowedStart,allowedFinish=self:GetReminderAvailabilityStatus(config,row,occurrence,utc) end
+  if start and finish and available and row.enabled~=false and not row.paused and utc>=start and utc<finish and not(row.once and usage and usage.completed) then
+   start,finish=allowedStart or start,allowedFinish or finish
    if not picked or row.timeSensitive and not picked.timeSensitive or row.timeSensitive==picked.timeSensitive and (start>from or start==from and row.once and not picked.once) then picked,from,to=row,start,finish end
   end
  end
@@ -195,19 +198,22 @@ function S:GetSchedulePhaseDescription(id,guild)
  return description(self,id,guild)
 end
 local observed=S.MarkObservedChatUsage
-function S:MarkObservedChatUsage(entry,guild,channel)
+function S:MarkObservedChatUsage(entry,guild,channel,matchingEntries)
  local config=self:GetGuildSchedule(entry.commandId,guild)
  local occurrence=config and config.timelineVersion==1 and self:GetScheduleOccurrence(config,GetTimeStamp())
  if occurrence then
   config.timelineUsage=config.timelineUsage or {}
   for _,row in ipairs(config.reminders) do
-   for _,messageId in ipairs(row.messageIds) do if messageId==entry.id then
-    local start,finish=self:GetTimelineReminderWindow(config,occurrence,row)
-    if start and finish and row.enabled~=false and not row.paused and GetTimeStamp()>=start and GetTimeStamp()<finish then
-     local key=occurrence.occurrenceKey..':'..row.id;local usage=config.timelineUsage[key] or {};config.timelineUsage[key]=usage
-     usage.peerAt=GetTimeStamp();usage.completed=row.once or nil;usage.nextDueAt=GetTimeStamp()+row.intervalMinutes*60+zo_random(30,90)
-    end
-   end end
+   local relevant=false
+   for _,candidate in ipairs(matchingEntries or {entry}) do
+    for _,messageId in ipairs(row.messageIds) do if messageId==candidate.id and (not row.availability or not row.availability.enabled or self:IsReminderMessageVariantEligible(config,row,candidate,guild,occurrence)) then relevant=true;break end end
+    if relevant then break end
+   end
+   local start,finish=self:GetTimelineReminderWindow(config,occurrence,row)
+   if relevant and start and finish and row.enabled~=false and not row.paused and GetTimeStamp()>=start and GetTimeStamp()<finish then
+    local key=occurrence.occurrenceKey..':'..row.id;local usage=config.timelineUsage[key] or {};config.timelineUsage[key]=usage
+    usage.peerAt=GetTimeStamp();usage.completed=row.once or nil;usage.nextDueAt=GetTimeStamp()+row.intervalMinutes*60+zo_random(30,90)
+   end
   end
  end
  return observed(self,entry,guild,channel)
@@ -228,11 +234,11 @@ function S:GetObservedCommandCooldownEndsAt(id,guild,channel)
  return relevant and observedDeadline(self,id,guild,channel) or nil
 end
 local markObserved=S.MarkObservedChatUsage
-function S:MarkObservedChatUsage(entry,guild,channel)
+function S:MarkObservedChatUsage(entry,guild,channel,matchingEntries)
  local row=self:GetActiveTimelineReminder(self:GetGuildSchedule(entry.commandId,guild),GetTimeStamp())
- local contains=false;if row then for _,id in ipairs(row.messageIds) do if id==entry.id then contains=true end end end
+ local contains=false;if row then for _,candidate in ipairs(matchingEntries or {entry}) do for _,id in ipairs(row.messageIds) do if id==candidate.id then contains=true end end end end
  self.timelineIgnoreUnrelatedPeer=row and row.timeSensitive and not contains and {id=entry.commandId,guild=guild} or nil
- local ok,reason=pcall(markObserved,self,entry,guild,channel)
+ local ok,reason=pcall(markObserved,self,entry,guild,channel,matchingEntries)
  self.timelineIgnoreUnrelatedPeer=nil
  if not ok then error(reason) end
 end
