@@ -296,7 +296,7 @@ For ordinary On Demand/Startup combinations:
 
 - **Repeat Every:** repopulates after the configured minutes following a confirmed send.
 - **Retry Delay:** retries an unsubmitted repeated message after timeout; zero/blank
-  resumes the normal repeat interval. Effective retry is capped to Repeat.
+  resumes the normal repeat interval. Explicit retry is capped to Cooldown and may exceed Repeat; lowering Cooldown also clamps saved Retry. No repeat means no automatic retry. Scheduled combinations keep their schedule interval cap.
 - **Auto Populate Chat on Zone:** uses eligible parent-zone evaluations instead
   of Repeat. Only one Zone owner can be active; per-zone cooldown defaults to 60 minutes.
 - **Populate Sound:** defaults to DUEL_START; None is silent. Preview tests the sound.
