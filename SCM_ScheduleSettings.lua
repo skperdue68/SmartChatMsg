@@ -110,6 +110,11 @@ function SmartChatMsg:GetScheduleEditorDraft()
         end
         -- Retain legacy exact start/end until the user changes promotion offsets.
         if not source then d.promotionDays,d.endDelayMinutes=1,60 end
+        if not source then
+            d.mode='EVENT';d.timelineVersion=1;d.importantTimes={};d.timelineUsage={}
+            local messages={};for _,entry in ipairs(self:GetMessageEntriesForCommandAndGuild(id,guild) or {}) do messages[#messages+1]=entry.id end
+            d.reminders={{id=self:GenerateUuid(),label='New period',start={kind='OFFSET',minutes=-60},finish={kind='OFFSET',minutes=0},intervalMinutes=15,lateMinutes=5,once=false,timeSensitive=false,messageIds=messages}}
+        end
         self.scheduleEditor={key=key,source=source,draft=d}
     end
     return self.scheduleEditor.draft,id,guild
@@ -767,6 +772,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
         controls[#controls+1]={type="button",name=action[1],disabled=function() return not selected() end,func=function()
             local d,id,guild=draft(); local candidate=copy(d)
             candidate.enabled,candidate.paused=enabled,false
+            if candidate.timelineVersion==1 and candidate.eventDurationMinutes==0 then candidate.eventDurationMinutes=nil end
             candidate.nextDueAt,candidate.nextDuePhase=nil,nil
             local ok,reason=self:SaveGuildSchedule(id,guild,candidate)
             self:ShowStatusMessage(ok and (enabled and "Schedule saved and activated." or "Schedule saved disabled.") or reason)

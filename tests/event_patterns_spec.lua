@@ -17,7 +17,7 @@ assert(message:find('Ebonheart Pact',1,true));f.incoming(CHAT_CHANNEL_GUILD_1,me
 eq(s:GetGuildLastUsedAt('ad','Amber Traders'),now)
 now=s:ParseEasternDateTime('2026-11-26','12:00 PM');eq(#s:GetScheduledMessageEntries('ad','Amber Traders'),1)
 ZO_SavedVars={NewAccountWide=function() return s.savedVars end}
-assert(s:ImportSettingsFromString(s:BuildExportString()))
+assert(s:ImportSettingsFromString(f.currentExport()))
 c=s:GetGuildSchedule('ad','Amber Traders');eq(c.rotationWeeks,4);eq(c.rotationFactions[2],'EP');eq(c.messageVariants.ep,'EP')
 -- Changing order at the same event must invalidate the incoming-token matcher.
 now=s:ParseEasternDateTime('2026-10-29','12:00 PM')
@@ -41,10 +41,10 @@ eq(s:GetScheduleEventVariant(c,s:ParseEasternDateTime('2027-01-30','08:00 PM')),
 now=s:ParseEasternDateTime('2026-10-22','08:00 PM')
 local entries=s:GetScheduledMessageEntries('ad','Amber Traders');eq(#entries,1);eq(entries[1].id,'ep')
 ZO_SavedVars={NewAccountWide=function() return s.savedVars end}
-assert(s:ImportSettingsFromString(s:BuildExportString()))
+assert(s:ImportSettingsFromString(f.currentExport()))
 c=s:GetGuildSchedule('ad','Amber Traders');eq(c.specialPattern,'MONTH_FINAL');eq(c.messageVariants.ep,'FINAL')
-assert(s:SetMessageLocked('ep',true));assert(not s:BuildExportString():find('SCHEDULEVARIANT_V1|ad|amber traders|ep',1,true))
-assert(s:ImportSettingsFromString(s:BuildExportString()));eq(s:GetGuildSchedule('ad','Amber Traders').messageVariants.ep,'FINAL')
+assert(s:SetMessageLocked('ep',true));assert(not f.currentExport():find('SCHEDULEVARIANT_V1|ad|amber traders|ep',1,true))
+assert(s:ImportSettingsFromString(f.currentExport()));eq(s:GetGuildSchedule('ad','Amber Traders').messageVariants.ep,'FINAL')
 d.specialPattern='FACTION_ROTATION';d.rotationFactions={'AD','AD','DC'}
 assert(not s:NormalizeSchedule(d),'duplicate faction stages must be rejected')
 
@@ -114,7 +114,7 @@ assert(s:GetScheduleMessagePhaseText('all',draft):find('All events',1,true))
 row.variantButton.handlers.OnClicked();eq(draft.messageVariants.all,'REGULAR')
 s:RefreshScheduleMessagePool(pool,'DAY');eq(row.variantButton.text,'Group: Regular events')
 assert(row.height>=row.label.height+36,'message group button must fit below wrapped text')
-find(controls,'Schedule type').setFunc('Run during a window');eq(draft.specialPattern,'NONE')
+assert(not find(controls,'Schedule type'),'alternate schedule types removed')
 -- Round-trip the flexible two-faction setup, including personal groups and new IDs.
 f.reset();f.entry('shared','ad','Amber Traders','PvP for %eventfaction%','Guild')
 f.entry('personal','ad','Amber Traders','Personal Pact notice','Guild')
@@ -122,7 +122,7 @@ local flexible={mode='EVENT',enabled=true,delivery='REPEAT',eventDate='2026-10-1
     recurrence='WEEKLY',intervalMinutes=30,specialPattern='FACTION_ROTATION',rotationWeeks=2,rotationFactions={'AD','EP'},
     messageVariants={personal='EP'},messagePhases={personal={DAY=true}}}
 assert(s:SaveGuildSchedule('ad','Amber Traders',flexible));assert(s:SetMessageLocked('personal',true))
-local export=s:BuildExportString():gsub('|ad|','|imported-id|')
+local export=f.currentExport():gsub('|ad|','|imported-id|')
 assert(s:ImportSettingsFromString(export))
 local restored=s:GetGuildSchedule('imported-id','Amber Traders')
 eq(restored.specialPattern,'FACTION_ROTATION');eq(restored.rotationWeeks,2)

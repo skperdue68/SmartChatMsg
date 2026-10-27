@@ -3,6 +3,18 @@ local S=SmartChatMsg
 local function copy(v) if type(v)~='table' then return v end local r={} for k,x in pairs(v) do r[k]=copy(x) end return r end
 local function includes(t,id) for _,v in ipairs(t or {}) do if v==id then return true end end return false end
 local function dirty(self) self.scheduleEditor.dirty=true;self:RefreshSettingsUI() end
+function S:FormatSchedulingMinutes(value,zero)
+ local n=tonumber(value) or 0;if n==0 then return zero or 'Not set' end
+ local h=math.floor(n/60);local m=n%60;local parts={}
+ if h>0 then parts[#parts+1]=h..(h==1 and ' hour' or ' hours') end
+ if m>0 then parts[#parts+1]=m..(m==1 and ' minute' or ' minutes') end
+ return table.concat(parts,' ')
+end
+function S:BuildSchedulingSlider(label,reference,min,max,get,set,describe,disabled)
+ return {type='slider',reference=reference,name=function()return label..' — '..describe(tonumber(get()) or min)end,min=min,max=max,step=1,decimals=0,clampInput=true,
+  tooltip='Drag or use the mouse wheel. Existing saved values outside this slider range are retained until you change them.',
+  getFunc=function()return tonumber(get()) or min end,setFunc=function(value)local n=tonumber(value);if not n or n~=math.floor(n) or n<min or n>max then self:ShowStatusMessage(label..': choose a whole number from '..min..' to '..max..'.');return end;set(n)end,disabled=disabled}
+end
 function S:GetSelectedTimelineReminder()
  local d=self:GetScheduleEditorDraft()
  for _,r in ipairs(d.reminders or {}) do if r.id==self.scheduleEditor.reminderId then return r end end
@@ -14,7 +26,7 @@ function S:AddTimelineReminder()
  local ids={} for _,r in ipairs(d.reminders) do ids[r.id]=true end
  local base=self:GenerateUuid();local id=base;local suffix=1
  while ids[id] do suffix=suffix+1;id=base..'-'..suffix end
- local r={id=id,label='New reminder',start={kind='OFFSET',minutes=-60},finish={kind='OFFSET',minutes=0},intervalMinutes=15,lateMinutes=5,once=false,timeSensitive=false,messageIds={}}
+ local r={id=id,label='New period',start={kind='OFFSET',minutes=-60},finish={kind='OFFSET',minutes=0},intervalMinutes=15,lateMinutes=5,once=false,timeSensitive=false,messageIds={}}
  d.reminders[#d.reminders+1]=r;self.scheduleEditor.reminderId=id;dirty(self);return r
 end
 function S:RemoveTimelineReminder(id)
@@ -126,6 +138,7 @@ function S:TestMessagePreview(id,phase)
 end
 function S:DescribeTimelineAnchor(a,d)
  if not a then return 'Choose a time' end
+ local c=self:NormalizeSchedule(d);if c then local list=self:GetUpcomingScheduleOccurrences(c,GetTimeStamp(),1,true);local at=list[1] and list[1].eventAtUtc or c.eventAtUtc;local value=self:ResolveTimelineAnchor(c,{eventAtUtc=at},a);if value then return self:FormatScheduleDateTime(value,c) end end
  if a.kind=='MARK' then local m=(d.importantTimes or {})[a.name];return m and m.label or 'Choose an important time' end
  if a.kind=='DAY' then return tostring(a.days)..' calendar days from event at '..tostring(a.time) end
  local minutes=tonumber(a.minutes) or 0
@@ -174,13 +187,19 @@ function S:BuildScheduleOptionControls()
  local function row() return self:GetSelectedTimelineReminder() end
  local function active() return draft().timelineVersion==1 end
  local function refresh() dirty(self) end
- -- Keep existing date picker, recurrence, rotation, previews and Save actions.
- for _,c in ipairs(controls) do
+ -- Retain common event settings; no alternate schedule types or phase pools.
+ local clean={};local refs={SCM_EventTimingSubmenu=true,SCM_MonthlyWeekdaySubmenu=true,SCM_FactionRotationSubmenu=true,SCM_EventRotationSubmenu=true,SCM_OccurrenceCancellationSubmenu=true}
+ for i,c in ipairs(controls) do
   local ref=c.reference or ''
-  if ref=='SCM_EventTimingSubmenu' then for i=5,#c.controls do local old=c.controls[i].disabled;c.controls[i].disabled=function() return active() or old and old() end end end
-  if ref:match('^SCM_Phase') or ref=='SCM_MessageDeliverySubmenu' then local old=c.disabled;c.disabled=function() return active() or old and old() end end
-  if c.name=='Schedule type' then local old=c.disabled;c.disabled=function() return active() or old and old() end end
+  if ref=='SCM_EventTimingSubmenu' then local dates={};for n=1,4 do dates[n]=c.controls[n] end;c.controls=dates;c.name='Event date and time';c.disabled=nil end
+  if i<=3 or refs[ref] or ref:match('^SCM_Repeat') or c.name=='Guild timezone' or c.name=='Repeat schedule' or c.name=='Special event pattern' or c.name=='Save and activate' or c.name=='Save disabled' then clean[#clean+1]=c end
  end
+ controls=clean
+ for _,c in ipairs(controls) do if c.reference=='SCM_RepeatOptionsSubmenu' then
+  c.controls[1]=self:BuildSchedulingSlider('Recurrence interval','SCM_PeriodRecurrenceSlider',1,10,function()return draft().recurrenceInterval or 1 end,function(n)draft().recurrenceInterval=n;refresh()end,function(n)local recurrence=draft().recurrence;local unit=recurrence=='DAILY' and 'day' or (recurrence=='WEEKLY' or recurrence=='BIWEEKLY') and 'week' or 'month';local count=recurrence=='BIWEEKLY' and n*2 or n;return 'Every '..count..' '..unit..(count==1 and '' or 's')end,function()return draft().recurrence=='NONE'end)
+ end end
+
+ controls[#controls+1]={type='description',reference='SCM_NextScheduleOccurrence',text=function()return self:GetNextScheduleOccurrenceText(draft())end}
  local function field(name,key,numeric)
   return {type='editbox',name=name,getFunc=function() return tostring(row() and row()[key] or '') end,setFunc=function(v) if row() then row()[key]=numeric and (tonumber(v) or v) or v;refresh() end end,disabled=function() return not active() or not row() end}
  end
@@ -201,16 +220,16 @@ function S:BuildScheduleOptionControls()
   {type='editbox',name='Important time minutes before / after event',getFunc=function() local m=selectedMark();return m and tostring(m.offsetMinutes) or '' end,setFunc=function(v) local m=selectedMark();if m then m.offsetMinutes=tonumber(v) or v;refresh() end end},
   {type='button',name='Remove important time',func=function() local _,id=selectedMark();if not self:RemoveTimelineImportantTime(id) then self:ShowStatusMessage('Choose another start or end for reminders using this important time before removing it.') end end},
  }
- local duration={type='editbox',name='Event duration (minutes, optional)',tooltip='Whole minutes from the actual event start to its end. Leave blank to retain only reminder windows. Invitations stop at event end; a one-time notice exactly on the end boundary retains its grace.',getFunc=function()return tostring(draft().eventDurationMinutes or '')end,setFunc=function(value)if value=='' then draft().eventDurationMinutes=nil else draft().eventDurationMinutes=tonumber(value) or value end;refresh()end}
- local rowState={type='dropdown',name='Reminder state',tooltip='Pause or disable only this period without deleting messages or cooldown history.',choices={'Enabled','Paused','Disabled'},getFunc=function()local r=row();return r and (r.paused and 'Paused' or r.enabled==false and 'Disabled' or 'Enabled') or 'Enabled'end,setFunc=function(value)local r=row();if r then r.enabled=value~='Disabled';r.paused=value=='Paused';refresh()end end}
+ local duration=self:BuildSchedulingSlider('Event duration','SCM_PeriodDurationSlider',0,240,function()return draft().eventDurationMinutes or 0 end,function(n)draft().eventDurationMinutes=n>0 and n or nil;refresh()end,function(n)return self:FormatSchedulingMinutes(n,'Not set')end)
+ local rowState={type='dropdown',name='Period Status',tooltip='Pause or disable only this period without deleting messages or cooldown history.',choices={'Enabled','Paused','Disabled'},getFunc=function()local r=row();return r and (r.paused and 'Paused' or r.enabled==false and 'Disabled' or 'Enabled') or 'Enabled'end,setFunc=function(value)local r=row();if r then r.enabled=value~='Disabled';r.paused=value=='Paused';refresh()end end}
  local pane={
   duration,
   {type='description',text='Keep the actual event date and time above. Add as many reminder periods or one-time milestones as you need. The latest active normal period wins an overlap; one-time milestones keep their own delivery. You always press Enter to send.'},
   {type='submenu',name='Important times',controls=named},
   {type='header',name='Reminders'},
   {type='custom',minHeight=180,maxHeight=180,createFunc=function(c) self:RefreshTimelineCards(c,false) end,refreshFunc=function(c) self:RefreshTimelineCards(c,false) end},
-  {type='button',name='Add reminder',func=function() self:AddTimelineReminder() end},
-  {type='button',name='Preview timeline',func=function()
+  {type='button',name='Add period',func=function() self:AddTimelineReminder() end},
+  {type='button',name='Preview Period Timeline',func=function()
    local c,reason=self:NormalizeSchedule(draft());if not c then self:ShowStatusMessage(reason);return end
    local occurrence=self:GetUpcomingScheduleOccurrences(c,GetTimeStamp(),1,true)[1] or self:BuildScheduleOccurrence(c,c.eventAtUtc)
    if not occurrence then self:ShowStatusMessage('No event occurrence is available.');return end
@@ -219,50 +238,54 @@ function S:BuildScheduleOptionControls()
     self:AddLocalChatMessage(r.label..': '..self:FormatScheduleDateTime(first,c)..(last and ' → '..self:FormatScheduleDateTime(last,c) or ' · Once')..' · '..(r.timeSensitive and 'Time-sensitive' or 'Normal'))
    end
   end},
-  {type='header',name=function() local r=row();return 'Selected reminder / '..(r and r.label or 'Choose a reminder') end},
-  field('Reminder name','label'),
+  {type='header',name=function() local r=row();return 'Selected period / '..(r and r.label or 'Choose a period') end},
+  field('Period Label','label'),
  }
  local function append(c) pane[#pane+1]=c end
- for _,which in ipairs({'start','finish'}) do
-  local key=which;local title=key=='start' and 'Start' or 'End';local suffix=key=='start' and 'start' or 'end'
-  local function anchor() local r=row();return r and r[key] end
-  append({type='dropdown',name=title..' time is based on',choices={'Minutes before / after event','Calendar day and local clock','An important time'},getFunc=function() local a=anchor();return a and ({OFFSET='Minutes before / after event',DAY='Calendar day and local clock',MARK='An important time'})[a.kind] or 'Minutes before / after event' end,setFunc=function(v) if not row() then return end if v=='Calendar day and local clock' then row()[key]={kind='DAY',days=-1,time='08:00 PM'} elseif v=='An important time' then local _,id=selectedMark();if not id then id=self:AddTimelineImportantTime() end row()[key]={kind='MARK',name=id} else row()[key]={kind='OFFSET',minutes=key=='start' and -60 or 0} end refresh() end,disabled=function() return not row() or key=='finish' and row().once and not row().onceUntilFinish end})
-  local function anchorField(name,kind,member)
-   append({type='editbox',name=name,getFunc=function() local a=anchor();return a and tostring(a[member] or '') or '' end,setFunc=function(v) local a=anchor();if a and a.kind==kind then a[member]=member=='time' and v or tonumber(v) or v;refresh() end end,disabled=function() local a=anchor();return not a or a.kind~=kind or key=='finish' and row().once and not row().onceUntilFinish end})
-  end
-  anchorField('Minutes before / after event ('..suffix..')','OFFSET','minutes')
-  anchorField('Calendar days before / after event ('..suffix..')','DAY','days')
-  anchorField('Local clock time ('..suffix..', for example 08:00 PM)','DAY','time')
-  append({type='button',name='Use selected important time for '..suffix,tooltip='Select a card under Important times, then click here.',func=function() local _,id=selectedMark();if row() and id then row()[key]={kind='MARK',name=id};refresh() end end,disabled=function() return not row() or not selectedMark() or key=='finish' and row().once and not row().onceUntilFinish end})
-  append({type='description',text=function() local a=anchor();local mark=a and a.kind=='MARK' and (draft().importantTimes or {})[a.name];return mark and title..': '..mark.label or '' end})
+ local function eventOccurrence()
+  local d=draft();local c=self:NormalizeSchedule(d)
+  if c then local list=self:GetUpcomingScheduleOccurrences(c,GetTimeStamp(),1,true);if list[1] then return list[1].eventAtUtc end end
+  return self:ParseScheduleDateTime(d.eventDate,d.eventTime,d.eventFold or 'FIRST',d)
  end
- append(rowState);append(flag('Allow brief notice after event end (advanced)','allowAfterEventEnd'));append(flag('Prepare only once','once'));append(flag('Keep entire reminder window available until sent','onceUntilFinish'));append(field('Repeat Frequency (minutes)','intervalMinutes',true));append(flag('Time-sensitive reminder','timeSensitive'))
+ local function boundary(key)
+  local at=eventOccurrence();if not at then return draft().eventDate,draft().eventTime,nil end
+  local value=self:ResolveTimelineAnchor(draft(),{eventAtUtc=at},row() and row()[key]) or at
+  local p=self:GetScheduleParts(value,draft())
+  return string.format('%04d-%02d-%02d',p.year,p.month,p.day),string.format('%02d:%02d %s',p.hour%12==0 and 12 or p.hour%12,p.min,p.hour>=12 and 'PM' or 'AM'),at
+ end
+ local function setBoundary(key,date,time)
+  local r=row();if not r then return end
+  local _,_,at=boundary(key);local d=draft();local a=r[key] or {};local target,reason=self:ParseScheduleDateTime(date,time,a.fold or 'FIRST',d)
+  if not target or not at then self:ShowStatusMessage(reason or 'Choose a valid event date and time first.');return end
+  local allow=self.scheduleEditor.allowAfterStart and self.scheduleEditor.allowAfterStart[r.id]
+  local existing=self:ResolveTimelineAnchor(d,{eventAtUtc=at},r.start)
+  if key=='start' and target>at and not allow and not (existing and existing>at) then self:ShowStatusMessage('Period Starts must be on or before the event. Enable promotion after event starts for underway announcements.');return end
+  local other=self:ResolveTimelineAnchor(d,{eventAtUtc=at},r[key=='start' and 'finish' or 'start'])
+  if not (r.once and not r.onceUntilFinish) and other and (key=='start' and target>other or key=='finish' and target<other) then self:ShowStatusMessage('Period Stops must be on or after Period Starts.');return end
+  local noon=self:ParseScheduleDateTime(date,'12:00 PM','FIRST',d);local p=self:GetScheduleParts(at,d)
+  local eventNoon=self:ParseScheduleDateTime(string.format('%04d-%02d-%02d',p.year,p.month,p.day),'12:00 PM','FIRST',d)
+  local days=math.floor(((noon+self:GetTimeZoneUtcOffset(noon,d.timeZone)*3600)-(eventNoon+self:GetTimeZoneUtcOffset(eventNoon,d.timeZone)*3600))/86400+0.5)
+  r[key]={kind='DAY',days=days,time=time,fold=a.fold or 'FIRST'};refresh()
+ end
+ for _,which in ipairs({'start','finish'}) do
+  local key=which;local title=key=='start' and 'Period Starts' or 'Period Stops'
+  local function unavailable() return not row() or key=='finish' and row().once and not row().onceUntilFinish end
+  append({type='header',name=title})
+  append({type='datepicker',name=title..' date',datePickerType='normal',getFunc=function()local date=boundary(key);return self:ScheduleDateToPicker(date)end,setFunc=function(v)local _,time=boundary(key);setBoundary(key,self:ScheduleDateFromPicker(v),time)end,disabled=unavailable})
+  for i,part in ipairs({'hour','minute','AM / PM'}) do
+   local index=i;local choices={};if i==3 then choices={'AM','PM'} else for n=i==1 and 1 or 0,i==1 and 12 or 59 do choices[#choices+1]=string.format('%02d',n) end end
+   append({type='dropdown',name=title..' '..part,choices=choices,getFunc=function()local _,time=boundary(key);local h,m,a=tostring(time):match('^(%d%d?):(%d%d) ([AP]M)$');return ({h or '08',m or '00',a or 'PM'})[index]end,setFunc=function(value)local date,time=boundary(key);local h,m,a=tostring(time):match('^(%d%d?):(%d%d) ([AP]M)$');local parts={h or '08',m or '00',a or 'PM'};parts[index]=value;setBoundary(key,date,parts[1]..':'..parts[2]..' '..parts[3])end,disabled=unavailable})
+  end
+ end
+ append({type='checkbox',name='Allow promotion after event starts',getFunc=function()local r=row();if not r then return false end;local _,_,at=boundary('start');local starts=at and self:ResolveTimelineAnchor(draft(),{eventAtUtc=at},r.start);return (self.scheduleEditor.allowAfterStart or {})[r.id]==true or starts and starts>at or false end,setFunc=function(v)local r=row();if r then self.scheduleEditor.allowAfterStart=self.scheduleEditor.allowAfterStart or {};self.scheduleEditor.allowAfterStart[r.id]=v;refresh()end end,disabled=function()return not row()end})
+ append(rowState);append(flag('Allow brief notice after event end (advanced)','allowAfterEventEnd'));append(flag('Send once','once'));append(flag('Keep entire reminder window available until sent','onceUntilFinish'));append(self:BuildSchedulingSlider('Repeat Frequency','SCM_PeriodFrequencySlider',1,1440,function()return row() and row().intervalMinutes or 30 end,function(n)if row() then row().intervalMinutes=n;refresh()end end,function(n)return 'Every '..self:FormatSchedulingMinutes(n)end,function()return not row() or row().once end));append(flag('Time-sensitive reminder','timeSensitive'))
  append({type='description',text='Time-sensitive reminders can bypass ordinary reminder pacing. Lateness allowance is the number of minutes a one-time reminder remains available. Offline or expired milestones are skipped.'})
  append(field('Lateness allowance (minutes)','lateMinutes',true))
  append({type='custom',minHeight=230,maxHeight=230,createFunc=function(c) self:RefreshScheduleMessagePool(c,'TIMELINE') end,refreshFunc=function(c) self:RefreshScheduleMessagePool(c,'TIMELINE') end})
  append({type='description',text='Check the messages this reminder may use. Click any message text to test it at a simulated time inside this reminder. Message group selectors support regular / month-final events and faction rotation.'})
- append({type='button',name='Remove selected reminder',func=function() local r=row();if r then self:RemoveTimelineReminder(r.id) end end,disabled=function() return #(draft().reminders or {})<=1 end})
- local combine={
-  {type='description',text='Verify the true event date and time above, then save this event first. Explicitly choose other saved schedules from this guild to combine. This event’s actual date, time and repeat pattern remain authoritative. Messages retain their IDs and history; source schedules are backed up and disabled. Review Preview timeline after combining. Similar command names are never combined automatically.'},
- }
- for _,command in ipairs(self.savedVars.commands or {}) do
-  local id=command.id
-  combine[#combine+1]={type='checkbox',name=command.name or id,getFunc=function() draft();return (self.scheduleEditor.mergeSources or {})[id]==true end,setFunc=function(value) draft();self.scheduleEditor.mergeSources=self.scheduleEditor.mergeSources or {};self.scheduleEditor.mergeSources[id]=value;self:RefreshSettingsUI() end,disabled=function() local _,target,guild=self:GetScheduleEditorDraft();return target==id or not self:GetGuildSchedule(id,guild) end}
- end
- combine[#combine+1]={type='button',name='Combine selected schedules into this event',disabled=function() local _,target,guild=self:GetScheduleEditorDraft();return not active() or not self.MergeTimelineEvents or self.scheduleEditor.dirty or not self:GetGuildSchedule(target,guild) end,func=function()
-  local _,target,guild=self:GetScheduleEditorDraft();local ids={}
-  for id,chosen in pairs(self.scheduleEditor.mergeSources or {}) do if chosen and id~=target and self:GetGuildSchedule(id,guild) then ids[#ids+1]=id end end
-  table.sort(ids);if #ids==0 then self:ShowStatusMessage('Select at least one source schedule.');return end
-  local ok,reason=self:MergeTimelineEvents(target,guild,ids)
-  self:ShowStatusMessage(ok and 'Schedules combined. Review this event and its reminders.' or reason or 'Could not combine schedules.')
-  if ok then self.scheduleEditor=nil end self:RefreshSettingsUI()
- end}
- append({type='submenu',name='Combine other saved schedules',controls=combine})
- local conversion={type='button',name='Convert this event to reminder timeline',tooltip='Explicitly converts the existing phases into reminder rows, retaining message IDs, message groups and a backup of the original settings. Review the reminders before saving.',func=function() local ok,reason=self:ConvertScheduleDraftToTimeline();if not ok then self:ShowStatusMessage(reason) end end,disabled=function() return draft().mode~='EVENT' or active() end}
- -- Insert before the existing Save buttons so every edit participates in the
- -- same validation, disabled-save and activation workflow.
+ append({type='button',name='Remove selected period',func=function() local r=row();if r then self:RemoveTimelineReminder(r.id) end end,disabled=function() return #(draft().reminders or {})<=1 end})
  local index=#controls+1;for i,c in ipairs(controls) do if c.name=='Save and activate' then index=i;break end end
- table.insert(controls,index,conversion);table.insert(controls,index+1,{type='submenu',reference='SCM_TimelineSubmenu',name='Event timeline',controls=pane,disabled=function() return not active() end})
+ table.insert(controls,index,{type='submenu',reference='SCM_TimelineSubmenu',name='Period Timeline',controls=pane,disabled=function() return not active() end})
  return controls
 end
 -- Message libraries show reminder membership rather than obsolete phase tags.

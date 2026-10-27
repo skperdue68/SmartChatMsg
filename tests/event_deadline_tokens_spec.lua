@@ -41,7 +41,7 @@ eq(s:ResolveScheduledEventTokens("%eventtime-nope% %eventcountdown-1x%","ad","Am
 assert(not s:HasExplicitEventCountdown("%eventcountdown-1x%"))
 assert(not s:MatchesIncomingMessage(entry,"Amber Traders",s:NormalizeIncomingChatText("Raffle today at 08:00 PM EDT (banana). Sales close at 07:00 PM EDT (2h).")))
 ZO_SavedVars={NewAccountWide=function() return s.savedVars end}
-local exported=s:BuildExportString();assert(s:ImportSettingsFromString(exported))
+local exported=f.currentExport();assert(s:ImportSettingsFromString(exported))
 eq(s.savedVars.messages[1].text,template,"full settings transfer preserves deadline tokens")
 -- Offsets crossing a DST boundary retain elapsed-hour meaning and each timezone label.
 local dst=assert(s:NormalizeSchedule({mode="EVENT",eventDate="2026-11-01",eventTime="02:30 AM",promotionDays=1,endDelayMinutes=60,intervalMinutes=15,timeZone="ET"}))

@@ -130,7 +130,7 @@ test('paused state survives settings import and always disables next',function()
     setup()
     s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders')
     ZO_SavedVars={NewAccountWide=function() return s.savedVars end}
-    local export=s:BuildExportString();assert(s:ImportSettingsFromString(export))
+    local export=f.currentExport();assert(s:ImportSettingsFromString(export))
     local state,nextState=s:GetReminderPanelControlState('ad','Amber Traders');eq(state,'PAUSED');eq(nextState,'OFF')
 end)
 local failures=0
