@@ -152,7 +152,7 @@ To test safely, create a short event a few minutes ahead, use a small message po
 Use Import / Export Settings for portable configuration. Guild references are exported by name and resolved to the receiving player's current guild slots. Missing guild records are skipped with a local explanation. Matching command names are reconciled even if IDs differ. Review the import result before enabling automation.
 Configuration includes command/guild delivery settings, messages, schedules, periods, important times, recurrence, rotations and exceptions, availability, and daily-limit scope. Portable transfers preserve recipient cooldown/usage history rather than adopting another player's runtime counters. Full SavedVariables files contain account-specific data; choose the correct account when editing them in the web companion.
 The Lock button is not exposed in the ESO editor. Existing personal/locked metadata is still respected by transfer code; do not assume a full Lua backup or public server-library file hides private content. Keep backups before any replacement.
-Message names and display order created by the companion are retained in saved data. ESO's settings have a different presentation and do not provide all of the companion's visual editing conveniences.
+In ESO, Message name (optional) identifies a template in settings and pools, up to 60 characters, and is never sent in chat. Use Add for a new message or Update/Revert for existing name/text changes. A live right-aligned count such as 123/350 appears below each message box; it counts template characters before substitutions and flags values above 350. Test the final expanded output as well. The web editor also provides drag-and-drop message ordering.
 
 
 ## Screenshot capture checklist

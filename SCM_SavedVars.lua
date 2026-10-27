@@ -304,11 +304,15 @@ function SmartChatMsg:InitializeSavedVars()
     end
 end
 
+function SmartChatMsg:CountMessageCharacters(text)
+    return select(2,tostring(text or ""):gsub("[^\128-\191]", ""))
+end
+
 -- Optional editor metadata never changes message text or randomized selection.
 function SmartChatMsg:NormalizeMessageName(value)
     if type(value) ~= "string" then return nil end
     local name = self:Trim(value)
-    if name == "" or #name > 240 then return nil end
+    if name == "" or #name > 240 or select(2,name:gsub("[^\128-\191]", "")) > 60 then return nil end
     return name
 end
 
@@ -2059,7 +2063,10 @@ function SmartChatMsg:GetMessageEntriesForSelection()
     return results
 end
 
-function SmartChatMsg:AddMessageEntryForSelection(text)
+function SmartChatMsg:AddMessageEntryForSelection(text, name)
+    if name~=nil and self:Trim(name)~="" and not self:NormalizeMessageName(name) then
+        return false,"Message name must be at most 60 characters."
+    end
     if not self:IsMessagesSelectionComplete() then
         return false, "Select a Command and Guild first."
     end
@@ -2083,6 +2090,7 @@ function SmartChatMsg:AddMessageEntryForSelection(text)
         guildIndex = guildIndex,
         guildName = guildName,
         text = trimmed,
+        name = self:NormalizeMessageName(name),
     }
 
     table.insert(self.savedVars.messages, entry)
@@ -2090,7 +2098,10 @@ function SmartChatMsg:AddMessageEntryForSelection(text)
     return true
 end
 
-function SmartChatMsg:UpdateMessageEntry(entryId, text)
+function SmartChatMsg:UpdateMessageEntry(entryId, text, name)
+    if name~=nil and self:Trim(name)~="" and not self:NormalizeMessageName(name) then
+        return false,"Message name must be at most 60 characters."
+    end
     local trimmed = self:Trim(text)
     if trimmed == "" then
         return false, "Message must contain at least one non-space character."
@@ -2108,6 +2119,7 @@ function SmartChatMsg:UpdateMessageEntry(entryId, text)
     for _, entry in ipairs(self.savedVars.messages) do
         if entry.id == entryId then
             entry.text = trimmed
+            if name~=nil then entry.name=self:NormalizeMessageName(name) end
             entry.commandId = commandId
             entry.guildIndex = guildIndex
             entry.guildName = guildName

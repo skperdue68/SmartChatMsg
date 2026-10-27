@@ -18,6 +18,8 @@ SmartChatMsg.settings = SmartChatMsg.settings or {
     editingOriginalCommandId = nil,
 
     pendingNewMessageText = "",
+    pendingNewMessageName = "",
+    pendingMessageNameEdits = {},
     pendingMessageEdits = {},
     selectedMessageEntryIds = {},
 
@@ -218,6 +220,17 @@ end
 
 function SmartChatMsg.settings:ClearPendingMessageEdits()
     self.pendingMessageEdits = {}
+    self.pendingMessageNameEdits = {}
+end
+
+function SmartChatMsg.settings:GetEffectiveMessageName(entry)
+    local pending=(self.pendingMessageNameEdits or {})[entry.id]
+    return pending~=nil and pending or entry.name or ""
+end
+
+function SmartChatMsg.settings:SetPendingMessageName(entryId,name,original)
+    self.pendingMessageNameEdits=self.pendingMessageNameEdits or {}
+    self.pendingMessageNameEdits[entryId]=name~=(original or "") and name or nil
 end
 
 function SmartChatMsg.settings:GetPendingMessageEdit(entryId)
@@ -247,11 +260,7 @@ function SmartChatMsg.settings:IsMessageEntryDirty(entry)
     end
 
     local pendingText = self:GetPendingMessageEdit(entry.id)
-    if pendingText == nil then
-        return false
-    end
-
-    return pendingText ~= (entry.text or "")
+    return (pendingText~=nil and pendingText~=(entry.text or "")) or self:GetEffectiveMessageName(entry)~=(entry.name or "")
 end
 
 function SmartChatMsg.settings:SetPendingMessageEdit(entryId, text, originalText)
@@ -281,6 +290,7 @@ function SmartChatMsg.settings:InitializeState()
     self.editingOriginalCommandId = nil
     self.editMode = false
     self.pendingNewMessageText = ""
+    self.pendingNewMessageName = ""
     self:ClearPendingMessageEdits()
     self:ClearSelectedMessageEntries()
 
@@ -390,6 +400,7 @@ end
 
 function SmartChatMsg.settings:ResetNewMessageSection()
     self.pendingNewMessageText = ""
+    self.pendingNewMessageName = ""
     self:ClearPendingMessageEdits()
     self:ClearSelectedMessageEntries()
 
@@ -664,7 +675,7 @@ function SmartChatMsg.settings:SaveMessagesSection()
 
     local newText = SmartChatMsg:Trim(self.pendingNewMessageText or "")
     if newText ~= "" then
-        local ok, err = SmartChatMsg:AddMessageEntryForSelection(newText)
+        local ok, err = SmartChatMsg:AddMessageEntryForSelection(newText,self.pendingNewMessageName or "")
         if not ok then
             ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
             return
@@ -673,6 +684,7 @@ function SmartChatMsg.settings:SaveMessagesSection()
 
     PlaySound(SOUNDS.DEFAULT_CLICK)
     self.pendingNewMessageText = ""
+    self.pendingNewMessageName = ""
     self:ClearSelectedMessageEntries()
 
     if self.controls.newMessageEditBox then
@@ -1457,10 +1469,35 @@ local function BuildMessagesEditor(parent)
     rowsContainer:SetAnchor(TOPLEFT, countLabel, BOTTOMLEFT, 0, 8)
     rowsContainer:SetDimensions(ROW_WIDTH, 0)
 
+    local function characterCount(label,text)
+        local count=SmartChatMsg:CountMessageCharacters(text)
+        label:SetText(tostring(count).."/350")
+        label:SetColor(count>350 and 1 or .77,count>350 and .3 or .76,count>350 and .3 or .62,1)
+    end
+    local function CreateCharacterCountLabel(name,anchor)
+        local label=WINDOW_MANAGER:CreateControl(name,container,CT_LABEL)
+        label:SetFont("ZoFontGameSmall");label:SetDimensions(90,20);label:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
+        label:SetAnchor(TOPRIGHT,anchor,BOTTOMRIGHT,0,4);label:SetMouseEnabled(true)
+        label:SetHandler("OnMouseEnter",function(c)InitializeTooltip(InformationTooltip,c,TOP,0,8);SetTooltipText(InformationTooltip,"Template characters / 350. Substitutions and countdowns can make the final announcement longer; use Test to review the output.")end)
+        label:SetHandler("OnMouseExit",function()ClearTooltip(InformationTooltip)end)
+        return label
+    end
+
     local addLabel = WINDOW_MANAGER:CreateControl("SCM_EnterMessageLabel", container, CT_LABEL)
     addLabel:SetFont("ZoFontWinH4")
     addLabel:SetText("Enter Message")
     addLabel:SetDimensions(LABEL_WIDTH, 30)
+
+    local newNameLabel=WINDOW_MANAGER:CreateControl("SCM_NewMessageNameLabel",container,CT_LABEL)
+    newNameLabel:SetFont("ZoFontGame");newNameLabel:SetText("Message name (optional)");newNameLabel:SetDimensions(180,28)
+    local newNameBackdrop=WINDOW_MANAGER:CreateControlFromVirtual("SCM_NewMessageNameBackdrop",container,"ZO_EditBackdrop")
+    newNameBackdrop:SetDimensions(MESSAGE_BOX_WIDTH-190,28)
+    local newNameEdit=WINDOW_MANAGER:CreateControlFromVirtual("SCM_NewMessageNameEdit",newNameBackdrop,"ZO_DefaultEditForBackdrop")
+    newNameEdit:SetAnchorFill(newNameBackdrop);newNameEdit:SetMaxInputChars(60)
+    newNameEdit:SetHandler("OnTextChanged",function(c)SmartChatMsg.settings.pendingNewMessageName=c:GetText() or "" end)
+    newNameLabel:SetMouseEnabled(true)
+    newNameLabel:SetHandler("OnMouseEnter",function(c)InitializeTooltip(InformationTooltip,c,TOP,0,8);SetTooltipText(InformationTooltip,"Optional description, up to 60 characters. Saved with the message and shared with the web editor; never included in chat output.")end)
+    newNameLabel:SetHandler("OnMouseExit",function()ClearTooltip(InformationTooltip)end)
 
     local addBackdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_EnterMessageBackdrop", container, "ZO_EditBackdrop")
     addBackdrop:SetDimensions(MESSAGE_BOX_WIDTH, MESSAGE_BOX_HEIGHT)
@@ -1470,6 +1507,8 @@ local function BuildMessagesEditor(parent)
     addEditBox:SetFont("ZoFontChat")
     addEditBox:SetMaxInputChars(360)
     addEditBox:SetText("")
+    local addCount=CreateCharacterCountLabel("SCM_NewMessageCharacterCount",addBackdrop)
+    characterCount(addCount,"")
     addEditBox:SetHandler("OnTextChanged", function(self)
         local text = self:GetText() or ""
 
@@ -1480,6 +1519,7 @@ local function BuildMessagesEditor(parent)
         end
 
         SmartChatMsg.settings.pendingNewMessageText = text
+        characterCount(addCount,text)
     end)
 
     local addButton = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesEditorAddButton", container, "ZO_DefaultButton")
@@ -1492,13 +1532,15 @@ local function BuildMessagesEditor(parent)
             return
         end
 
-        local ok, err = SmartChatMsg:AddMessageEntryForSelection(trimmed)
+        local ok, err = SmartChatMsg:AddMessageEntryForSelection(trimmed,SmartChatMsg.settings.pendingNewMessageName or "")
         if not ok then
             ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
             return
         end
 
         SmartChatMsg.settings.pendingNewMessageText = ""
+        SmartChatMsg.settings.pendingNewMessageName = ""
+        newNameEdit:SetText("")
 
         if SmartChatMsg.settings.controls.newMessageEditBox then
             SmartChatMsg.settings.controls.newMessageEditBox:SetText("")
@@ -1513,6 +1555,8 @@ local function BuildMessagesEditor(parent)
     resetButton:SetText("Revert")
     resetButton:SetHandler("OnClicked", function()
         SmartChatMsg.settings.pendingNewMessageText = ""
+        SmartChatMsg.settings.pendingNewMessageName = ""
+        newNameEdit:SetText("")
 
         if SmartChatMsg.settings.controls.newMessageEditBox then
             SmartChatMsg.settings.controls.newMessageEditBox:SetText("")
@@ -1565,7 +1609,10 @@ local function BuildMessagesEditor(parent)
 
         local currentEntry = rowData.entry
         local currentText = SmartChatMsg.settings:GetEffectiveMessageText(currentEntry)
+        if rowData.characterCount then characterCount(rowData.characterCount,currentText) end
         local isDirty = SmartChatMsg.settings:IsMessageEntryDirty(currentEntry)
+        if rowData.nameEdit and rowData.nameEdit:GetText()~=SmartChatMsg.settings:GetEffectiveMessageName(currentEntry) then rowData.nameEdit:SetText(SmartChatMsg.settings:GetEffectiveMessageName(currentEntry)) end
+        if rowData.nameEdit then SetRowTextColor(rowData.nameEdit,isDirty) end
 
         if rowData.editBox:GetText() ~= currentText then
             rowData.editBox:SetText(currentText)
@@ -1618,7 +1665,7 @@ local function BuildMessagesEditor(parent)
         SmartChatMsg.settings.nextSavedMessageRowControlId = controlId + 1
 
         local row = WINDOW_MANAGER:CreateControl(string.format("SCM_SavedMessageRow%d", controlId), rowsContainer, CT_CONTROL)
-        row:SetDimensions(ROW_WIDTH, MESSAGE_BOX_HEIGHT + 44)
+        row:SetDimensions(ROW_WIDTH, MESSAGE_BOX_HEIGHT + 108)
 
         if anchorTarget then
             row:SetAnchor(TOPLEFT, anchorTarget, anchorPoint or BOTTOMLEFT, 0, index == 1 and 0 or 10)
@@ -1626,9 +1673,17 @@ local function BuildMessagesEditor(parent)
             row:SetAnchor(TOPLEFT, rowsContainer, TOPLEFT, 0, 0)
         end
 
+        local nameLabel=WINDOW_MANAGER:CreateControl(string.format("SCM_SavedMessageNameLabel%d",controlId),row,CT_LABEL)
+        nameLabel:SetFont("ZoFontGame");nameLabel:SetText("Message name (optional)");nameLabel:SetDimensions(MESSAGE_BOX_WIDTH,24);nameLabel:SetAnchor(TOPLEFT,row,TOPLEFT,0,0)
+        local nameBackdrop=WINDOW_MANAGER:CreateControlFromVirtual(string.format("SCM_SavedMessageNameBackdrop%d",controlId),row,"ZO_EditBackdrop")
+        nameBackdrop:SetDimensions(MESSAGE_BOX_WIDTH,28);nameBackdrop:SetAnchor(TOPLEFT,nameLabel,BOTTOMLEFT,0,2)
+        local nameEdit=WINDOW_MANAGER:CreateControlFromVirtual(string.format("SCM_SavedMessageNameEdit%d",controlId),nameBackdrop,"ZO_DefaultEditForBackdrop")
+        nameEdit:SetAnchorFill(nameBackdrop);nameEdit:SetMaxInputChars(60)
+        nameLabel:SetMouseEnabled(true);nameLabel:SetHandler("OnMouseEnter",function(c)InitializeTooltip(InformationTooltip,c,TOP,0,8);SetTooltipText(InformationTooltip,"Optional 60-character editor name. Click Update to save it with this message. Names do not appear in chat output.")end);nameLabel:SetHandler("OnMouseExit",function()ClearTooltip(InformationTooltip)end)
+
         local backdrop = WINDOW_MANAGER:CreateControlFromVirtual(string.format("SCM_SavedMessageBackdrop%d", controlId), row, "ZO_EditBackdrop")
         backdrop:SetDimensions(MESSAGE_BOX_WIDTH, MESSAGE_BOX_HEIGHT)
-        backdrop:SetAnchor(TOPLEFT, row, TOPLEFT, 0, 0)
+        backdrop:SetAnchor(TOPLEFT, row, TOPLEFT, 0, 64)
 
         local editBox = WINDOW_MANAGER:CreateControlFromVirtual(string.format("SCM_SavedMessageEditBox%d", controlId), backdrop, "ZO_DefaultEditMultiLineForBackdrop")
         editBox:SetAnchorFill(backdrop)
@@ -1637,8 +1692,11 @@ local function BuildMessagesEditor(parent)
 
         local statusLabel = WINDOW_MANAGER:CreateControl(string.format("SCM_SavedMessageStatusLabel%d", controlId), row, CT_LABEL)
         statusLabel:SetFont("ZoFontGame")
-        statusLabel:SetDimensions(MESSAGE_BOX_WIDTH, 40)
+        statusLabel:SetDimensions(MESSAGE_BOX_WIDTH-100, 40)
         statusLabel:SetAnchor(TOPLEFT, backdrop, BOTTOMLEFT, 0, 4)
+
+        local currentCount=CreateCharacterCountLabel(string.format("SCM_SavedMessageCharacterCount%d",controlId),backdrop)
+        currentCount:SetParent(row)
 
         local updateButton = WINDOW_MANAGER:CreateControlFromVirtual(string.format("SCM_SavedMessageUpdateButton%d", controlId), row, "ZO_DefaultButton")
         updateButton:SetDimensions(70, 28)
@@ -1658,6 +1716,8 @@ local function BuildMessagesEditor(parent)
         local rowData = {
             control = row,
             entry = entry,
+            nameEdit = nameEdit,
+            characterCount = currentCount,
             backdrop = backdrop,
             editBox = editBox,
             statusLabel = statusLabel,
@@ -1682,6 +1742,11 @@ local function BuildMessagesEditor(parent)
         end
         if ZO_CheckButton_SetToggleFunction then ZO_CheckButton_SetToggleFunction(enabledCheckbox,toggle) end
         rowData.enabledCheckbox=enabledCheckbox
+
+        nameEdit:SetHandler("OnTextChanged",function(c)
+            SmartChatMsg.settings:SetPendingMessageName(entry.id,c:GetText() or "",entry.name)
+            RefreshRowState(rowData)
+        end)
 
         editBox:SetHandler("OnTextChanged", function(self)
             local text = self:GetText() or ""
@@ -1709,19 +1774,21 @@ local function BuildMessagesEditor(parent)
                 return
             end
 
-            local ok, err = SmartChatMsg:UpdateMessageEntry(entry.id, trimmed)
+            local ok, err = SmartChatMsg:UpdateMessageEntry(entry.id, trimmed,SmartChatMsg.settings:GetEffectiveMessageName(entry))
             if not ok then
                 ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
                 return
             end
 
             SmartChatMsg.settings.pendingMessageEdits[entry.id] = nil
+            SmartChatMsg.settings.pendingMessageNameEdits[entry.id] = nil
             PlaySound(SOUNDS.DEFAULT_CLICK)
             SmartChatMsg:RefreshSettingsUI()
         end)
 
         revertButton:SetHandler("OnClicked", function()
             SmartChatMsg.settings.pendingMessageEdits[entry.id] = nil
+            SmartChatMsg.settings.pendingMessageNameEdits[entry.id] = nil
             rowData.editBox:SetText(entry.text or "")
             RefreshRowState(rowData)
             PlaySound(SOUNDS.DEFAULT_CLICK)
@@ -1737,6 +1804,7 @@ local function BuildMessagesEditor(parent)
                     end
 
                     SmartChatMsg.settings.pendingMessageEdits[entry.id] = nil
+                    SmartChatMsg.settings.pendingMessageNameEdits[entry.id] = nil
                     PlaySound(SOUNDS.DEFAULT_CLICK)
                     SmartChatMsg:RefreshSettingsUI()
                 end,
@@ -1764,6 +1832,7 @@ local function BuildMessagesEditor(parent)
             addEditBox:SetText(SmartChatMsg.settings.pendingNewMessageText or "")
         end
 
+        if newNameEdit:GetText()~=(SmartChatMsg.settings.pendingNewMessageName or "") then newNameEdit:SetText(SmartChatMsg.settings.pendingNewMessageName or "") end
         countLabel:SetText(GetCountText(#entries))
 
         ClearSavedMessageRows()
@@ -1771,6 +1840,7 @@ local function BuildMessagesEditor(parent)
         if not shouldShow then
             countLabel:SetHidden(true)
             rowsContainer:SetHidden(true)
+            newNameLabel:SetHidden(true);newNameBackdrop:SetHidden(true);addCount:SetHidden(true)
             addLabel:SetHidden(true)
             addBackdrop:SetHidden(true)
             addButton:SetHidden(true)
@@ -1784,6 +1854,7 @@ local function BuildMessagesEditor(parent)
         container:SetHidden(false)
         countLabel:SetHidden(false)
         rowsContainer:SetHidden(false)
+        newNameLabel:SetHidden(false);newNameBackdrop:SetHidden(false);addCount:SetHidden(false)
         addLabel:SetHidden(false)
         addBackdrop:SetHidden(false)
         addButton:SetHidden(false)
@@ -1795,7 +1866,7 @@ local function BuildMessagesEditor(parent)
         for index, entry in ipairs(entries) do
             local row = CreateSavedMessageRow(index, entry, lastRow, BOTTOMLEFT)
             lastRow = row
-            rowsHeight = rowsHeight + MESSAGE_BOX_HEIGHT + 44
+            rowsHeight = rowsHeight + MESSAGE_BOX_HEIGHT + 108
             if index > 1 then
                 rowsHeight = rowsHeight + 10
             end
@@ -1809,7 +1880,9 @@ local function BuildMessagesEditor(parent)
             addLabel:SetAnchor(TOPLEFT, rowsContainer, TOPLEFT, 0, 0)
         end
 
-        addBackdrop:SetAnchor(TOPLEFT, addLabel, BOTTOMLEFT, 0, 4)
+        newNameLabel:SetAnchor(TOPLEFT,addLabel,BOTTOMLEFT,0,4)
+        newNameBackdrop:SetAnchor(LEFT,newNameLabel,RIGHT,8,0)
+        addBackdrop:SetAnchor(TOPLEFT, newNameLabel, BOTTOMLEFT, 0, 6)
         addButton:SetAnchor(TOPLEFT, addBackdrop, TOPRIGHT, 12, 0)
         resetButton:SetAnchor(LEFT, addButton, RIGHT, 8, 0)
 
@@ -1820,7 +1893,7 @@ local function BuildMessagesEditor(parent)
             totalHeight = totalHeight + 8
         end
 
-        totalHeight = totalHeight + 30 + 4 + MESSAGE_BOX_HEIGHT
+        totalHeight = totalHeight + 30 + 4 + 28 + 6 + MESSAGE_BOX_HEIGHT + 24
         SetEditorHeight(totalHeight)
     end
 
