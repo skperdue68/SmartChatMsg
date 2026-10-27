@@ -1950,7 +1950,7 @@ local function BuildGeneralRevertSettings(parent)
 
     label:SetHandler("OnMouseEnter", function(self)
         InitializeTooltip(InformationTooltip, self, TOP, 0, 8)
-        SetTooltipText(InformationTooltip, "Time to wait before clearing chat and returning to previous chat type. Minimum valid value is 30 seconds.")
+        SetTooltipText(InformationTooltip, "Time to wait before clearing chat and returning to the previous chat type. Slider range: 30 seconds to 5 minutes.")
     end)
 
     label:SetHandler("OnMouseExit", function()
@@ -1959,7 +1959,7 @@ local function BuildGeneralRevertSettings(parent)
 
     local backdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_GeneralRevertSettingsBackdrop", container, "ZO_EditBackdrop")
     backdrop:SetDimensions(70, 30)
-    backdrop:SetAnchor(LEFT, label, RIGHT, 8, 0)
+    backdrop:SetAnchor(RIGHT, container, RIGHT, -4, 0)
 
     local editBox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_GeneralRevertSettingsEditBox", backdrop, "ZO_DefaultEditForBackdrop")
     editBox:SetAnchorFill(backdrop)
@@ -1986,8 +1986,21 @@ local function BuildGeneralRevertSettings(parent)
         SmartChatMsg:RefreshSettingsUI()
     end)
 
+    local slider = WINDOW_MANAGER:CreateControl("SCM_GeneralRevertSettingsSlider", container, CT_SLIDER)
+    slider:SetDimensions(180, 20);slider:SetAnchor(LEFT, label, RIGHT, 8, 0)
+    slider:SetMinMax(30, 300);slider:SetValueStep(1)
+    slider:SetThumbTexture("EsoUI/Art/Miscellaneous/scrollbox_elevator.dds", "EsoUI/Art/Miscellaneous/scrollbox_elevator_disabled.dds", nil, 8, 16)
+    local track = WINDOW_MANAGER:CreateControl("SCM_GeneralRevertSettingsSliderTrack", slider, CT_TEXTURE)
+    track:SetAnchor(LEFT, slider, LEFT, 0, 0);track:SetAnchor(RIGHT, slider, RIGHT, 0, 0);track:SetHeight(4);track:SetColor(.45,.42,.3,1)
+    local syncing = false
+    slider:SetHandler("OnValueChanged", function(_, value)
+        if not syncing then editBox:SetText(tostring(math.max(30, math.min(300, math.floor(value+.5))))) end
+    end)
     container.RefreshEditor = function()
         local revertText = SmartChatMsg.settings.pendingGeneralRevertChatSeconds or "60"
+        syncing = true
+        slider:SetValue(math.max(30, math.min(300, tonumber(revertText) or 60)))
+        syncing = false
         if editBox:GetText() ~= revertText then
             editBox:SetText(revertText)
         end

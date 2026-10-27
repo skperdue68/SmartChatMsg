@@ -452,4 +452,6 @@ Daily announcement limit is shown in the main period controls and works even whe
 On Demand and Startup delivery uses sliders with exact-minute entry: Repeat Frequency Off–1440 minutes, Retry Delay Off–60 minutes, and Cooldown 15–480 minutes. Retry is capped by the smaller positive Repeat Frequency and Cooldown. Auto Populate Chat on Zone disables timed repetition. Existing values outside slider ranges remain unchanged until deliberately edited.
 
 
+Global Auto-Remove Pending Chat After uses a 30–300 second slider (30 seconds to 5 minutes), with exact seconds entry. It controls how long an unsent prepared message remains in chat.
+
 Important times in the ESO editor use a calendar plus hour, minute and AM/PM selectors in the scheduling timezone. Select the moment relative to the displayed next occurrence; its offset is saved so it follows future occurrences. Allow promotion after event starts is unavailable until an event duration greater than zero is configured. The closing exception is labeled Allow a closing announcement after the event ends.
