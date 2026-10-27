@@ -1,7 +1,7 @@
 SmartChatMsg = SmartChatMsg or {}
 
--- Preserve punctuation and link identity. General fuzzy matching is too broad
--- for deciding whether somebody else's advertisement belongs to this guild.
+-- Normalize presentation while preserving punctuation and identities.
+-- A bounded spelling fallback below only edits unprotected letters.
 function SmartChatMsg:NormalizeIncomingChatText(text)
     local value = zo_strlower(tostring(text or ""))
     value = value:gsub("|c%x%x%x%x%x%x", ""):gsub("|r", "")
@@ -95,7 +95,12 @@ function SmartChatMsg:IsGeneratedTimeAddition(text, details)
 end
 
 function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName, commandId)
-    local fields = {}
+    local fields,identities = {},{}
+    local function resolved(token)
+        local value=self:GetScheduledEventTokenValue(token,commandId,guildName)
+        if value then identities[#identities+1]=self:NormalizeIncomingChatText(value) end
+        return value
+    end
     local function field(kind, details)
         local marker = "SCMMATCHFIELD" .. tostring(#fields + 1) .. "SCM"
         fields[#fields + 1] = { marker = zo_strlower(marker), kind = kind, details = details }
@@ -114,10 +119,10 @@ function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName, commandId
             return field("eventcountdown")
         end
         if commandId and eventKind=="eventtime" then
-            return self:GetScheduledEventTokenValue(token,commandId,guildName) or "%"..token.."%"
+            return resolved(token) or "%"..token.."%"
         end
         if commandId and (eventKind == "eventdate" or eventKind == "eventtime" or eventKind == "eventfaction" or eventKind == "eventactivity") then
-            return self:GetScheduledEventTokenValue(token,commandId,guildName) or "%"..token.."%"
+            return resolved(token) or "%"..token.."%"
         end
         if commandId and eventKind == "eventwhen" then
             local schedule=self:GetGuildSchedule(commandId,guildName)
@@ -154,7 +159,7 @@ function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName, commandId
     source = self:NormalizeIncomingChatText(source)
     if source == "" then return nil end
 
-    local captures, chunks, position, literalLength = {}, {}, 1, 0
+    local captures, chunks, parts, position, literalLength = {}, {}, {}, 1, 0
     while position <= #source do
         local firstStart, firstEnd, nextField
         for _, candidate in ipairs(fields) do
@@ -166,14 +171,122 @@ function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName, commandId
         local literal = source:sub(position, firstStart and firstStart - 1 or #source)
         literalLength = literalLength + #literal:gsub("[%s%p]", "")
         chunks[#chunks + 1] = self:EscapeLuaPattern(literal)
+        parts[#parts+1]={literal=literal}
         if not firstStart then break end
         chunks[#chunks + 1] = "(.-)"
         captures[#captures + 1] = nextField
+        parts[#parts+1]={capture=nextField}
         position = firstEnd + 1
     end
     -- A template made only of variables cannot establish message identity.
     if #captures > 0 and literalLength == 0 then return nil end
-    return { pattern = "^" .. table.concat(chunks) .. "$", captures = captures }
+    return { pattern = "^" .. table.concat(chunks) .. "$", captures = captures, parts=parts, literalLength=literalLength, guildName=self:NormalizeIncomingChatText(guildName), identities=identities }
+end
+
+function SmartChatMsg:IsValidIncomingMatchCapture(capture,value)
+ if capture.kind=='greeting' then return value=='morning' or value=='afternoon' or value=='evening'
+ elseif capture.kind=='zone' then return self:IsKnownIncomingZoneName(value)
+ elseif capture.kind=='eventwhen' then return self:IsMatchingEventWhen(value,capture.details)
+ elseif capture.kind=='eventcountdown' then return value=='now' or value=='passed' or self:IsGeneratedCountdownText(value,'soon')
+ else return self:IsGeneratedTimeAddition(value,capture.details) end
+end
+
+-- Banded optimal-string-alignment distance: insertion, omission, substitution
+-- or adjacent transposition of ASCII letters only. Structural characters stay exact.
+local function letter(char) local n=char:byte();return n and n>=97 and n<=122 end
+local function spellingDistance(a,b,limit)
+ if a==b then return 0 end
+ if math.abs(#a-#b)>limit then return nil end
+ local previous,older={},nil
+ previous[0]=0
+ for j=1,math.min(#b,limit) do if previous[j-1] and letter(b:sub(j,j)) then previous[j]=j end end
+ for i=1,#a do
+  local current={};if i<=limit and previous[0] and letter(a:sub(i,i)) then current[0]=i end
+  local best=current[0] or 9999
+  for j=math.max(1,i-limit),math.min(#b,i+limit) do
+   local ac,bc=a:sub(i,i),b:sub(j,j)
+   local cost=ac==bc and 0 or (letter(ac) and letter(bc) and 1 or 9999)
+   local value=(previous[j-1] or 9999)+cost
+   if letter(ac) then value=math.min(value,(previous[j] or 9999)+1) end
+   if letter(bc) then value=math.min(value,(current[j-1] or 9999)+1) end
+   if older and i>1 and j>1 and letter(ac) and letter(bc) and ac==b:sub(j-1,j-1) and bc==a:sub(i-1,i-1) then value=math.min(value,(older[j-2] or 9999)+1) end
+   current[j]=value;best=math.min(best,value)
+  end
+  if best>limit then return nil end
+  older,previous=previous,current
+ end
+ local cost=previous[#b];return cost and cost<=limit and cost or nil
+end
+
+local function identityCount(text,identity)
+ local at,count=1,0
+ if identity=='' then return 0 end
+ while true do
+  local first,last=text:find(identity,at,true);if not first then break end
+  if not (letter(identity:sub(1,1)) and letter(text:sub(first-1,first-1))) and not (letter(identity:sub(-1)) and letter(text:sub(last+1,last+1))) then count=count+1 end
+  at=last+1
+ end
+ return count
+end
+
+local function protectedSignature(text,guildName,identities)
+ local values={}
+ for link in text:gmatch('|h[^|]*|h[^|]*|h') do values[#values+1]='link:'..link end
+ for word in text:gmatch('%S+') do if word:find('%d') then values[#values+1]='number:'..word end end
+ local zones={et=true,est=true,edt=true,ct=true,cst=true,cdt=true,mt=true,mst=true,mdt=true,pt=true,pst=true,pdt=true,utc=true,gmt=true,am=true,pm=true}
+ for word in text:gmatch('%a+') do if zones[word] then values[#values+1]='clock:'..word end end
+ if guildName~='' then values[#values+1]='guild:'..identityCount(text,guildName) end
+ for _,identity in ipairs(identities or {}) do
+  values[#values+1]='identity:'..identity..':'..identityCount(text,identity)
+  -- Protect complete words containing an identity, including deliberate suffixes.
+  if identity~='' and not identity:find('%s') then for word in text:gmatch('%S+') do if word:find(identity,1,true) then values[#values+1]='identity-word:'..word end end end
+ end
+ return table.concat(values,'\001')
+end
+
+function SmartChatMsg:MatchesIncomingSpelling(matcher,text)
+ -- No fuzzy matching for short/generic notices; long ads get at most 3 edits.
+ local length=matcher.literalLength or 0
+ if length<40 or #text>2000 then return false end
+ local budget=math.min(3,math.max(1,math.floor(length/80)))
+ local attempts,substitutions=0,{}
+ local function match(partIndex,position,remaining)
+  attempts=attempts+1;if attempts>5000 then return false end
+  local part=matcher.parts[partIndex]
+  if not part then return position==#text+1 end
+  if part.literal then
+   local literal=part.literal
+   if literal=='' then return match(partIndex+1,position,remaining) end
+   local signature=protectedSignature(literal,matcher.guildName,matcher.identities)
+   -- Consider only nearby boundaries for inserted/omitted letters.
+   for delta=-remaining,remaining do
+    local size=#literal+delta
+    if size>=0 and position+size-1<=#text then
+     local candidate=text:sub(position,position+size-1)
+     if signature==protectedSignature(candidate,matcher.guildName,matcher.identities) then
+      local cost=spellingDistance(literal,candidate,remaining)
+      if cost and match(partIndex+1,position+size,remaining-cost) then return true end
+     end
+    end
+   end
+   return false
+  end
+  local capture=part.capture
+  for size=0,math.min(256,#text-position+1) do
+   local value=text:sub(position,position+size-1)
+   if self:IsValidIncomingMatchCapture(capture,value) then
+    local consistent=capture.kind~='countdown' and capture.kind~='eventcountdown' and capture.kind~='eventwhen'
+    local previous=consistent and substitutions[capture.kind] or nil
+    if not previous or previous==value then
+     if consistent then substitutions[capture.kind]=value end
+     if match(partIndex+1,position+size,remaining) then return true end
+     if consistent then substitutions[capture.kind]=previous end
+    end
+   end
+  end
+  return false
+ end
+ return match(1,1,budget)
 end
 
 function SmartChatMsg:MatchesIncomingMessage(entry, guildName, normalizedText)
@@ -191,23 +304,13 @@ function SmartChatMsg:MatchesIncomingMessage(entry, guildName, normalizedText)
     end
     local matcher = cached.matcher
     if not matcher then return false end
-    if #matcher.captures == 0 then return normalizedText:match(matcher.pattern) ~= nil end
+    if #matcher.captures == 0 then return normalizedText:match(matcher.pattern) ~= nil or self:MatchesIncomingSpelling(matcher,normalizedText) end
     local values = { normalizedText:match(matcher.pattern) }
-    if #values ~= #matcher.captures then return false end
+    if #values ~= #matcher.captures then return self:MatchesIncomingSpelling(matcher,normalizedText) end
     local substitutions = {}
     for index, capture in ipairs(matcher.captures) do
         local value = values[index]
-        if capture.kind == "greeting" then
-            if value ~= "morning" and value ~= "afternoon" and value ~= "evening" then return false end
-        elseif capture.kind == "zone" then
-            if not self:IsKnownIncomingZoneName(value) then return false end
-        elseif capture.kind=="eventwhen" then
-            if not self:IsMatchingEventWhen(value,capture.details) then return false end
-        elseif capture.kind=="eventcountdown" then
-            if value~="now" and value~="passed" and not self:IsGeneratedCountdownText(value,"soon") then return false end
-        elseif not self:IsGeneratedTimeAddition(value, capture.details) then
-            return false
-        end
+        if not self:IsValidIncomingMatchCapture(capture,value) then return self:MatchesIncomingSpelling(matcher,normalizedText) end
         if capture.kind ~= "countdown" and capture.kind~="eventcountdown" and capture.kind~="eventwhen" then
             if substitutions[capture.kind] and substitutions[capture.kind] ~= value then return false end
             substitutions[capture.kind] = value
