@@ -69,7 +69,14 @@ function S:NormalizeSchedule(data)
   result.reminders[#result.reminders+1]=row
  end
  if #result.reminders>100 or #result.reminders==0 then return nil,'Choose between one and 100 reminders.' end
- local occurrence={eventAtUtc=result.eventAtUtc};local first,last
+ local occurrence={eventAtUtc=result.eventAtUtc}
+ -- An explicit monthly selector can place its first event after the stored
+ -- recurrence anchor. Validate reminder clocks on that real occurrence.
+ if result.recurrence=='MONTHLY_WEEKDAY' then
+  occurrence=self:GetNominalScheduleOccurrences(result,result.eventAtUtc,1,true)[1]
+  if not occurrence then return nil,'No monthly weekday occurrence exists in the supported date range.' end
+ end
+ local first,last
  for _,row in ipairs(result.reminders) do
   local start=self:ResolveTimelineAnchor(result,occurrence,row.start)
   local finish=row.once and not row.onceUntilFinish and start and start+row.lateMinutes*60 or self:ResolveTimelineAnchor(result,occurrence,row.finish)

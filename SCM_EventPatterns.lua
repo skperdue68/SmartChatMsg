@@ -68,7 +68,7 @@ end
 
 -- Walk actual nominal dates so off-cadence exceptions never change progression.
 function SmartChatMsg:GetScheduleRotationProgress(schedule,eventAt)
-    local signature={tostring(schedule.eventAtUtc),schedule.recurrence,tostring(schedule.recurrenceInterval),tostring(schedule.eventFold),tostring(schedule.timeZone)}
+    local signature={tostring(schedule.eventAtUtc),schedule.recurrence,tostring(schedule.recurrenceInterval),tostring(schedule.monthlyWeek),tostring(schedule.monthlyWeekday),tostring(schedule.eventFold),tostring(schedule.timeZone)}
     for day=1,7 do signature[#signature+1]=schedule.weekdays and schedule.weekdays[day] and '1' or '0' end
     local exceptions={};for date,value in pairs(schedule.occurrenceExceptions or {}) do exceptions[#exceptions+1]=date..':'..value.action end;table.sort(exceptions)
     signature[#signature+1]=table.concat(exceptions,',');local key=table.concat(signature,'|')
