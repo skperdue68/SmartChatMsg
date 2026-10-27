@@ -35,6 +35,9 @@ local function control(name,parent)
 end
 WINDOW_MANAGER={CreateControl=function(_,n,p) return control(n,p) end,CreateControlFromVirtual=function(_,n,p) return control(n,p) end}
 ZO_Dialogs_RegisterCustomDialog=function() end
+ZO_CheckButton_SetLabelText=function(c,text) c.label=text end
+ZO_CheckButton_SetCheckState=function(c,value) c.checked=value end
+ZO_CheckButton_SetToggleFunction=function(c,callback) c.toggle=callback end
 local options
 LibAddonMenu2={RegisterAddonPanel=function() return {} end,RegisterOptionControls=function(_,_,list) options=list end}
 dofile("SCM_Settings.lua")
@@ -56,6 +59,12 @@ schedule:SetAnchor(TOPLEFT,holder,BOTTOMLEFT,0,0)
 assert(holder:GetHeight()>=editor:GetHeight()+60,"initial custom holder must reserve the full editor and padding before LAM refresh")
 assert(schedule:GetTop()>named.SCM_EnterMessageBackdrop:GetBottom(),"Scheduling must follow the Enter Message box")
 for _,row in ipairs(s.settings.controls.savedMessageRows) do assert(row:GetBottom()<schedule:GetTop(),"Scheduling cannot overlap a saved message") end
+local enabled
+for name,c in pairs(named) do if name:match('^SCM_SavedMessageEnabled') and c.toggle then enabled=c;break end end
+assert(enabled and enabled.checked and enabled.label=='Enabled','ordinary template has a checked Enabled control')
+s.RefreshSettingsUI=function() editor:RefreshEditor() end
+enabled.toggle(enabled,false);assert(next(s:GetCommandGuildSettings('ad','Amber Traders',false).disabledMessageIds));eq(#s:GetMessageEntriesForSelection(),12,'disabled templates remain in the editor')
+enabled.toggle(enabled,true);eq(next(s:GetCommandGuildSettings('ad','Amber Traders',false).disabledMessageIds),nil)
 local initial=holder:GetHeight()
 f.entry("extra","ad","Amber Traders","Added while settings are open.","Guild")
 editor:RefreshEditor()

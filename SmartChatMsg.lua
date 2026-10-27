@@ -1426,6 +1426,14 @@ function SmartChatMsg:GetMessageEntriesForCommandAndGuild(commandId, guildName)
 end
 
 
+function SmartChatMsg:GetOrdinaryMessageEntriesForCommandAndGuild(commandId,guildName)
+    local result={}
+    for _,entry in ipairs(self:GetMessageEntriesForCommandAndGuild(commandId,guildName)) do
+        if self:IsOrdinaryMessageEnabled(commandId,guildName,entry.id) then result[#result+1]=entry end
+    end
+    return result
+end
+
 function SmartChatMsg:GetMessageUsageTimestamp(entry)
     local value = type(entry) == "table" and entry.lastUsedAt or nil
     if type(value) ~= "number" or value < 0 then
@@ -2963,11 +2971,11 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
     ))
 
     local messages = isScheduled and self:GetScheduledMessageEntries(commandId, guildName)
-        or self:GetMessageEntriesForCommandAndGuild(commandId, guildName)
+        or self:GetOrdinaryMessageEntriesForCommandAndGuild(commandId, guildName)
     self:DebugLog("PopulateChatBufferForCommand message count=" .. tostring(#messages))
     if #messages == 0 then
         self:DebugLog("PopulateChatBufferForCommand aborted: no saved messages")
-        return false, "No messages are saved for that command and guild."
+        return false, "No enabled messages are available for that command and guild."
     end
 
     local selectedEntry
@@ -2977,7 +2985,7 @@ function SmartChatMsg:PopulateChatBufferForCommand(commandId, guildName, channel
     else selectedEntry=self:SelectWeightedMessageEntry(messages) end
     if not selectedEntry then
         self:DebugLog("PopulateChatBufferForCommand aborted: no selected entry")
-        return false, "No messages are saved for that command and guild."
+        return false, "No enabled messages are available for that command and guild."
     end
 
     self:DebugLog("PopulateChatBufferForCommand selected entry id=" .. tostring(selectedEntry.id or "nil"))
