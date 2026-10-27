@@ -21,11 +21,11 @@ eq(s.savedVars.statusPanelState.visible,true);eq(s.savedVars.statusPanelState.of
 assert(s:SetMessageLocked('private',false));assert(f.currentExport():find('My personal announcement',1,true))
 assert(s:SetMessageLocked('private',true))
 assert(s:ImportSettingsFromString('SCM_EXPORT_V1\nCOMMAND|new-id|recruit||\nMESSAGE|private|new-id||Amber Traders|Replacement||\nEND'))
-eq(#s.savedVars.messages,1);eq(s.savedVars.messages[1].text,'My personal announcement');eq(s.savedVars.messages[1].commandId,'new-id')
+eq(#s.savedVars.messages,1);eq(s.savedVars.messages[1].text,'My personal announcement');eq(s.savedVars.messages[1].commandId,'ad')
 eq(s.savedVars.messages[1].locked,true)
 local before=s.savedVars
 assert(not s:ImportSettingsFromString('bad data'));eq(s.savedVars,before)
-assert(s:ImportSettingsFromString('SCM_EXPORT_V1\nCOMMAND|other|unrelated||\nEND'));eq(#s.savedVars.messages,0)
+assert(s:ImportSettingsFromString('SCM_EXPORT_V1\nCOMMAND|other|unrelated||\nEND'));eq(#s.savedVars.messages,1,'merge retains absent personal content')
 
 f.reset();entry=f.entry('private','ad','Amber Traders','Private event message','Guild')
 assert(s:SaveGuildSchedule('ad','Amber Traders',{mode='EVENT',enabled=true,delivery='REPEAT',eventDate='2026-10-08',eventTime='09:00 PM',promotionDays=2,endDelayMinutes=20,intervalMinutes=5,messagePhases={private={DAY=true}}}))
@@ -39,12 +39,12 @@ f.currentSchedules();s:InitializeSavedVars();eq(s.savedVars.messages[1].locked,t
 local transferred=f.currentExport():gsub('|ad|','|new-id|')
 -- Different generated IDs should remap the entire command/guild setup.
 assert(s:ImportSettingsFromString(transferred))
-eq(s.savedVars.messages[1].commandId,'new-id')
+eq(s.savedVars.messages[1].commandId,'ad')
 eq(s.savedVars.messages[1].locked,true)
-eq(s:GetSavedChatChannel('new-id','Amber Traders'),'Guild')
-eq(s:GetGuildSchedule('new-id','Amber Traders').messagePhases.private.DAY,true)
-eq(s:GetGuildSchedule('new-id','Amber Traders').eventAtUtc,s:ParseEasternDateTime('2026-10-08','09:00 PM'))
-eq(s.savedVars.commandGuildSettings.ad,nil);eq(s.savedVars.chatChannels.ad,nil)
+eq(s:GetSavedChatChannel('ad','Amber Traders'),'Guild')
+eq(s:GetGuildSchedule('ad','Amber Traders').messagePhases.private.DAY,true)
+eq(s:GetGuildSchedule('ad','Amber Traders').eventAtUtc,s:ParseEasternDateTime('2026-10-08','09:00 PM'))
+assert(s.savedVars.commandGuildSettings.ad);assert(s.savedVars.chatChannels.ad)
 -- Restore the fixture ID for the registration checks below.
 assert(s:ImportSettingsFromString(transferred:gsub('|new%-id|','|ad|')))
 s:SetGuildRunAt('ad','Amber Traders','ON_DEMAND');assert(SLASH_COMMANDS['/recruit'])

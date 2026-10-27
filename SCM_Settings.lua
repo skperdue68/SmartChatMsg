@@ -166,7 +166,7 @@ local function RegisterDeleteDialogs()
     if not SmartChatMsg.settings.importDialogRegistered then
         ZO_Dialogs_RegisterCustomDialog(IMPORT_SETTINGS_DIALOG_NAME, {
             title = { text = "Import Settings" },
-            mainText = { text = "Import replaces settings and unlocked messages. Locked messages stay only if their commands remain. Continue?" },
+            mainText = { text = "Import merges commands and messages by name, guild and message identity. Items absent from the import stay. Matching command settings and event timelines will be updated. Continue?" },
             buttons = {
                 {
                     text = SI_DIALOG_CONFIRM,
