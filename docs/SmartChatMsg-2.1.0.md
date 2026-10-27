@@ -261,3 +261,10 @@ See SmartChatMsg_Help_Guide_v2.1.0.html for the full timeline and web editor gui
 ## Rotating events and cancellations
 
 Special event pattern **Rotating event** cycles an ordered list of named activities by scheduled occurrences. Set Occurrences per activity and use `%eventactivity%` in templates; each message may apply to all activities or one selection. The original Event date anchors the cycle. Both event and faction rotations support date-specific KEEP/POSTPONE cancellations and Undo, entirely from SavedVariables. KEEP consumes the slot; POSTPONE holds it. Factions retain calendar-week blocks, postponing by the span to the next nominal event. Save schedule changes to apply. Active/queued/manual delivery for cancelled dates is suppressed; no automatic cancellation announcement is sent. Full import/export includes names, stable IDs, list order and exceptions, while locked activity assignments remain protected. See the HTML guide for setup and cancellation steps.
+
+
+### Enabled messages for On Demand and Startup
+
+In ordinary message rows, the Enabled checkbox includes or excludes a template from On Demand, Startup, ordinary repeat and Zone selection. Disabled text stays stored and can still be previewed. Retry cannot restore a disabled template. If none are enabled, no message is prepared. Disabling untouched prepared text withdraws it while preserving player edits.
+
+Scheduled phases and reminder rows keep their own message pools and ignore these ordinary flags; returning to ordinary mode restores the selections. Incoming peer matching still recognizes disabled templates. SavedVariables and full settings import/export preserve the flags by guild name and message UUID. Identical text with different UUIDs remains distinct, and local locked templates retain private choices.

@@ -205,6 +205,7 @@ function SmartChatMsg:InitializeSavedVars()
                     end
 
                     cleanedByGuild[normalizedGuildKey] = {
+                        disabledMessageIds = self:NormalizeDisabledMessageIds(settings.disabledMessageIds),
                         reminderMinutes = self:NormalizeReminderMinutes(settings.reminderMinutes),
                         reminderRetryMinutes = self:NormalizeReminderRetryMinutes(settings.reminderRetryMinutes),
                         autoPopulateOnZone = self:NormalizeAutoPopulateOnZone(settings.autoPopulateOnZone),
@@ -556,6 +557,11 @@ function SmartChatMsg:BuildSlotExportString()
         if type(byGuild) == "table" then
             for guildKey, settings in pairs(byGuild) do
                 if type(settings) == "table" then
+                    for messageId in pairs(self:NormalizeDisabledMessageIds(settings.disabledMessageIds)) do
+                        if not self:IsMessageLocked(messageId) then
+                            lines[#lines+1]=table.concat({'MESSAGEPOOL_V1',self:EscapeImportExportField(commandId),self:EscapeImportExportField(guildKey),self:EscapeImportExportField(messageId)},'|')
+                        end
+                    end
                     local zonePairs = {}
                     if type(settings.lastAutoPopulateSentAtByZone) == "table" then
                         for zoneKey, timestamp in pairs(settings.lastAutoPopulateSentAtByZone) do
@@ -644,6 +650,15 @@ function SmartChatMsg:PreserveLockedMessages(imported)
                 local guild=self:NormalizeKey(entry.guildName or self:GetGuildNameByIndex(entry.guildIndex))
                 local localSchedule=guild and self:GetGuildSchedule(entry.commandId,guild)
                 local newSettings=guild and imported.commandGuildSettings and imported.commandGuildSettings[command.id] and imported.commandGuildSettings[command.id][guild]
+                local oldSettings=guild and self:GetCommandGuildSettings(entry.commandId,guild,false)
+                if not newSettings and oldSettings and oldSettings.disabledMessageIds and oldSettings.disabledMessageIds[entry.id]==true then
+                    imported.commandGuildSettings[command.id]=imported.commandGuildSettings[command.id] or {}
+                    newSettings={};imported.commandGuildSettings[command.id][guild]=newSettings
+                end
+                if newSettings then
+                    newSettings.disabledMessageIds=newSettings.disabledMessageIds or {}
+                    newSettings.disabledMessageIds[entry.id]=oldSettings and oldSettings.disabledMessageIds and oldSettings.disabledMessageIds[entry.id]==true and true or nil
+                end
                 if localSchedule and newSettings and newSettings.schedule then
                     newSettings.schedule.messagePhases[kept.id]=clone(localSchedule.messagePhases[entry.id])
                     newSettings.schedule.messageVariants[kept.id]=localSchedule.messageVariants[entry.id]
@@ -755,6 +770,7 @@ function SmartChatMsg:ImportSlotSettingsFromString(rawText, transfer)
     local commandIds = {}
     local messageIds = {}
     local scheduleRecords = {}
+    local disabledMessageRecords = {}
 
     for index = 2, #lines do
         local line = lines[index]
@@ -851,6 +867,12 @@ function SmartChatMsg:ImportSlotSettingsFromString(rawText, transfer)
                     displayOrder = displayOrder,
                 })
             end
+        elseif recordType=='MESSAGEPOOL_V1' then
+            local commandId=self:UnescapeImportExportField(parts[1] or '')
+            local guild=self:NormalizeKey(self:UnescapeImportExportField(parts[2] or ''))
+            local messageId=self:UnescapeImportExportField(parts[3] or '')
+            if not commandIds[commandId] or not guild or guild=='' or messageId=='' or #parts~=3 then return false,'Invalid ordinary message pool record.' end
+            disabledMessageRecords[#disabledMessageRecords+1]={commandId=commandId,guild=guild,messageId=messageId}
         elseif recordType == "CHANNEL" then
             local commandId = self:UnescapeImportExportField(parts[1] or "")
             local guildKey = self:NormalizeKey(self:UnescapeImportExportField(parts[2] or ""))
@@ -976,6 +998,12 @@ elseif recordType == "GUILDSETTING" then
         end
     end
 
+    for _,record in ipairs(disabledMessageRecords) do
+        imported.commandGuildSettings[record.commandId]=imported.commandGuildSettings[record.commandId] or {}
+        local guilds=imported.commandGuildSettings[record.commandId];guilds[record.guild]=guilds[record.guild] or {}
+        guilds[record.guild].disabledMessageIds=guilds[record.guild].disabledMessageIds or {}
+        guilds[record.guild].disabledMessageIds[record.messageId]=true
+    end
     if transfer then self:RemapImportedGuildSlots(imported,transfer) end
     local schedulesOk, schedulesError = self:ImportScheduleRecords(scheduleRecords, imported)
     if not schedulesOk then return false, schedulesError end
@@ -1052,6 +1080,34 @@ function SmartChatMsg:GetCommandGuildSettings(commandId, guildName, createIfMiss
     end
 
     return byGuild[guildKey]
+end
+
+function SmartChatMsg:NormalizeDisabledMessageIds(raw)
+    local result={}
+    for id,value in pairs(type(raw)=='table' and raw or {}) do if type(id)=='string' and id~='' and value==true then result[id]=true end end
+    return result
+end
+function SmartChatMsg:IsOrdinaryMessageEnabled(commandId,guildName,messageId)
+    local settings=self:GetCommandGuildSettings(commandId,guildName,false)
+    return not (settings and type(settings.disabledMessageIds)=='table' and settings.disabledMessageIds[messageId]==true)
+end
+function SmartChatMsg:SetOrdinaryMessageEnabled(commandId,guildName,messageId,enabled)
+    local found=false
+    for _,entry in ipairs(self:GetMessageEntriesForCommandAndGuild(commandId,guildName)) do if entry.id==messageId then found=true;break end end
+    if not found then return false,'Message not found for this command and guild.' end
+    local settings=self:GetCommandGuildSettings(commandId,guildName,true)
+    settings.disabledMessageIds=self:NormalizeDisabledMessageIds(settings.disabledMessageIds)
+    if enabled==true then settings.disabledMessageIds[messageId]=nil else settings.disabledMessageIds[messageId]=true end
+    if enabled~=true and self:GetGuildRunAt(commandId,guildName)~='SCHEDULED' then
+        local pending=self.pendingRestoreState;local metadata=pending and pending.metadata
+        if metadata and metadata.commandId==commandId and self:StringsEqualIgnoreCase(metadata.guildName or '',guildName) and metadata.selectedEntryId==messageId then
+            local edit=self:GetChatEditControl()
+            if edit and edit.GetText and edit:GetText()==pending.rawExpectedText then self:ClearPendingChatBuffer();self:RestoreChatChannel(pending.previousChannel) end
+            self:ClearPendingRestoreState('ordinary message disabled')
+            if metadata.startupQueue then self:FinalizeStartupQueueCurrent(true,'startup message disabled') end
+        end
+    end
+    return true
 end
 
 function SmartChatMsg:GetGuildReminderMinutes(commandId, guildName)

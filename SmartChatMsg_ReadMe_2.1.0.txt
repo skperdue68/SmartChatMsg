@@ -257,3 +257,10 @@ Prepare only once completes after a **confirmed send** or a matching announcemen
 
 VERSION 2.1.0 REMINDER TIMELINES
 See SmartChatMsg_Help_Guide_v2.1.0.html for the full timeline and web editor guide. Configure the actual event once, then add repeat windows or once-only milestones. Time-sensitive milestones bypass ordinary cooldown/pacing but retain startup hold, peer duplicate protection and your typed chat. Test each row with simulated time inside its window. Named important time tickets supports %eventwhen:tickets%, %eventdate:tickets%, %eventtime:tickets% and %eventcountdown:tickets%. Existing schedules remain usable without conversion. Review helper consolidation before saving.
+
+
+### Enabled messages for On Demand and Startup
+
+In ordinary message rows, the Enabled checkbox includes or excludes a template from On Demand, Startup, ordinary repeat and Zone selection. Disabled text stays stored and can still be previewed. Retry cannot restore a disabled template. If none are enabled, no message is prepared. Disabling untouched prepared text withdraws it while preserving player edits.
+
+Scheduled phases and reminder rows keep their own message pools and ignore these ordinary flags; returning to ordinary mode restores the selections. Incoming peer matching still recognizes disabled templates. SavedVariables and full settings import/export preserve the flags by guild name and message UUID. Identical text with different UUIDs remains distinct, and local locked templates retain private choices.

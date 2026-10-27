@@ -24,7 +24,7 @@ end
 local function marker(kind,name) return "{{SCM_GUILD:"..kind..":"..hex(name).."}}" end
 local function guildField(kind)
     if kind=="MESSAGE" then return 5 end
-    if kind=="CHANNEL" or kind=="GUILDSETTING" or kind=="ACTIVE" or kind:match("^SCHEDULE") then return 3 end
+    if kind=="MESSAGEPOOL_V1" or kind=="CHANNEL" or kind=="GUILDSETTING" or kind=="ACTIVE" or kind:match("^SCHEDULE") then return 3 end
     if kind=="GUILDTIMEZONE" then return 2 end
 end
 local function slashReferences(text,resolve)

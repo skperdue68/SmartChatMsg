@@ -1508,12 +1508,17 @@ local function BuildMessagesEditor(parent)
                 rowData.statusLabel:SetColor(0.95, 0.78, 0.18, 1)
             else
                 local schedule=SmartChatMsg:GetGuildRunAt(currentEntry.commandId,currentEntry.guildName)=="SCHEDULED" and SmartChatMsg:GetScheduleEditorDraft()
-                rowData.statusLabel:SetText(schedule and SmartChatMsg:GetScheduleMessagePhaseText(currentEntry.id,schedule) or "")
+                rowData.statusLabel:SetText(schedule and SmartChatMsg:GetScheduleMessagePhaseText(currentEntry.id,schedule) or (not SmartChatMsg:IsOrdinaryMessageEnabled(currentEntry.commandId,currentEntry.guildName or SmartChatMsg:GetGuildNameByIndex(currentEntry.guildIndex),currentEntry.id) and "Disabled for ordinary delivery" or ""))
                 rowData.statusLabel:SetColor(0.77,0.76,0.62,1)
             end
             if currentEntry.locked==true then rowData.statusLabel:SetText("Locked · "..rowData.statusLabel:GetText()) end
         end
 
+        if rowData.enabledCheckbox then
+            local guild=currentEntry.guildName or SmartChatMsg:GetGuildNameByIndex(currentEntry.guildIndex)
+            rowData.enabledCheckbox:SetHidden(SmartChatMsg:GetGuildRunAt(currentEntry.commandId,guild)=='SCHEDULED')
+            if ZO_CheckButton_SetCheckState then ZO_CheckButton_SetCheckState(rowData.enabledCheckbox,SmartChatMsg:IsOrdinaryMessageEnabled(currentEntry.commandId,guild,currentEntry.id)) end
+        end
         if rowData.updateButton then
             rowData.updateButton:SetEnabled(isDirty)
         end
@@ -1604,6 +1609,18 @@ local function BuildMessagesEditor(parent)
         testButton:SetAnchor(LEFT,lockButton,RIGHT,6,0)
         testButton:SetText("Test")
         testButton:SetHandler("OnClicked",function() SmartChatMsg:TestMessagePreview(entry.id) end)
+
+        local enabledCheckbox=WINDOW_MANAGER:CreateControlFromVirtual(string.format('SCM_SavedMessageEnabled%d',controlId),row,'ZO_CheckButton')
+        enabledCheckbox:SetDimensions(24,24);enabledCheckbox:SetAnchor(TOPLEFT,lockButton,BOTTOMLEFT,0,4)
+        if ZO_CheckButton_SetLabelText then ZO_CheckButton_SetLabelText(enabledCheckbox,'Enabled') end
+        local function toggle(_,checked)
+            local guild=entry.guildName or SmartChatMsg:GetGuildNameByIndex(entry.guildIndex)
+            local ok,reason=SmartChatMsg:SetOrdinaryMessageEnabled(entry.commandId,guild,entry.id,checked)
+            if not ok then ZO_Alert(UI_ALERT_CATEGORY_ERROR,SOUNDS.NEGATIVE_CLICK,reason) end
+            SmartChatMsg:RefreshSettingsUI()
+        end
+        if ZO_CheckButton_SetToggleFunction then ZO_CheckButton_SetToggleFunction(enabledCheckbox,toggle) end
+        rowData.enabledCheckbox=enabledCheckbox
 
         editBox:SetHandler("OnTextChanged", function(self)
             local text = self:GetText() or ""
