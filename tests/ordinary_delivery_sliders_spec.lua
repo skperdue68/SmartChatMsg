@@ -84,3 +84,9 @@ for i,v in ipairs(ordered) do
 end
 option.refreshFunc(holder);eq(holder.height,container.height)
 print('PASS ordinary native sliders bounds, Off labels, disabled modes, retry caps, legacy refresh preservation and sound controls')
+
+local timeout=find(options,'SCM_GeneralRevertSettingsHolder');eq(timeout.type,'slider');eq(timeout.min,30);eq(timeout.max,300);eq(timeout.step,1)
+local previous=s:GetRevertChatSeconds();timeout.setFunc(120);eq(s:GetRevertChatSeconds(),120);eq(timeout.getFunc(),120)
+timeout.setFunc(29);eq(s:GetRevertChatSeconds(),120);timeout.setFunc(301);eq(s:GetRevertChatSeconds(),120)
+timeout.setFunc(30);eq(s:GetRevertChatSeconds(),30);timeout.setFunc(300);eq(s:GetRevertChatSeconds(),300)
+print('PASS global timeout uses native LAM slider, persists bounds and rejects invalid changes')

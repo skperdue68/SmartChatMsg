@@ -1938,81 +1938,6 @@ function SmartChatMsg:RefreshSettingsUI()
     self:RestoreMessageListScroll(scrollContainer,scrollSnapshot)
 end
 
-local function BuildGeneralRevertSettings(parent)
-    local container = WINDOW_MANAGER:CreateControl("SCM_GeneralRevertSettingsContainer", parent, CT_CONTROL)
-    container:SetDimensions(ROW_WIDTH, 40)
-
-    local label = WINDOW_MANAGER:CreateControl("SCM_GeneralRevertSettingsLabel", container, CT_LABEL)
-    label:SetFont("ZoFontWinH4")
-    label:SetText("Auto-Remove Pending Chat After (secs)")
-    label:SetDimensions(320, 30)
-    label:SetAnchor(LEFT, container, LEFT, 0, 0)
-
-    label:SetHandler("OnMouseEnter", function(self)
-        InitializeTooltip(InformationTooltip, self, TOP, 0, 8)
-        SetTooltipText(InformationTooltip, "Time to wait before clearing chat and returning to the previous chat type. Slider range: 30 seconds to 5 minutes.")
-    end)
-
-    label:SetHandler("OnMouseExit", function()
-        ClearTooltip(InformationTooltip)
-    end)
-
-    local backdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_GeneralRevertSettingsBackdrop", container, "ZO_EditBackdrop")
-    backdrop:SetDimensions(70, 30)
-    backdrop:SetAnchor(RIGHT, container, RIGHT, -4, 0)
-
-    local editBox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_GeneralRevertSettingsEditBox", backdrop, "ZO_DefaultEditForBackdrop")
-    editBox:SetAnchorFill(backdrop)
-    editBox:SetMaxInputChars(4)
-    editBox:SetText("")
-
-    editBox:SetHandler("OnTextChanged", function(self)
-        local text = self:GetText() or ""
-        local digitsOnly = text:gsub("[^%d]", "")
-
-        if digitsOnly ~= text then
-            self:SetText(digitsOnly)
-            return
-        end
-
-        SmartChatMsg.settings.pendingGeneralRevertChatSeconds = digitsOnly
-
-        local ok, err = SmartChatMsg.settings:SaveGeneralSettings()
-        if not ok and err then
-            ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
-            return
-        end
-
-        SmartChatMsg:RefreshSettingsUI()
-    end)
-
-    local slider = WINDOW_MANAGER:CreateControl("SCM_GeneralRevertSettingsSlider", container, CT_SLIDER)
-    slider:SetDimensions(180, 20);slider:SetAnchor(LEFT, label, RIGHT, 8, 0)
-    slider:SetMinMax(30, 300);slider:SetValueStep(1)
-    slider:SetThumbTexture("EsoUI/Art/Miscellaneous/scrollbox_elevator.dds", "EsoUI/Art/Miscellaneous/scrollbox_elevator_disabled.dds", nil, 8, 16)
-    local track = WINDOW_MANAGER:CreateControl("SCM_GeneralRevertSettingsSliderTrack", slider, CT_TEXTURE)
-    track:SetAnchor(LEFT, slider, LEFT, 0, 0);track:SetAnchor(RIGHT, slider, RIGHT, 0, 0);track:SetHeight(4);track:SetColor(.45,.42,.3,1)
-    local syncing = false
-    slider:SetHandler("OnValueChanged", function(_, value)
-        if not syncing then editBox:SetText(tostring(math.max(30, math.min(300, math.floor(value+.5))))) end
-    end)
-    container.RefreshEditor = function()
-        local revertText = SmartChatMsg.settings.pendingGeneralRevertChatSeconds or "60"
-        syncing = true
-        slider:SetValue(math.max(30, math.min(300, tonumber(revertText) or 60)))
-        syncing = false
-        if editBox:GetText() ~= revertText then
-            editBox:SetText(revertText)
-        end
-    end
-
-    SmartChatMsg.settings.controls.generalRevertSettings = container
-    SmartChatMsg.settings.controls.generalRevertSettingsEditBox = editBox
-
-    container:RefreshEditor()
-    return container
-end
-
 function SmartChatMsg:CreateSettingsPanel()
     self.settings:InitializeState()
     RegisterDeleteDialogs()
@@ -2032,7 +1957,6 @@ function SmartChatMsg:CreateSettingsPanel()
     local commandDropdownHolder
     local commandEditorHolder
     local defaultGuildDropdownHolder
-    local generalRevertSettingsHolder
     local messagesCommandDropdownHolder
     local messagesGuildDropdownHolder
     local messagesChannelDropdownHolder
@@ -2077,17 +2001,18 @@ function SmartChatMsg:CreateSettingsPanel()
                     end,
                 },
                 {
-                    type = "custom",
+                    type = "slider",
                     reference = "SCM_GeneralRevertSettingsHolder",
-                    createFunc = function(control)
-                        control:SetHeight(40)
-                        generalRevertSettingsHolder = BuildGeneralRevertSettings(control)
-                        generalRevertSettingsHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
-                    end,
-                    refreshFunc = function()
-                        if generalRevertSettingsHolder and generalRevertSettingsHolder.RefreshEditor then
-                            generalRevertSettingsHolder:RefreshEditor()
-                        end
+                    name = "Auto-Remove Pending Chat After (secs)",
+                    tooltip = "How long an unsent prepared message remains in chat before clearing it and restoring the previous channel. Choose 30 seconds to 5 minutes.",
+                    min = 30, max = 300, step = 1, decimals = 0, clampInput = true,
+                    getFunc = function() return SmartChatMsg:GetRevertChatSeconds() end,
+                    setFunc = function(value)
+                        value = tonumber(value)
+                        if not value or value < 30 or value > 300 or value ~= math.floor(value) then return end
+                        SmartChatMsg.settings.pendingGeneralRevertChatSeconds = tostring(value)
+                        local ok, err = SmartChatMsg.settings:SaveGeneralSettings()
+                        if not ok and err then ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err) end
                     end,
                 },
             },
