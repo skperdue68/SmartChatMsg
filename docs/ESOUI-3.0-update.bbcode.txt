@@ -1,0 +1,45 @@
+[B][SIZE=4]SmartChatMsg 3.0[/SIZE][/B]
+
+A major scheduling update, with a cleaner way to manage recurring guild announcements and coordinate with other SmartChatMsg users.
+
+[B]One event, multiple announcement periods[/B]
+[LIST]
+[*]Set an event date/time and create separate promotion periods, each with its own frequency and message pool.
+[*]Use quieter early reminders, more frequent announcements near the start, a time-sensitive “starting now” notice, and invitations while the event is underway.
+[*]Configure one-time notices, lateness allowances, event duration and closing announcements.
+[*]Support for daily, weekly, biweekly and monthly recurrence, including the last selected weekday of a month.
+[/LIST]
+
+[B]More flexible events and messages[/B]
+[LIST]
+[*]Faction rotations, rotating activities and cancellation exceptions.
+[*]Named important times, such as ticket sales closing or gathering before a trial, with calendar/time controls.
+[*]Dynamic substitutions including %eventwhen%, %eventtime%, %eventdate%, %eventcountdown%, %eventfaction% and %eventactivity%.
+[*]Offset and named-deadline substitutions, including %eventtime-1h% and %eventcountdown:tickets%.
+[*]Regular, month-final and all-events message groups.
+[*]Test messages directly in your own chat with substitutions applied.
+[/LIST]
+
+[B]Better control over announcements[/B]
+[LIST]
+[*]Allowed announcement days/hours and optional daily limits, separately per period or shared across all periods for a command and guild.
+[*]Incoming matching announcements from other players update your cooldowns, with channel/guild checks and support for changing countdowns and substitutions. Conservative spelling tolerance handles small text differences.
+[*]Startup delay and spacing between scheduled commands help avoid a burst of reminders. Time-sensitive notices can bypass ordinary spacing.
+[*]Updated status cards, readable countdowns, next-send information and Enable/Disable controls.
+[*]Sliders for delivery intervals, cooldowns, schedule values and the pending-chat timeout.
+[*]Guild-name mapping in portable transfers handles different guild-slot orders between players.
+[*]Guild, Officer, Zone and Group chat output. Group chat uses /g.
+[/LIST]
+
+[B]Optional web companion[/B]
+For a larger editor, message previews and a visual day-by-day schedule, visit [URL=https://scm.perdues.me]SmartChatMsg-Web[/URL]. Scheduling remains available directly in ESO.
+
+Install SmartChatMsg and run ESO with it enabled at least once, then exit ESO so it writes your SavedVariables file. Open live/SavedVariables/SmartChatMsg.lua in the web companion. Back up first, and close ESO before installing a downloaded replacement file.
+
+[B]Important[/B]
+SmartChatMsg prepares the message in chat; you still press Enter to send. It only runs while you are online with the addon loaded. Older schedule formats are not automatically converted; keep a backup before updating.
+
+[B]Requirements[/B]
+ESO API 101051. Requires LibAddonMenu-2.0 (version 34 or newer) and LibAddonMenuDatePicker. No separate slider library is needed.
+
+The updated SmartChatMsg_Help_Guide_v3.0.html is included with full setup instructions and examples.
