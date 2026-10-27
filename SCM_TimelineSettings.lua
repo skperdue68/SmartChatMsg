@@ -253,11 +253,31 @@ function S:BuildScheduleOptionControls()
  end
  local duration=self:BuildSchedulingSlider('Event duration','SCM_PeriodDurationSlider',0,240,function()return draft().eventDurationMinutes or 0 end,function(n)draft().eventDurationMinutes=n>0 and n or nil;refresh()end,function(n)return self:FormatSchedulingMinutes(n,'Not set')end)
  local rowState={type='dropdown',name='Period Status',tooltip='Pause or disable only this period without deleting messages or cooldown history.',choices={'Enabled','Paused','Disabled'},getFunc=function()local r=row();return r and (r.paused and 'Paused' or r.enabled==false and 'Disabled' or 'Enabled') or 'Enabled'end,setFunc=function(value)local r=row();if r then r.enabled=value~='Disabled';r.paused=value=='Paused';refresh()end end}
+ local function periodChoices()
+  local labels,ids={},{}
+  for i,r in ipairs(draft().reminders or {}) do
+   local label=tostring(r.label or '')
+   labels[#labels+1]=tostring(i)..'. '..(label~='' and label or 'Unnamed period')
+   ids[#ids+1]=r.id
+  end
+  return labels,ids
+ end
+ self.rotationEditorChoiceProviders=self.rotationEditorChoiceProviders or {}
+ self.rotationEditorChoiceProviders.SCM_TimelinePeriodSelector=periodChoices
+ local periodLabels,periodIds=periodChoices()
+ local periodSelector={type='dropdown',reference='SCM_TimelinePeriodSelector',name='Edit period',
+  tooltip='Choose which period to edit below. All periods belong to this same event; selecting one does not change its schedule.',
+  choices=periodLabels,choicesValues=periodIds,scrollable=true,
+  getFunc=function()local r=row();return r and r.id end,
+  setFunc=function(id)for _,r in ipairs(draft().reminders or {}) do if r.id==id then self.scheduleEditor.reminderId=id;self:RefreshSettingsUI();return end end end,
+  disabled=function()return #(draft().reminders or {})==0 end}
  local pane={
   duration,
   {type='description',text='Keep the actual event date and time above. Add as many reminder periods or one-time milestones as you need. The latest active normal period wins an overlap; one-time milestones keep their own delivery. You always press Enter to send.'},
   {type='submenu',name='Important times',controls=named},
-  {type='header',name='Reminders'},
+  periodSelector,
+  {type='description',text='Choose a period above to edit its dates, frequency and message pool below. The list underneath also selects periods and scrolls independently.'},
+  {type='header',name='Periods'},
   {type='custom',minHeight=180,maxHeight=180,createFunc=function(c) self:RefreshTimelineCards(c,false) end,refreshFunc=function(c) self:RefreshTimelineCards(c,false) end},
   {type='button',name='Add period',func=function() self:AddTimelineReminder() end},
   {type='button',name='Preview Period Timeline',func=function()
