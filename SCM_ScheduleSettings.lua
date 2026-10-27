@@ -20,6 +20,7 @@ function SmartChatMsg:RefreshEventTimingExpansion()
         {"SCM_EventRotationSubmenu",scheduled and draft.mode=="EVENT" and repeating and draft.specialPattern=="EVENT_ROTATION","SCM_SchedulingSubmenu"},
         {"SCM_OccurrenceCancellationSubmenu",scheduled and (next(draft.occurrenceExceptions or {})~=nil or draft.mode=="EVENT" and repeating and (draft.specialPattern=="EVENT_ROTATION" or draft.specialPattern=="FACTION_ROTATION")),"SCM_SchedulingSubmenu"},
         {"SCM_RepeatOptionsSubmenu",scheduled and repeating,"SCM_SchedulingSubmenu"},
+        {"SCM_MonthlyWeekdaySubmenu",scheduled and draft.recurrence=="MONTHLY_WEEKDAY","SCM_SchedulingSubmenu"},
         {"SCM_RepeatWeekdaysSubmenu",scheduled and (draft.recurrence=="DAILY" or draft.recurrence=="WEEKLY" or draft.recurrence=="BIWEEKLY"),"SCM_RepeatOptionsSubmenu"},
         {"SCM_MessageDeliverySubmenu",scheduled and draft.mode~="REMINDER","SCM_SchedulingSubmenu"},
     }
@@ -491,7 +492,7 @@ function SmartChatMsg:BuildScheduleOptionControls()
     end
     local modeLabels={"Run during a window","Remind me at set times","Promote an event"}
     local modeValues={"WINDOW","REMINDER","EVENT"}
-    local repeatLabels={"Does not repeat","Every day","Every week","Every other week","Same day each month","Same weekday each month"}
+    local repeatLabels={"Does not repeat","Every day","Every week","Every other week","Same day each month","Monthly on weekday"}
     local repeatValues={"NONE","DAILY","WEEKLY","BIWEEKLY","MONTHLY_DATE","MONTHLY_WEEKDAY"}
     local function label(values,labels,value) for i,v in ipairs(values) do if v==value then return labels[i] end end; return labels[1] end
     local function dropdown(name,labels,values,key)
@@ -567,6 +568,24 @@ function SmartChatMsg:BuildScheduleOptionControls()
         controls[#controls+1]={type="submenu",reference=({WINDOW="SCM_WindowTimingSubmenu",REMINDER="SCM_ReminderTimingSubmenu",EVENT="SCM_EventTimingSubmenu"})[mode],name=({WINDOW="Window dates and times",REMINDER="First reminder date and time",EVENT="Event and promotion timing"})[mode],controls=entry[2],disabled=function() return draft().mode~=mode end}
     end
     controls[#controls+1]=dropdown("Repeat schedule",repeatLabels,repeatValues,"recurrence")
+    local monthly={
+        {type='description',text='Choose an ordinal and weekday. Last occurs every month; Fifth skips months with only four of that weekday. The original event date anchors the starting month and earliest eligible date. Custom repeat interval counts months.'},
+        {type='dropdown',name='Monthly on',choices={'First','Second','Third','Fourth','Fifth','Last'},getFunc=function()
+            local d=draft();local week=d.monthlyWeek
+            if not week then local normalized=self:NormalizeSchedule(d);week=normalized and normalized.monthlyWeek end
+            return ({[1]='First',[2]='Second',[3]='Third',[4]='Fourth',[5]='Fifth',LAST='Last'})[week] or 'First'
+        end,setFunc=function(value)
+            local values={First=1,Second=2,Third=3,Fourth=4,Fifth=5,Last='LAST'};draft().monthlyWeek=values[value];refresh()
+        end},
+        {type='dropdown',name='Weekday',choices={'Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'},getFunc=function()
+            local d=draft();local weekday=d.monthlyWeekday
+            if not weekday then local normalized=self:NormalizeSchedule(d);weekday=normalized and normalized.monthlyWeekday end
+            return ({'Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'})[weekday] or 'Sunday'
+        end,setFunc=function(value)
+            for day,name in ipairs({'Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'}) do if value==name then draft().monthlyWeekday=day;break end end;refresh()
+        end},
+    }
+    controls[#controls+1]={type='submenu',reference='SCM_MonthlyWeekdaySubmenu',name='Monthly weekday',controls=monthly,disabled=function() return draft().recurrence~='MONTHLY_WEEKDAY' end}
     local pattern=dropdown("Special event pattern",{"None","Faction rotation","Rotating event","Last event of month"},{"NONE","FACTION_ROTATION","EVENT_ROTATION","MONTH_FINAL"},"specialPattern")
     pattern.disabled=function() return draft().mode~="EVENT" or draft().recurrence=="NONE" end
     controls[#controls+1]=pattern

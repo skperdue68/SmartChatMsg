@@ -77,6 +77,17 @@ function S:MergeTimelineEvents(targetId,guild,sourceIds)
  local changes,sources,seen={},{},{}
  local parentEvent=target.eventAtUtc
  local function aligned(config)
+  if config.recurrence=='MONTHLY_DATE' or config.recurrence=='MONTHLY_WEEKDAY' then
+   -- Compare real occurrences in a shared eligible month, not technical anchor
+   -- dates. Nominal projection includes cancellations and has no short horizon.
+   local function midnight(utc)
+    return self:ParseScheduleDateTime(self:GetScheduleOccurrenceDate(target,utc),'12:00 AM','FIRST',target)
+   end
+   local parent=self:GetNominalScheduleOccurrences(target,midnight(math.max(target.eventAtUtc,config.eventAtUtc)),1,true)[1]
+   local source=parent and self:GetNominalScheduleOccurrences(config,midnight(parent.eventAtUtc),1,true)[1]
+   if not parent or not source or self:GetScheduleOccurrenceDate(target,parent.eventAtUtc)~=self:GetScheduleOccurrenceDate(config,source.eventAtUtc) then return nil end
+   return source.eventAtUtc,parent.eventAtUtc
+  end
   local step=config.recurrence=='BIWEEKLY' and 14 or config.recurrence=='WEEKLY' and 7 or nil
   if not step then return config.eventAtUtc end
   step=step*(config.recurrenceInterval or 1)
@@ -89,7 +100,7 @@ function S:MergeTimelineEvents(targetId,guild,sourceIds)
  local function rewrite(text,delta,names)
   return tostring(text):gsub('%%([%a][%w_:+%-]*)%%',function(token)
    local kind,offset,mark=self:ParseScheduledEventToken(token)
-   if not kind or kind=='eventfaction' then return '%'..token..'%' end
+   if not kind or kind=='eventfaction' or kind=='eventactivity' then return '%'..token..'%' end
    if mark then return '%'..kind..':'..(names[mark] or mark)..'%' end
    local minutes=(offset or 0)/60+delta
    if minutes==0 then return '%'..kind..'%' end
@@ -106,20 +117,21 @@ function S:MergeTimelineEvents(targetId,guild,sourceIds)
   if source.recurrence~=target.recurrence or source.recurrenceInterval~=target.recurrenceInterval then return false,'Helper recurrence differs from the parent; align it before combining.' end
   if source.recurrence=='MONTHLY_DATE' or source.recurrence=='MONTHLY_WEEKDAY' then
    local a,b=self:GetScheduleParts(source.eventAtUtc,source),self:GetScheduleParts(target.eventAtUtc,target)
-   if source.recurrence=='MONTHLY_DATE' and a.day~=b.day or source.recurrence=='MONTHLY_WEEKDAY' and (a.wday~=b.wday or math.floor((a.day-1)/7)~=math.floor((b.day-1)/7)) then return false,'Monthly helpers must use the same day or ordinal weekday as the parent.' end
+   if ((a.year-b.year)*12+a.month-b.month)%(source.recurrenceInterval or 1)~=0 then return false,'Monthly helper repeat months differ from the parent; align their starting-month phase before combining.' end
+   if source.recurrence=='MONTHLY_DATE' and a.day~=b.day or source.recurrence=='MONTHLY_WEEKDAY' and ((source.monthlyWeekday or a.wday)~=(target.monthlyWeekday or b.wday) or (source.monthlyWeek or math.floor((a.day-1)/7)+1)~=(target.monthlyWeek or math.floor((b.day-1)/7)+1)) then return false,'Monthly helpers must use the same day or ordinal weekday as the parent.' end
   end
   if source.specialPattern~='NONE' and source.specialPattern~=target.specialPattern then return false,'Helper special pattern differs from the parent.' end
-  local event=aligned(source);if not event then return false,'Cannot align a helper occurrence.' end
-  local delta=math.floor((event-parentEvent)/60)
+  local event,actualParent=aligned(source);local parentAt=actualParent or parentEvent;if not event then return false,'Cannot align a helper occurrence.' end
+  local delta=math.floor((event-parentAt)/60)
   local rows,variants
   local names={}
   if source.timelineVersion==1 then
    rows=clone(source.reminders);variants=clone(source.messageVariants)
    local srcDay=math.floor((event+self:GetTimeZoneUtcOffset(event,target.timeZone)*3600)/86400)
-   local parentDay=math.floor((parentEvent+self:GetTimeZoneUtcOffset(parentEvent,target.timeZone)*3600)/86400)
+   local parentDay=math.floor((parentAt+self:GetTimeZoneUtcOffset(parentAt,target.timeZone)*3600)/86400)
    for name,mark in pairs(source.importantTimes) do local base='source_'..zo_strlower(id):gsub('[^%w_]','_')..'_'..name;local key=base;local n=1;while target.importantTimes[key] do n=n+1;key=base..'_'..n end;names[name]=key;target.importantTimes[key]={label=mark.label,offsetMinutes=mark.offsetMinutes+delta} end
    for _,row in ipairs(rows) do for _,a in ipairs({row.start,row.finish}) do if a.kind=='OFFSET' then a.minutes=a.minutes+delta elseif a.kind=='DAY' then a.days=a.days+srcDay-parentDay elseif a.kind=='MARK' then a.name=names[a.name] end end end
-  else rows,variants=self:BuildLegacyTimelineRows(source,id,guild,parentEvent,event) end
+  else rows,variants=self:BuildLegacyTimelineRows(source,id,guild,parentAt,event) end
   if not rows then return false,variants end
   local rowIds={};for _,r in ipairs(target.reminders) do rowIds[r.id]=true end
   for _,row in ipairs(rows) do row.sourceTimelineId=row.id;if rowIds[row.id] then row.id=id..'_'..row.id end;rowIds[row.id]=true;target.reminders[#target.reminders+1]=row end
