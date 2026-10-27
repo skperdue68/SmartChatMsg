@@ -124,7 +124,7 @@ local flexible={mode='EVENT',enabled=true,delivery='REPEAT',eventDate='2026-10-1
 assert(s:SaveGuildSchedule('ad','Amber Traders',flexible));assert(s:SetMessageLocked('personal',true))
 local export=f.currentExport():gsub('|ad|','|imported-id|')
 assert(s:ImportSettingsFromString(export))
-local restored=s:GetGuildSchedule('imported-id','Amber Traders')
+local restored=s:GetGuildSchedule('ad','Amber Traders')
 eq(restored.specialPattern,'FACTION_ROTATION');eq(restored.rotationWeeks,2)
 eq(#restored.rotationFactions,2);eq(restored.rotationFactions[1],'AD');eq(restored.rotationFactions[2],'EP')
 eq(restored.messageVariants.personal,'EP');eq(restored.messagePhases.personal.DAY,true)
@@ -133,7 +133,7 @@ eq(s:GetScheduleEventVariant(restored,s:ParseEasternDateTime('2026-10-24','08:00
 eq(s:GetScheduleEventVariant(restored,s:ParseEasternDateTime('2026-11-07','08:00 PM')),'AD')
 local kept
 for _,entry in ipairs(s.savedVars.messages) do if entry.id=='personal' then kept=entry end end
-assert(kept and kept.locked and kept.commandId=='imported-id')
+assert(kept and kept.locked and kept.commandId=='ad')
 -- A month-final occurrence uses regular messages if no special messages exist.
 f.reset();f.entry('regular','ad','Amber Traders','Regular raffle','Guild')
 local raffle={mode='EVENT',enabled=true,delivery='REPEAT',eventDate='2026-10-10',eventTime='08:00 PM',promotionDays=2,endDelayMinutes=20,

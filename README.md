@@ -22,3 +22,6 @@ For easier planning, install and run the addon at least once, exit ESO fully, an
 Multiple periods per event provide different timing, frequencies and message pools. Includes recurrence, rotations/cancellations, named important times, time-sensitive one-time notices, availability hours, per-period or shared daily limits, incoming duplicate detection and readable status. See the guide for full settings, examples and screenshot capture placeholders.
 
 Older schedule formats are not loaded or automatically converted. Preserve a backup before updating.
+
+
+Native settings import merges commands/messages, retaining items absent from the import and recipient usage history. Matching events receive the imported timeline/settings. Web selective event bundles and native text exports use different transfer formats; see the guide before sharing.

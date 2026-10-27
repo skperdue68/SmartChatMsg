@@ -14,3 +14,6 @@ Use synthetic messages and a backup SavedVariables file. These manual checks com
 10. Prepare a message, let it time out and use /scm retry. Test /scm send with an eligible scheduled command. Inspect status card routing after active-first sorting and readable Next Send details.
 
 The optional web companion is https://scm.perdues.me. Install/run the addon once and exit ESO before taking its SavedVariables snapshot. The native addon remains the execution engine.
+
+
+Import merge checks: retain custom commands/messages absent from a partial import; repeat the import without duplicates; change donor IDs while keeping command names/text; confirm changed text with the same message ID updates that template; confirm recipient usage/cooldowns and per-period/shared caps remain. Inspect incoming timeline replacement for a matched event and verify retained unselected templates are not silently enabled.
