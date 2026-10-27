@@ -3587,6 +3587,7 @@ local function OnAddonLoaded(event, addonName)
     EVENT_MANAGER:UnregisterForEvent(SmartChatMsg.name, EVENT_ADD_ON_LOADED)
 
     SmartChatMsg:InitializeSavedVars()
+    SmartChatMsg:RegisterGuildRosterEvents()
     SmartChatMsg:ClearActiveAutoPopulate()
     SmartChatMsg.activeReminderStates = {}
     SmartChatMsg:ClearPendingRestoreState()
@@ -3615,6 +3616,7 @@ local function OnAddonLoaded(event, addonName)
     end
 
     EVENT_MANAGER:RegisterForEvent(SmartChatMsg.name .. "_PlayerActivated", EVENT_PLAYER_ACTIVATED, function()
+        SmartChatMsg:RefreshGuildRoster(true)
         SmartChatMsg:HandleZoneAutoPopulate()
         SmartChatMsg:TickSchedules()
         SmartChatMsg:InitializeStartupQueueOnce()
