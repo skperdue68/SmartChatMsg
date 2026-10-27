@@ -2489,13 +2489,25 @@ end
 -- Recover untouched text, including input ESO already cleared before timeout.
 -- Keep identity, not rendered countdowns or stale startup-queue callbacks.
 function SmartChatMsg:RetryTimedOutMessage()
+    local pending=self.pendingRestoreState
     local record=self.lastTimedOutMessage
+    local metadata=pending and pending.metadata
+    local recoveringPending=metadata and metadata.commandId and metadata.guildName and metadata.selectedEntryId
+    if recoveringPending then
+        record={commandId=metadata.commandId,guildName=metadata.guildName,entryId=metadata.selectedEntryId,
+            channel=metadata.outputChannel or self:GetSavedChatChannel(metadata.commandId,metadata.guildName),
+            autoPopulate=metadata.autoPopulate==true,expiredAt=pending.preparedAt or GetTimeStamp()}
+    end
     local function reject(reason)
         self:AddLocalChatMessage("[SmartChatMsg] Cannot retry: "..reason)
         return false,reason
     end
     if not record then return reject("no unsent timed-out message is available in this UI session.") end
-    if self:IsChatPopulationBusy() then return reject("chat input is busy; finish or clear it first.") end
+    local edit=self:GetChatEditControl()
+    local text=edit and edit.GetText and edit:GetText() or ""
+    local retryCommand=self:Trim(text):lower():match("^/scm%s+retry%s*$")~=nil
+    local reclaim=recoveringPending and (text=="" or text==pending.rawExpectedText or retryCommand)
+    if self:IsChatPopulationBusy() and not reclaim then return reject("chat input is busy; finish or clear it first.") end
     local slot=self:GetGuildSlotByName(record.guildName)
     if not slot or not self:GetCommandById(record.commandId) then return reject("the original command or guild is no longer available.") end
     local last=self:GetGuildLastUsedAt(record.commandId,record.guildName)
@@ -2516,11 +2528,19 @@ function SmartChatMsg:RetryTimedOutMessage()
         if not metadata.zoneId then return reject("the current zone is not eligible.") end
         metadata.autoPopulate=true
     end
+    -- An explicit retry may reclaim our pending watcher before it times out.
+    -- Edited player text still requires clearing first; automation never uses this path.
+    if reclaim then
+        self.lastTimedOutMessage=record
+        if pending.previousChannel then self:RestoreChatChannel(pending.previousChannel) end
+        if text~="" then self:ClearPendingChatBuffer() end
+        self:ClearPendingRestoreState("explicit retry replaces pending message")
+    end
     -- Cancel a queued automatic retry; this explicit request owns the buffer.
     self:CancelQueuedChatPopulation(record.commandId,record.guildName)
     local ok,reason=self:PopulateChatBufferForCommand(record.commandId,record.guildName,record.channel,metadata)
     if not ok then return reject(reason or "the message is no longer eligible.") end
-    self:AddLocalChatMessage("[SmartChatMsg] Timed-out message restored. Press Enter to send.")
+    self:AddLocalChatMessage("[SmartChatMsg] Latest unsent message restored. Press Enter to send.")
     return true
 end
 
@@ -2550,6 +2570,7 @@ function SmartChatMsg:ArmPendingRestoreState(previousChannelInfo, expectedText, 
         rawExpectedText = expectedText,
         metadata = type(metadata) == "table" and metadata or nil,
         timeoutSeconds = timeoutSeconds,
+        preparedAt = GetTimeStamp(),
         armedAt = GetFrameTimeMilliseconds and GetFrameTimeMilliseconds() or nil,
     }
 

@@ -118,3 +118,33 @@ f.incoming(CHAT_CHANNEL_GUILD_1,"Only one notice.")
 now=now+600;s:TickSchedules()
 eq(s.pendingRestoreState,nil,"a matching peer send completes a once-only phase too")
 print("peer announcements complete once-only phases without preparing local text")
+
+-- Explicit retry can reclaim untouched pending chat before its timeout.
+f.reset();s.lastTimedOutMessage=nil
+f.entry('protected','ad','Amber Traders','Protected notice for %guild%.','Officer')
+assert(s:PopulateChatBufferForCommand('ad','Amber Traders','Guild',{}))
+local oldWatcher=EVENT_MANAGER.updates[s.restoreWatcherTimeoutName].callback
+assert(s:IsChatPopulationBusy());assert(s:RetryTimedOutMessage())
+eq(CHAT_SYSTEM.textEntry.editControl.text,'Protected notice for Amber Traders.')
+eq(CHAT_SYSTEM.channel,CHAT_CHANNEL_GUILD_1)
+eq(s.pendingRestoreState.metadata.selectedEntryId,'protected');eq(s.savedVars.messages[1].lastUsedAt,nil)
+local fresh=s.pendingRestoreState;oldWatcher();eq(s.pendingRestoreState,fresh,'old timeout must not clear the replacement')
+-- ESO can clear the draft without ending the addon watcher.
+CHAT_SYSTEM.textEntry.editControl.text='';assert(s:RetryTimedOutMessage());eq(CHAT_SYSTEM.textEntry.editControl.text,'Protected notice for Amber Traders.')
+-- Genuine edits remain protected; an explicit slash command in the box is allowed.
+CHAT_SYSTEM.textEntry.editControl.text='My own revised draft';assert(not s:RetryTimedOutMessage());eq(CHAT_SYSTEM.textEntry.editControl.text,'My own revised draft')
+CHAT_SYSTEM.textEntry.editControl.text='/scm retry';assert(s:RetryTimedOutMessage())
+print('explicit retry restores pending/cleared protected messages without waiting for timeout')
+
+f.reset();s.lastTimedOutMessage=nil
+f.entry('pending-event','ad','Amber Traders','Event at %eventtime% (%eventcountdown%).','Guild')
+assert(s:SaveGuildSchedule('ad','Amber Traders',{mode='EVENT',enabled=true,eventDate='2026-10-24',eventTime='08:00 PM',promotionDays=1,endDelayMinutes=10,intervalMinutes=30}))
+f.currentSchedules();local config=s:GetGuildSchedule('ad','Amber Traders');now=config.eventAtUtc-3600
+assert(s:PopulateChatBufferForCommand('ad','Amber Traders',nil,{}));now=now+1800
+assert(s:RetryTimedOutMessage());assert(CHAT_SYSTEM.textEntry.editControl.text:find('30m',1,true));eq(s.savedVars.messages[1].lastUsedAt,nil)
+print('pending scheduled retry recalculates countdown without recording a send')
+
+s.lastTimedOutMessage={commandId='ad',guildName='Amber Traders',entryId='older-message',channel='Guild',expiredAt=now-100}
+assert(s:RetryTimedOutMessage());eq(s.lastTimedOutMessage.entryId,'pending-event')
+s:HandleRestoreWatcherChatMessage(EVENT_CHAT_MESSAGE_CHANNEL,CHAT_CHANNEL_GUILD_1,'My Character',CHAT_SYSTEM.textEntry.editControl.text,false,'@Me')
+eq(s.lastTimedOutMessage,nil,'sending latest recovered message must not expose an older retry record')
