@@ -290,7 +290,7 @@ function SmartChatMsg:GetScheduleMessageChecklist(phase)
         if d.specialPattern=='EVENT_ROTATION' then
             variantChoices={'ALL'};for _,activity in ipairs(d.rotationEvents or {}) do variantChoices[#variantChoices+1]=activity.id end
         end
-        result[#result+1]={type="checkbox",name=entry.text,messageId=messageId,
+        result[#result+1]={type="checkbox",name=(entry.name and entry.name..": " or "")..entry.text,messageId=messageId,
             variantChoices=variantChoices,variant=self:GetScheduleMessageVariant(d,messageId),
             setVariant=function(value)
                 local current=self:GetScheduleEditorDraft();current.messageVariants[messageId]=value

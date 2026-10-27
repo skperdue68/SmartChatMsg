@@ -76,9 +76,27 @@ editorOption.refreshFunc(holder)
 eq(holder:GetHeight(),editor:GetHeight()+60,"LAM refresh and direct refresh must agree")
 print("initial and refreshed settings reserve all message rows and the entry box before Scheduling")
 
+local nameEdit=assert(named.SCM_SavedMessageNameEdit1,'saved message name field required')
+local update=assert(named.SCM_SavedMessageUpdateButton1);local revert=assert(named.SCM_SavedMessageRevertButton1)
+local entry=s.savedVars.messages[1];local text=entry.text;local used=entry.useCount
+nameEdit:SetText('Early promotion');nameEdit.handlers.OnTextChanged(nameEdit);eq(s.settings:IsMessageEntryDirty(entry),true)
+update.handlers.OnClicked();eq(entry.name,'Early promotion');eq(entry.text,text);eq(entry.useCount,used);eq(s.settings:IsMessageEntryDirty(entry),false)
+nameEdit:SetText('Draft rename');nameEdit.handlers.OnTextChanged(nameEdit);revert.handlers.OnClicked();eq(entry.name,'Early promotion');eq(nameEdit:GetText(),'Early promotion')
+nameEdit:SetText('');nameEdit.handlers.OnTextChanged(nameEdit);update.handlers.OnClicked();eq(entry.name,nil)
+local newName=assert(named.SCM_NewMessageNameEdit);local newText=named.SCM_EnterMessageEditBox
+newName:SetText('New named notice');newName.handlers.OnTextChanged(newName);newText:SetText('Actual outgoing message.');newText.handlers.OnTextChanged(newText)
+named.SCM_MessagesEditorAddButton.handlers.OnClicked();local added=s.savedVars.messages[#s.savedVars.messages];eq(added.name,'New named notice');eq(added.text,'Actual outgoing message.');eq(newName:GetText(),'')
+assert(schedule:GetTop()>named.SCM_EnterMessageBackdrop:GetBottom(),'name fields must remain inside the editor height')
+print('PASS saved/new optional names, Update/Revert, name clearing and editor layout')
+
 s.savedVars.messages={}
 editor:RefreshEditor()
 assert(holder:GetHeight()>0,"an empty list still reserves the Enter Message box")
 assert(holder:GetHeight()<initial,"shrinking a message list must shrink the holder")
 assert(schedule:GetTop()>named.SCM_EnterMessageBackdrop:GetBottom())
 print("an empty message list still places Scheduling below the entry box")
+
+
+newText:SetText('Hi 🌈');newText.handlers.OnTextChanged(newText);eq(named.SCM_NewMessageCharacterCount:GetText(),'4/350')
+newText:SetText(string.rep('a',351));newText.handlers.OnTextChanged(newText);eq(named.SCM_NewMessageCharacterCount:GetText(),'351/350')
+print('PASS live Unicode character counts for native new message editor')
