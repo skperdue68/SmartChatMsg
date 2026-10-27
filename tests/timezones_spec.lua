@@ -31,7 +31,7 @@ eq(s:GetGuildSchedule('ad','Amber Traders').eventAtUtc,old+10800)
 eq(s:FormatEasternDateTime(old),'2026-10-13 08:00 PM EDT','explicit Eastern helpers stay Eastern')
 -- Imported legacy schedules remain Eastern even when the receiver was Pacific.
 local legacy=exported:gsub('GENERALTIMEZONE|PT\n','')
-assert(s:ImportSettingsFromString(legacy));eq(s:GetSchedulingTimeZone(),'ET')
+assert(s:ImportSettingsFromString(legacy));eq(s:GetSchedulingTimeZone(),'PT','omitted global zone preserves recipient default')
 eq(s:GetGuildSchedule('ad','Amber Traders').eventAtUtc,old)
 -- Clock times stay fixed across the DST change in every supported zone.
 for _,zone in ipairs({'ET','CT','MT','PT'}) do
@@ -44,6 +44,7 @@ for _,zone in ipairs({'ET','CT','MT','PT'}) do
     eq(s:GetSchedulePhase(schedule,first[2].startsAtUtc),'DAY')
 end
 -- A zone change cancels only addon-owned text, keeps personal input and cooldowns.
+assert(s:SetSchedulingTimeZone('ET'))
 now=old-3600;s:ResetAllCooldowns();s:TickSchedules();assert(s.pendingRestoreState)
 CHAT_SYSTEM:GetEditControl():SetText('Keep my typing')
 local last=s:GetGuildLastUsedAt('ad','Amber Traders')

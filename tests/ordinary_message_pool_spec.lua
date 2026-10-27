@@ -37,8 +37,8 @@ assert(s:ImportSettingsFromString(exported));eq(s:GetCommandGuildSettings('ad','
 -- UUIDs remain distinct when identical text has different ordinary pool states.
 settings=setup();s.savedVars.messages[2].text='Disabled notice';exported=f.currentExport();assert(s:ImportSettingsFromString(exported));eq(#s.savedVars.messages,2);eq(#s:GetOrdinaryMessageEntriesForCommandAndGuild('ad','Amber Traders'),1);eq(s:GetOrdinaryMessageEntriesForCommandAndGuild('ad','Amber Traders')[1].id,'enabled')
 -- Local locks retain private ordinary pool membership across command-ID remaps.
-settings=setup();assert(s:SetMessageLocked('disabled',true));exported=f.currentExport();assert(not exported:find('MESSAGEPOOL_V1|ad|Amber Traders|disabled',1,true));assert(s:ImportSettingsFromString(exported:gsub('|ad|','|new-command|')));eq(s:GetCommandGuildSettings('new-command','Amber Traders',false).disabledMessageIds.disabled,true)
+settings=setup();assert(s:SetMessageLocked('disabled',true));exported=f.currentExport();assert(not exported:find('MESSAGEPOOL_V1|ad|Amber Traders|disabled',1,true));assert(s:ImportSettingsFromString(exported:gsub('|ad|','|new-command|')));eq(s:GetCommandGuildSettings('ad','Amber Traders',false).disabledMessageIds.disabled,true)
 -- A source with no per-guild behavior record cannot enable a private local lock.
 local minimal=exported:gsub('GUILDSETTING[^\n]*\n','')
-assert(s:ImportSettingsFromString(minimal:gsub('|ad|','|new-command|')));eq(s:GetCommandGuildSettings('new-command','Amber Traders',false).disabledMessageIds.disabled,true)
+assert(s:ImportSettingsFromString(minimal:gsub('|ad|','|new-command|')));eq(s:GetCommandGuildSettings('ad','Amber Traders',false).disabledMessageIds.disabled,true)
 print('Ordinary pool controls filter manual/startup/Zone/repeat/retry, retain scheduled/library/peer behavior, and survive editing, reload and portable UUID transfer')

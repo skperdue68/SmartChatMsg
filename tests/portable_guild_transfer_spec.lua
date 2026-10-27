@@ -28,15 +28,15 @@ eq(s:GetSavedChatChannel("ad","Amber Traders"),"Guild")
 -- A missing referenced guild skips the message rather than pointing at another slot.
 GetGuildName=function(id) if id==101 then return "Different Guild" elseif id==202 then return "Amber Traders" end;return "" end
 assert(s:ImportSettingsFromString(exported))
-eq(#s.savedVars.messages,0)
+eq(#s.savedVars.messages,1,"skipped incoming records do not delete local content")
 local log=table.concat(notices,"\n")
 assert(log:find("Blue Traders",1,true) and log:find("MESSAGE",1,true),log)
 -- Missing primary guilds must skip settings and schedules as well as messages.
 GetGuildName=function() return "Different Guild" end
 notices={};assert(s:ImportSettingsFromString(exported))
-eq(s.savedVars.defaultGuildIndex,nil)
-eq(#s.savedVars.messages,0)
-assert(not next(s.savedVars.commandGuildSettings))
+eq(s.savedVars.defaultGuildIndex,2,"skipped default-guild record keeps recipient choice")
+eq(#s.savedVars.messages,1,"skipped incoming records do not delete local content")
+assert(next(s.savedVars.commandGuildSettings),"absent guild settings remain local")
 assert(table.concat(notices,"\n"):find("Amber Traders",1,true))
 GetGuildName=originalName
 print("portable guild names, command parameters, channel references and missing-guild notices passed")
@@ -46,7 +46,7 @@ local legacy="SCM_EXPORT_V1\nDEFAULT|1\nCOMMAND|legacy|events||\nMESSAGE|old|leg
 GetGuildName=function(id) if id==101 then return "Blue Traders" elseif id==202 then return "Amber Traders" end;return "" end
 assert(s:ImportSettingsFromString(legacy))
 eq(s.savedVars.defaultGuildIndex,2);eq(s.savedVars.messages[1].guildIndex,2)
-eq(s.savedVars.messages[1].text,"Use /g2.")
+local importedLegacy;for _,message in ipairs(s.savedVars.messages) do if message.id=="old" then importedLegacy=message end end;assert(importedLegacy);eq(importedLegacy.text,"Use /g2.")
 local stable=f.currentExport()
 local before=s.savedVars.messages[1].text
 assert(not s:ImportSettingsFromString("not an export"))
@@ -54,14 +54,14 @@ eq(s.savedVars.messages[1].text,before)
 -- Unsupported legacy source slots are skipped rather than bound to a local guild.
 notices={}
 assert(s:ImportSettingsFromString("SCM_EXPORT_V1\nDEFAULT|1\nCOMMAND|legacy|events||\nEND"))
-eq(s.savedVars.defaultGuildIndex,nil)
+eq(s.savedVars.defaultGuildIndex,2,"skipped default-guild record keeps recipient choice")
 assert(table.concat(notices,"\n"):find("unknown source guild slot 1",1,true))
 -- Preserve local locks when the same command arrives under another ID.
 f.reset();local private=f.entry("private","ad","Amber Traders","My private content","Guild");private.locked=true
 assert(s:ImportSettingsFromString("SCM_EXPORT_V2\nCOMMAND|replacement|recruit||\nMESSAGE|remote|replacement|Amber Traders|Amber Traders|Public /g2||\nEND"))
 local kept
 for _,e in ipairs(s.savedVars.messages) do if e.locked then kept=e end end
-assert(kept and kept.commandId=="replacement" and kept.text=="My private content")
+assert(kept and kept.commandId=="ad" and kept.text=="My private content")
 GetGuildName=originalName
 print("legacy mapping, transactional failures and locked message preservation passed")
 

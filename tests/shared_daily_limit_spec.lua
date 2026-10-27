@@ -52,7 +52,7 @@ CHAT_SYSTEM:GetEditControl():SetText('');s:HandleRestoreWatcherChatMessage(2,CHA
 -- Recipient command IDs can differ when merging portable settings.
 local portable=f.currentExport();s.savedVars.commands[1].id='recipient';s.savedVars.commandGuildSettings.recipient=s.savedVars.commandGuildSettings.ad;s.savedVars.commandGuildSettings.ad=nil
 for _,entry in ipairs(s.savedVars.messages) do entry.commandId='recipient' end
-assert(s:ImportSettingsFromString(portable));c=s:GetGuildSchedule('ad','Amber Traders');eq(s:GetScheduleDailyLimitCount(c,now),1)
+assert(s:ImportSettingsFromString(portable));c=s:GetGuildSchedule('recipient','Amber Traders');eq(s:GetScheduleDailyLimitCount(c,now),1)
 print('PASS native quota placement/scope editing, malformed records, once/time-sensitive preparation, and command remap')
 
 -- Irrelevant variant observations must not reappear through legacy timeline bootstrap when hours are off.
