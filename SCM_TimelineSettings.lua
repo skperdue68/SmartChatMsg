@@ -272,7 +272,7 @@ function S:GetScheduleMessagePhaseText(messageId,schedule)
  local labels={}
  for _,row in ipairs(schedule.reminders or {}) do if includes(row.messageIds,messageId) then labels[#labels+1]=row.label end end
  local text=#labels>0 and table.concat(labels,' · ') or 'Not selected for any reminder'
- if schedule.specialPattern and schedule.specialPattern~='NONE' then text=text..' · '..self:GetScheduleVariantLabel(self:GetScheduleMessageVariant(schedule,messageId),schedule.specialPattern) end
+ if schedule.specialPattern and schedule.specialPattern~='NONE' then text=text..' · '..self:GetScheduleVariantLabel(self:GetScheduleMessageVariant(schedule,messageId),schedule.specialPattern,schedule) end
  return text
 end
 local sortEntries=S.SortScheduledMessageEntries

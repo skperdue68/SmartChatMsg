@@ -177,6 +177,10 @@ function SmartChatMsg:ExportScheduleRecords()
                 local once={};for _,phase in ipairs(phases) do once[#once+1]=s.phaseOnce and s.phaseOnce[phase] and "1" or "0" end
                 lines[#lines+1]=encode({"SCHEDULEOPTIONS_V1",id,guild,s.mode or "EVENT",s.recurrence or "NONE",tostring(s.recurrenceInterval or 1),table.concat(days),tostring(s.promotionDays or ""),tostring(s.endDelayMinutes or ""),table.concat(once),s.startingSoonEnabled and "1" or "0",tostring(s.startingSoonMinutes or 120),tostring(s.phaseIntervals.SOON or "")})
                 lines[#lines+1]=encode({"SCHEDULEPATTERN_V1",id,guild,s.specialPattern or "NONE",tostring(s.rotationWeeks or 4),table.concat(s.rotationFactions or {"AD","EP","DC"},",")})
+                lines[#lines+1]=encode({'SCHEDULEEVENTROTATION_V1',id,guild,tostring(s.rotationEvery or 1)})
+                for _,activity in ipairs(s.rotationEvents or {}) do lines[#lines+1]=encode({'SCHEDULEACTIVITY_V1',id,guild,activity.id,activity.name}) end
+                local exceptionDates={};for date in pairs(s.occurrenceExceptions or {}) do exceptionDates[#exceptionDates+1]=date end;table.sort(exceptionDates)
+                for _,date in ipairs(exceptionDates) do lines[#lines+1]=encode({'SCHEDULEEXCEPTION_V1',id,guild,date,s.occurrenceExceptions[date].action}) end
                 for messageId,variant in pairs(s.messageVariants or {}) do
                     if not self:IsMessageLocked(messageId) then lines[#lines+1]=encode({"SCHEDULEVARIANT_V1",id,guild,messageId,variant}) end
                 end
@@ -219,6 +223,17 @@ function SmartChatMsg:ImportScheduleRecords(records,imported)
             elseif kind=="SCHEDULEPATTERN_V1" then
                 d.specialPattern,d.rotationWeeks=row[4],row[5]
                 d.rotationFactions={};for faction in (row[6] or ""):gmatch("[^,]+") do d.rotationFactions[#d.rotationFactions+1]=faction end
+            elseif kind=='SCHEDULEEVENTROTATION_V1' then
+                if not row[4] or row[4]=='' then return false,'Imported activity rotation needs its occurrence count.' end
+                if d.rotationEvery~=nil then return false,'Duplicate activity rotation settings.' end
+                d.rotationEvery=row[4]
+            elseif kind=='SCHEDULEACTIVITY_V1' then
+                d.rotationEvents=d.rotationEvents or {};d.rotationEvents[#d.rotationEvents+1]={id=row[4],name=row[5]}
+            elseif kind=='SCHEDULEEXCEPTION_V1' then
+                if not row[4] or row[4]=='' then return false,'Imported cancellation needs a date.' end
+                d.occurrenceExceptions=d.occurrenceExceptions or {}
+                if d.occurrenceExceptions[row[4]] then return false,'Duplicate occurrence cancellation.' end
+                d.occurrenceExceptions[row[4]]={action=row[5]}
             elseif kind=="SCHEDULEVARIANT_V1" then
                 if not row[4] or row[4]=="" then return false,"Imported event group is missing its message ID." end
                 d.messageVariants=d.messageVariants or {};d.messageVariants[row[4]]=row[5]

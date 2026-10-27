@@ -538,10 +538,10 @@ end
 -- Restrict their grammar so malformed tokens remain literal text.
 function SmartChatMsg:ParseScheduledEventToken(token)
     token=zo_strlower(tostring(token or ""))
-    local valid={eventdate=true,eventtime=true,eventwhen=true,eventfaction=true,eventcountdown=true}
+    local valid={eventdate=true,eventtime=true,eventwhen=true,eventfaction=true,eventactivity=true,eventcountdown=true}
     if valid[token] then return token,0 end
     local named,mark=token:match("^(event%a+):([%a][%w_]*)$")
-    if valid[named] and named~="eventfaction" then return named,0,mark end
+    if valid[named] and named~="eventfaction" and named~="eventactivity" then return named,0,mark end
     local kind,sign,amount,unit=token:match("^(event%a+)([+%-])(%d+)([mhd])$")
     if kind~="eventtime" and kind~="eventcountdown" and kind~="eventwhen" and kind~="eventdate" then return nil end
     amount=tonumber(amount)
@@ -566,6 +566,7 @@ function SmartChatMsg:GetScheduledEventTokenValue(token,commandId,guildName,cont
     if mark then local important=(schedule.importantTimes or {})[mark];if not important then return nil end;offset=important.offsetMinutes*60 end
     local now=context and context.now or GetTimeStamp()
     local occurrence=context and context.occurrence or self:GetScheduleOccurrence(schedule,now)
+    if token=="eventactivity" then return occurrence and self:GetScheduleActivityName(schedule,occurrence.eventAtUtc) end
     if token=="eventfaction" then
         return occurrence and self:GetScheduleFactionName(schedule,occurrence.eventAtUtc)
     end

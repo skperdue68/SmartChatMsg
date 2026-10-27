@@ -116,7 +116,7 @@ function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName, commandId
         if commandId and eventKind=="eventtime" then
             return self:GetScheduledEventTokenValue(token,commandId,guildName) or "%"..token.."%"
         end
-        if commandId and (eventKind == "eventdate" or eventKind == "eventtime" or eventKind == "eventfaction") then
+        if commandId and (eventKind == "eventdate" or eventKind == "eventtime" or eventKind == "eventfaction" or eventKind == "eventactivity") then
             return self:GetScheduledEventTokenValue(token,commandId,guildName) or "%"..token.."%"
         end
         if commandId and eventKind == "eventwhen" then
@@ -184,8 +184,9 @@ function SmartChatMsg:MatchesIncomingMessage(entry, guildName, normalizedText)
     local eventAt=occurrence and occurrence.eventAtUtc or (schedule and schedule.eventAtUtc)
     local eventWhen=schedule and self:GetScheduledEventTokenValue("eventwhen",entry.commandId,guildName)
     local eventFaction=schedule and self:GetScheduledEventTokenValue("eventfaction",entry.commandId,guildName)
-    if not cached or cached.schedule~=schedule or cached.text ~= entry.text or cached.guildName ~= guildName or cached.eventAt~=eventAt or cached.eventWhen~=eventWhen or cached.eventFaction~=eventFaction then
-        cached = { schedule=schedule,text = entry.text, guildName = guildName,eventAt=eventAt,eventWhen=eventWhen,eventFaction=eventFaction, matcher = self:BuildIncomingMessageMatcher(entry.text, guildName,entry.commandId) }
+    local eventActivity=schedule and self:GetScheduledEventTokenValue("eventactivity",entry.commandId,guildName)
+    if not cached or cached.eventActivity~=eventActivity or cached.schedule~=schedule or cached.text ~= entry.text or cached.guildName ~= guildName or cached.eventAt~=eventAt or cached.eventWhen~=eventWhen or cached.eventFaction~=eventFaction then
+        cached = { eventActivity=eventActivity,schedule=schedule,text = entry.text, guildName = guildName,eventAt=eventAt,eventWhen=eventWhen,eventFaction=eventFaction, matcher = self:BuildIncomingMessageMatcher(entry.text, guildName,entry.commandId) }
         self.incomingMessageMatchCache[entry] = cached
     end
     local matcher = cached.matcher

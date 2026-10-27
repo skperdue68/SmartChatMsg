@@ -1867,6 +1867,7 @@ function SmartChatMsg:RefreshSettingsUI()
         self.settings.controls.importExportEditor:RefreshEditor()
     end
 
+    if self.RefreshRotationEditorChoices then self:RefreshRotationEditorChoices() end
     if self.settings.panel then
         CALLBACK_MANAGER:FireCallbacks("LAM-RefreshPanel", self.settings.panel)
     end
