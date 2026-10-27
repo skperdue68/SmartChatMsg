@@ -153,6 +153,13 @@ function SmartChatMsg:ToggleStatusSection(section)
     if self.statusPanelVisible then self:RefreshStatusPanel() end
 end
 
+function SmartChatMsg:GetStatusPanelHeaderText()
+    local text='SmartChatMsg Status | Scheduled sending: '..(self:IsScheduledSendingEnabled() and 'ON' or 'OFF')
+    local pause=self.scheduledSendPause
+    if pause and pause.endsAt>GetTimeStamp() then text=text..' | Other schedules wait '..self:FormatStatusDuration(pause.endsAt-GetTimeStamp()) end
+    return text
+end
+
 function SmartChatMsg:GetRepeatCardTimingText(row)
     local text="Last Sent: "..tostring(row.lastSentText)
     if row.isActive then
@@ -212,6 +219,7 @@ function SmartChatMsg:GetScheduledDailyLimitNotice(commandId,guildName,utc)
 end
 local previousScheduleStatusText=SmartChatMsg.GetScheduleStatusText
 function SmartChatMsg:GetScheduleStatusText(commandId,guildName)
+    if not self:IsScheduledSendingEnabled() then return 'Scheduled sending OFF - use /scm on to resume' end
     local notice=self:GetScheduledDailyLimitNotice(commandId,guildName)
     if notice then return 'Active — '..notice end
     return previousScheduleStatusText(self,commandId,guildName)
@@ -219,6 +227,7 @@ end
 
 function SmartChatMsg:GetScheduledCardDetails(commandId,guildName,controlState)
     if controlState=="OFF" then return "Inactive","Off" end
+    if not self:IsScheduledSendingEnabled() then return 'Suspended - Scheduled sending OFF','Scheduled sending OFF' end
     local dailyLimit=self:GetScheduledDailyLimitNotice(commandId,guildName)
     if dailyLimit then return 'Active — '..dailyLimit,'Waiting for an eligible period' end
     local wait=self:GetScheduleChatWaitText(commandId,guildName)
@@ -321,7 +330,7 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                             guildName = guildName,
                             channelText = self:GetAutoPopulateChannelStatusText(command.id, guildName),
                             reminderMinutes = reminderMinutes,
-                            isActive = isActive,
+                            isActive = isActive and (not scheduled or self:IsScheduledSendingEnabled()),
                             statusText = statusText,
                             controlState = controlState,
                             lastUsedAt = lastUsedAt,
@@ -727,6 +736,7 @@ function SmartChatMsg:GetStatusPanelTargetSize(active, rows)
         contentWidth = math.max(contentWidth, self:EstimateStatusPanelTextWidth("No repeat commands configured."))
     end
 
+    contentWidth=math.max(contentWidth,measured(panel and panel.titleLabel,self:GetStatusPanelHeaderText()))
     local width = math.max(minWidth, math.min(maxWidth, contentWidth + 72))
 
     local height = 58
@@ -1176,7 +1186,7 @@ function SmartChatMsg:CreateStatusPanel()
     local title = WINDOW_MANAGER:CreateControl("SCM_StatusPanelTitle", panel, CT_LABEL)
     title:SetFont("ZoFontWinH4")
     title:SetColor(0.95, 0.83, 0.46, 1)
-    title:SetText("SmartChatMsg Status")
+    title:SetText(self:GetStatusPanelHeaderText())
     title:SetAnchor(TOPLEFT, dragBar, TOPLEFT, 0, 0)
 
     local closeButton = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCloseButton", panel, CT_BUTTON)
@@ -1379,6 +1389,7 @@ function SmartChatMsg:RefreshStatusPanel()
         return
     end
 
+    panel.titleLabel:SetText(self:GetStatusPanelHeaderText())
     local active = self:GetActiveAutoPopulate()
     local rows = {}
 

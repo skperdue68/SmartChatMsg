@@ -105,7 +105,7 @@ function SmartChatMsg:ProcessChatPopulationQueue()
         local valid=self:GetCommandById(request.commandId) and self:GetGuildSlotByName(request.guildName)
             and self:GetGuildRunAt(request.commandId,request.guildName)==request.runAt
         if request.metadata.scheduledDelivery then
-            valid=valid and state=="RUNNING" and phase==request.metadata.scheduledPhase
+            valid=valid and self:IsScheduledSendingEnabled() and state=="RUNNING" and phase==request.metadata.scheduledPhase
                 and self:GetGuildSchedule(request.commandId,request.guildName)==request.schedule
                 and (not request.metadata.scheduledOccurrence or (self:GetScheduleOccurrence(request.schedule,GetTimeStamp()) or {}).occurrenceKey==request.metadata.scheduledOccurrence)
             if valid and request.schedule.delivery=="ZONE" then
@@ -251,6 +251,7 @@ function SmartChatMsg:ScheduleNextScheduledDelivery(commandId,guildName,extraDel
 end
 
 function SmartChatMsg:RequestScheduledDelivery(commandId,guildName,manual)
+    if not self:IsScheduledSendingEnabled() then return false,"Scheduled sending is OFF. Use /scm on to resume." end
     local state,phase=self:GetGuildScheduleState(commandId,guildName)
     if state~="RUNNING" then return false,"Schedule is "..state:lower().."." end
     local pacingEndsAt,pacingReason=self:GetSchedulePacingDelay(commandId,guildName)
@@ -424,7 +425,7 @@ function SmartChatMsg:TickSchedules()
         seen[key]=true
         local state,phase=self:GetGuildScheduleState(id,guild)
         if slot and self:GetCommandById(id) then self:NotifyScheduleTransition(id,guild,state) end
-        if state~="RUNNING" or not slot or not self:GetCommandById(id) then
+        if not self:IsScheduledSendingEnabled() or state~="RUNNING" or not slot or not self:GetCommandById(id) then
             self:StopScheduledDelivery(id,guild)
         else
             local schedule=self:GetGuildSchedule(id,guild)
@@ -486,6 +487,7 @@ function SmartChatMsg:InitializeScheduler()
     self.scheduledSendPause=nil
     self.scheduleNoticeStates,self.cooldownNoticeDeadlines={},{}
     self:ShowStatusMessage("SmartChatMsg is running. Scheduled messages wait 3 minutes, until "..self:FormatScheduleDateTime(self.scheduleStartupEndsAt)..".")
+    if not self:IsScheduledSendingEnabled() then self:AddLocalChatMessage('[SmartChatMsg] Scheduled sending is OFF (saved preference). Use /scm on to enable scheduled announcements. Incoming monitoring and ordinary commands remain active.') end
     local active=self:GetActiveAutoPopulate()
     if active and self:GetGuildRunAt(active.commandId,active.guildName)=="SCHEDULED" then active.scheduledOwner=true end
     EVENT_MANAGER:RegisterForUpdate(self.name.."_Scheduler",1000,function() SmartChatMsg:TickSchedules() end)

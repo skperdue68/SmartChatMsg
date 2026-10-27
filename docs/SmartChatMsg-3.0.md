@@ -167,3 +167,8 @@ The illustrated placeholders throughout this guide are intentionally empty. Capt
 ## Context-sensitive settings
 
 In the ESO settings, Scheduled hides ordinary Repeat Frequency, Retry Delay, Cooldown and Auto Populate Chat on Zone controls; periods provide their own timing. Editable submenus open when you load a command/guild or when they become relevant, and unavailable or read-only sections close. Your manual collapse is retained until the section becomes relevant again or you select a different command/guild. Hover over period flags and timing controls for explanations.
+
+
+## Scheduled sending switch
+
+Use /scm off to suspend scheduled sending for this account. The setting is saved across reload/logout. Incoming duplicate monitoring continues, and ordinary On Demand, Startup and Auto Populate Chat on Zone remain available. Untouched pending scheduled messages and queued scheduled requests are withdrawn; edited player text is preserved. /scm on resumes currently eligible scheduled periods without bypassing startup delay, cooldowns or expired one-time notices. The status header shows Scheduled sending: OFF and, while applicable, a countdown of the five-minute wait for other scheduled commands. Startup reminds you how to re-enable schedules when the saved switch is off. Built-in names on, off, schedule, status, retry, resetcooldowns, send, scm and scmdebug cannot be created, renamed to or imported as custom commands.
