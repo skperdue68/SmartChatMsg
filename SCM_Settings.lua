@@ -1038,7 +1038,7 @@ local function BuildMessagesBehaviorSettings(parent)
 
     local reminderLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesReminderLabel", container, CT_LABEL)
     reminderLabel:SetFont("ZoFontWinH4")
-    reminderLabel:SetText("Repeat Every (mins)")
+    reminderLabel:SetText("Repeat Frequency (mins)")
     reminderLabel:SetDimensions(180, 30)
     reminderLabel:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 0)
 
@@ -1089,7 +1089,7 @@ local function BuildMessagesBehaviorSettings(parent)
     reminderRetryEditBox:SetMaxInputChars(4)
     reminderRetryEditBox:SetText("")
     reminderRetryEditBox:SetHandler("OnTextChanged", function(self)
-        if not HasActiveRepeatAfter() then
+        if SmartChatMsg.settings.pendingGuildAutoPopulateOnZone == true or not HasActiveRepeatAfter() then
             return
         end
 
@@ -1326,7 +1326,13 @@ local function BuildMessagesBehaviorSettings(parent)
         openStatusPanelCheckbox:SetMouseEnabled(automationEnabled)
         openStatusPanelCheckbox:SetAlpha(automationEnabled and 1 or 0.5)
 
-        local repeatEnabled = HasActiveRepeatAfter()
+        local frequencyEnabled = shouldShow and SmartChatMsg.settings.pendingGuildAutoPopulateOnZone ~= true
+        reminderEditBox:SetMouseEnabled(frequencyEnabled)
+        if reminderEditBox.SetEditEnabled then reminderEditBox:SetEditEnabled(frequencyEnabled) end
+        reminderBackdrop:SetAlpha(frequencyEnabled and 1 or 0.5)
+        reminderLabel:SetAlpha(frequencyEnabled and 1 or 0.5)
+
+        local repeatEnabled = frequencyEnabled and HasActiveRepeatAfter()
         if not repeatEnabled then
             SmartChatMsg.settings.pendingGuildReminderRetryMinutes = "0"
             if reminderRetryEditBox:GetText() ~= "0" then
@@ -1594,24 +1600,14 @@ local function BuildMessagesEditor(parent)
             revertButton = revertButton,
             deleteButton = deleteButton,
         }
-        local lockButton=WINDOW_MANAGER:CreateControlFromVirtual(string.format("SCM_SavedMessageLockButton%d",controlId),row,"ZO_DefaultButton")
-        lockButton:SetDimensions(70,24)
-        lockButton:SetAnchor(TOPLEFT,updateButton,BOTTOMLEFT,0,4)
-        lockButton:SetText(entry.locked==true and "Unlock" or "Lock")
-        lockButton:SetHandler("OnClicked",function()
-            SmartChatMsg:SetMessageLocked(entry.id,entry.locked~=true)
-            lockButton:SetText(entry.locked==true and "Unlock" or "Lock")
-            RefreshRowState(rowData)
-        end)
-
         local testButton=WINDOW_MANAGER:CreateControlFromVirtual(string.format("SCM_SavedMessageTestButton%d",controlId),row,"ZO_DefaultButton")
         testButton:SetDimensions(70,24)
-        testButton:SetAnchor(LEFT,lockButton,RIGHT,6,0)
+        testButton:SetAnchor(TOPLEFT,updateButton,BOTTOMLEFT,0,4)
         testButton:SetText("Test")
         testButton:SetHandler("OnClicked",function() SmartChatMsg:TestMessagePreview(entry.id) end)
 
         local enabledCheckbox=WINDOW_MANAGER:CreateControlFromVirtual(string.format('SCM_SavedMessageEnabled%d',controlId),row,'ZO_CheckButton')
-        enabledCheckbox:SetDimensions(24,24);enabledCheckbox:SetAnchor(TOPLEFT,lockButton,BOTTOMLEFT,0,4)
+        enabledCheckbox:SetDimensions(24,24);enabledCheckbox:SetAnchor(TOPLEFT,testButton,BOTTOMLEFT,0,4)
         if ZO_CheckButton_SetLabelText then ZO_CheckButton_SetLabelText(enabledCheckbox,'Enabled') end
         local function toggle(_,checked)
             local guild=entry.guildName or SmartChatMsg:GetGuildNameByIndex(entry.guildIndex)

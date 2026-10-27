@@ -374,7 +374,7 @@ function SmartChatMsg:ToggleReminderAutomationFromStatusPanel(commandId, guildNa
     end
     local reminderMinutes = self:GetGuildReminderMinutes(commandId, guildName)
     if not reminderMinutes or reminderMinutes <= 0 then
-        ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, string.format("%s does not have Repeat Every configured for %s.", slashCommandName, tostring(guildName)))
+        ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, string.format("%s does not have Repeat Frequency configured for %s.", slashCommandName, tostring(guildName)))
         return
     end
 
