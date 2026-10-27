@@ -3,32 +3,33 @@ local s,eq=f.scm,f.eq
 local tests={}
 local function test(name,fn) tests[#tests+1]={name,fn} end
 local function setup()
-    f.reset();s.repeatPanelPaused={}
+    f.reset();s.repeatPanelDisabled={}
     CHAT_SYSTEM.messages={};function CHAT_SYSTEM:AddMessage(t) self.messages[#self.messages+1]=t end
     f.entry('a','ad','Amber Traders','A scheduled message','Guild')
     assert(s:SaveGuildSchedule('ad','Amber Traders',{mode='WINDOW',enabled=true,delivery='REPEAT',
         startDate='2026-10-08',startTime='08:00 PM',endDate='2026-10-08',endTime='09:00 PM',intervalMinutes=5}))
     now=s:GetGuildSchedule('ad','Amber Traders').startsAtUtc
 end
-test('scheduled toggle cycles Off On Paused Off with Enable Pause Disable buttons',function()
+test('scheduled toggle alternates enabled and disabled without a paused step',function()
     setup();local c=s:GetGuildSchedule('ad','Amber Traders');c.enabled=false
     local function row(state,label)
         local rows=s:GetRepeatStatusPanelRows();eq(#rows,1)
         eq(rows[1].controlState,state);eq(rows[1].toggleText,label)
     end
-    row('OFF','Enable');s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders')
-    row('ON','Pause')
-    assert(s.pendingRestoreState,'On must prepare eligible scheduled text')
-    s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');row('PAUSED','Disable')
-    eq(s.pendingRestoreState,nil);s:TickSchedules();eq(s.pendingRestoreState,nil)
+    row('OFF','Enable');s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');row('ON','Disable')
+    assert(s.pendingRestoreState,'Enable must prepare eligible scheduled text')
+    s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');row('OFF','Enable')
+    eq(c.paused,false);eq(s.pendingRestoreState,nil);s:TickSchedules();eq(s.pendingRestoreState,nil)
+    s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');row('ON','Disable')
     s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');row('OFF','Enable')
     s:TickSchedules();eq(s.pendingRestoreState,nil)
 end)
+
 test('rows exist only inside the occurrence, even when off or paused',function()
     setup();local c=s:GetGuildSchedule('ad','Amber Traders')
     now=c.startsAtUtc-1;eq(#s:GetRepeatStatusPanelRows(),0)
     now=c.startsAtUtc;c.enabled=false;eq(#s:GetRepeatStatusPanelRows(),1)
-    c.paused=true;assert(s:GetRepeatStatusPanelRows()[1].statusText:find('Paused',1,true)==1)
+    c.paused=true;assert(s:GetRepeatStatusPanelRows()[1].statusText:find('Inactive',1,true)==1)
     now=c.endsAtUtc;eq(#s:GetRepeatStatusPanelRows(),0)
 end)
 test('active cards show actual startup delay, shared spacing, cooldown and ready state',function()
@@ -57,12 +58,12 @@ test('cooldown reset clears usage, peer, zone, retry and once deadlines without 
     eq(c.nextDueAt,nil);eq(next(c.completedOccurrences),nil);eq(s.scheduledSendPause,nil)
     eq(s.scheduleStartupEndsAt,now+180);eq(s.pendingRestoreState,nil)
 end)
-test('pause preserves player edits and can resume without a duplicate unsent buffer',function()
+test('disable preserves player edits without a duplicate unsent buffer',function()
     setup();s:TickSchedules();assert(s.pendingRestoreState)
     CHAT_SYSTEM:GetEditControl():SetText('My edited message')
     s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders')
     eq(CHAT_SYSTEM:GetEditControl():GetText(),'My edited message');eq(s.pendingRestoreState,nil)
-    assert(s:GetRepeatStatusPanelRows()[1].statusText:find('Paused',1,true)==1)
+    assert(s:GetRepeatStatusPanelRows()[1].statusText:find('Inactive',1,true)==1)
 end)
 test('all four card lines fit inside the backdrop with padding',function()
     setup();TOPLEFT='TOPLEFT';BOTTOMLEFT='BOTTOMLEFT';TOPRIGHT='TOPRIGHT'
@@ -99,8 +100,8 @@ test('ordinary repeat controls cycle and stop queued work',function()
     s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');eq(s:GetReminderPanelControlState('ad','Amber Traders'),'ON')
     assert(s.pendingRestoreState)
     s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');eq(s.pendingRestoreState,nil)
-    eq(s:GetReminderPanelControlState('ad','Amber Traders'),'PAUSED')
-    s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');eq(s:GetReminderPanelControlState('ad','Amber Traders'),'OFF')
+    eq(s:GetReminderPanelControlState('ad','Amber Traders'),'OFF')
+    s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');eq(s:GetReminderPanelControlState('ad','Amber Traders'),'ON')
 end)
 test('prepared and expired unsent messages produce visible local notices',function()
     setup();s:TickSchedules()
@@ -126,12 +127,13 @@ test('panel cannot enable a second scheduled Zone owner',function()
     eq(c.enabled,false);eq(c.paused,false)
     assert(CHAT_SYSTEM.messages[#CHAT_SYSTEM.messages]:find('Only one enabled',1,true))
 end)
-test('paused state survives settings import and always disables next',function()
+test('disabled state survives settings import and enables next',function()
     setup()
     s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders')
     ZO_SavedVars={NewAccountWide=function() return s.savedVars end}
     local export=f.currentExport();assert(s:ImportSettingsFromString(export))
-    local state,nextState=s:GetReminderPanelControlState('ad','Amber Traders');eq(state,'PAUSED');eq(nextState,'OFF')
+    local state,nextState=s:GetReminderPanelControlState('ad','Amber Traders');eq(state,'OFF');eq(nextState,'ON')
+
 end)
 local failures=0
 for _,t in ipairs(tests) do local ok,err=pcall(t[2]);if ok then print('PASS '..t[1]) else failures=failures+1;print('FAIL '..t[1]..': '..tostring(err)) end end

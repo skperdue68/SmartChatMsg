@@ -177,17 +177,17 @@ function SmartChatMsg:GetReminderPanelControlState(commandId,guildName)
     if self:GetGuildRunAt(commandId,guildName)=="SCHEDULED" then
         local schedule=self:GetGuildSchedule(commandId,guildName)
         if not schedule then return "OFF","ON" end
-        if schedule.paused then return "PAUSED","OFF" end
-        return schedule.enabled and "ON" or "OFF",schedule.enabled and "PAUSED" or "ON"
+        local active=schedule.enabled and not schedule.paused
+        return active and "ON" or "OFF",active and "OFF" or "ON"
     end
     local key=self:GetReminderStateKey(commandId,guildName)
-    local paused=self.repeatPanelPaused and self.repeatPanelPaused[key]
-    if paused then return "PAUSED","OFF" end
+    local disabled=self.repeatPanelDisabled and self.repeatPanelDisabled[key]
+    if disabled then return "OFF","ON" end
     local pending=self.pendingRestoreState and self.pendingRestoreState.metadata
     local queued=self.chatPopulationQueue and self.chatPopulationQueue[key]
     local preparing=(pending and pending.commandId==commandId and self:StringsEqualIgnoreCase(pending.guildName or "",guildName)) or queued
     local active=self:IsReminderAutomationActive(commandId,guildName) or preparing
-    return active and "ON" or "OFF",active and "PAUSED" or "ON"
+    return active and "ON" or "OFF",active and "OFF" or "ON"
 end
 
 function SmartChatMsg:IsScheduledOccurrenceCurrent(commandId,guildName)
@@ -197,7 +197,6 @@ function SmartChatMsg:IsScheduledOccurrenceCurrent(commandId,guildName)
 end
 
 function SmartChatMsg:GetScheduledCardDetails(commandId,guildName,controlState)
-    if controlState=="PAUSED" then return "Paused","Paused" end
     if controlState=="OFF" then return "Inactive","Off" end
     local wait=self:GetScheduleChatWaitText(commandId,guildName)
     if wait then return "Active — "..wait,wait end
@@ -256,7 +255,7 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                     local scheduled=self:GetGuildRunAt(command.id,guildName)=="SCHEDULED"
                     local controlState,nextState=self:GetReminderPanelControlState(command.id,guildName)
                     if (scheduled and self:IsScheduledOccurrenceCurrent(command.id,guildName))
-                        or (not scheduled and reminderMinutes and reminderMinutes>0 and controlState~="OFF") then
+                        or (not scheduled and reminderMinutes and reminderMinutes>0 and (controlState~="OFF" or (self.repeatPanelDisabled and self.repeatPanelDisabled[self:GetReminderStateKey(command.id,guildName)]))) then
                         local isActive = self:IsReminderAutomationActive(command.id, guildName)
                         local nextTriggerAt = self:GetReminderNextTriggerAt(command.id, guildName)
                         local lastUsedAt = self:GetGuildLastUsedAt(command.id, guildName)
@@ -274,9 +273,8 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                             end
                         end
 
-                        local statusText=controlState=="PAUSED" and "Paused" or controlState=="ON" and "Active" or "Inactive"
-                        if scheduled then statusText,nextSendText,nextSendAt=self:GetScheduledCardDetails(command.id,guildName,controlState)
-                        elseif controlState=="PAUSED" then nextSendText="Paused" end
+                        local statusText=controlState=="ON" and "Active" or "Inactive"
+                        if scheduled then statusText,nextSendText,nextSendAt=self:GetScheduledCardDetails(command.id,guildName,controlState) end
                         isActive=controlState=="ON"
                         local schedule=scheduled and self:GetGuildSchedule(command.id,guildName)
                         local occurrence=schedule and self:GetScheduleOccurrence(schedule,now)
@@ -308,7 +306,7 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                             nextSendText = nextSendText,
                             nextSendSeconds = nextSendSeconds,
                             nextSendAt = nextSendAt,
-                            toggleText = nextState=="PAUSED" and "Pause" or nextState=="ON" and "Enable" or "Disable",
+                            toggleText = nextState=="ON" and "Enable" or "Disable",
                         })
                     end
                 end
@@ -362,12 +360,10 @@ function SmartChatMsg:ToggleReminderAutomationFromStatusPanel(commandId, guildNa
                 end
             end
             schedule.enabled=true;schedule.paused=false
-        elseif nextState=="OFF" then
-            schedule.enabled=false;schedule.paused=false;self:StopScheduledDelivery(commandId,guildName)
         else
-            schedule.paused=true;self:StopScheduledDelivery(commandId,guildName)
+            schedule.enabled=false;schedule.paused=false;self:StopScheduledDelivery(commandId,guildName)
         end
-        self:ShowStatusMessage(slashCommandName.." / "..guildName..": "..(nextState=="ON" and "Enabled" or nextState=="OFF" and "Disabled" or "Paused")..".")
+        self:ShowStatusMessage(slashCommandName.." / "..guildName..": "..(nextState=="ON" and "Enabled" or "Disabled")..".")
         self:TickSchedules()
         if self.statusPanelVisible then self:RefreshStatusPanel() end
         return
@@ -380,18 +376,18 @@ function SmartChatMsg:ToggleReminderAutomationFromStatusPanel(commandId, guildNa
 
     local _,nextState=self:GetReminderPanelControlState(commandId,guildName)
     local key=self:GetReminderStateKey(commandId,guildName)
-    self.repeatPanelPaused=self.repeatPanelPaused or {}
-    if nextState=="PAUSED" or nextState=="OFF" then
+    self.repeatPanelDisabled=self.repeatPanelDisabled or {}
+    if nextState=="OFF" then
         self:DeactivateReminderAutomation(commandId,guildName,"status panel "..nextState)
         self:CancelQueuedChatPopulation(commandId,guildName)
         self:WithdrawObservedChatDuplicate(commandId,guildName)
         self:ToggleOffActiveAutoPopulateIfMatching(commandId,guildName)
-        self.repeatPanelPaused[key]=nextState=="PAUSED" and {} or nil
-        self:ShowStatusMessage(slashCommandName.." / "..guildName..": "..(nextState=="PAUSED" and "Paused" or "Disabled")..".")
+        self.repeatPanelDisabled[key]=true
+        self:ShowStatusMessage(slashCommandName.." / "..guildName..": Disabled.")
         if self.statusPanelVisible then self:RefreshStatusPanel() end
         return
     end
-    self.repeatPanelPaused[key]=nil
+    self.repeatPanelDisabled[key]=nil
     self:SetReminderAutomationActive(commandId,guildName,true)
     local paramText=tostring(guildSlot)
 

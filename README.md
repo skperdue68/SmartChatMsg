@@ -436,6 +436,8 @@ For On Demand and Startup combinations, use each message row's **Enabled** check
 
 Scheduled combinations use their own phase/reminder selections and ignore ordinary pool flags. Switching back to On Demand or Startup restores the ordinary selections. Disabled templates remain in the library and still recognize relevant announcements from other players for cooldown tracking. SavedVariables stores `disabledMessageIds={[messageUUID]=true}` on the command/guild settings. Native editing and reload preserve it. Portable settings export/import carries these choices with `MESSAGEPOOL_V1` records, matching by guild name and message UUID; locally locked templates retain their private selection.
 
+Status-panel command buttons now alternate between Enable and Disable. Disabled ordinary repeat entries remain available to re-enable during the UI session; scheduled entries appear only within their scheduled occurrence. Active entries still sort first, so disabling can move a card down the list. Existing saved paused schedules display inactive and Enable clears their paused state.
+
 ### Conservative spelling matches
 
 Incoming duplicate detection first tries the existing exact/normalized match. If that fails, a conservative spelling pass tolerates inserted, omitted, substituted or adjacent transposed English letters in fixed message text. Short notices with fewer than 40 fixed non-space/non-punctuation characters still require an exact match. The allowance is one letter edit for 40–159 such characters, two for 160–239, and three for longer messages. This is spelling tolerance, not a semantic similarity test.

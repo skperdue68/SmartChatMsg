@@ -53,8 +53,8 @@ test('ordinary repeat begins by command, can pause and resume, then hides when o
     local timer=assert(EVENT_MANAGER.updates[s:GetReminderTimerName('ad','Amber Traders')])
     now=now+300;timer.callback();assert(s.pendingRestoreState)
     eq(s.pendingRestoreState.metadata.reminderRepeat,true)
-    s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');assert(s:GetRepeatStatusPanelRows()[1].statusText:find('Paused',1,true)==1)
-    s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');eq(#s:GetRepeatStatusPanelRows(),0)
+    s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');assert(s:GetRepeatStatusPanelRows()[1].statusText:find('Inactive',1,true)==1)
+    s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');eq(s:GetReminderPanelControlState('ad','Amber Traders'),'ON')
 end)
 test('actual panel refresh collapses empty bodies, nests dates, uses buttons and keeps viewport inside',function()
     f.reset();s.statusPanel=nil;s.statusSectionStates={};s.statusPanelVisible=true
@@ -107,7 +107,17 @@ test('actual panel refresh collapses empty bodies, nests dates, uses buttons and
     assert(not p.repeatScroll:IsHidden())
     s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders');s:RefreshStatusPanel()
     assert(not p.repeatRows[1].timingLabel:GetText():find('Next',1,true))
-    s:SetGuildAutoPopulateOnZone('other','Blue Traders',true);s:SetActiveAutoPopulate('other','Blue Traders');s:RefreshStatusPanel()
+    -- Click real controls while active-first sorting moves the disabled row.
+    local first=s:GetGuildSchedule('ad','Amber Traders');first.enabled=true;first.paused=false
+    f.entry('second','other','Blue Traders','Another scheduled notice','Guild')
+    assert(s:SaveGuildSchedule('other','Blue Traders',{mode='WINDOW',enabled=true,delivery='REPEAT',startDate='2026-10-08',startTime='08:00 PM',endDate='2026-10-08',endTime='09:00 PM',intervalMinutes=5}))
+    local second=s:GetGuildSchedule('other','Blue Traders');s:GetCommandById('ad').name='alpha';s:GetCommandById('other').name='beta'
+    s:RefreshStatusPanel();eq(p.repeatRows[1].toggleButton.data.commandId,'ad');eq(p.repeatRows[1].toggleButton:GetText(),'Disable')
+    local button=p.repeatRows[1].toggleButton;button:GetHandler('OnClicked')(button)
+    eq(first.enabled,false);eq(second.enabled,true);eq(p.repeatRows[1].toggleButton.data.commandId,'other');eq(p.repeatRows[2].toggleButton.data.commandId,'ad')
+    button=p.repeatRows[2].toggleButton;eq(button:GetText(),'Enable');button:GetHandler('OnClicked')(button)
+    eq(first.enabled,true);eq(second.enabled,true);eq(p.repeatRows[1].toggleButton.data.commandId,'ad')
+    s:SetGuildRunAt('other','Blue Traders','ON_DEMAND');s:SetGuildAutoPopulateOnZone('other','Blue Traders',true);s:SetActiveAutoPopulate('other','Blue Traders');s:RefreshStatusPanel()
     assert(not p.footerLabel:IsHidden(),'active Auto section expands')
     p.statusLabel:GetHandler('OnMouseUp')(p.statusLabel,1,true);assert(p.footerLabel:IsHidden())
     p.statusLabel:GetHandler('OnMouseUp')(p.statusLabel,1,true);assert(not p.footerLabel:IsHidden())

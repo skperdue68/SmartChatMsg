@@ -3200,7 +3200,7 @@ function SmartChatMsg:HandleDynamicSlashCommand(commandId, slashCommandName, raw
     ))
 
     local commandDisplayName = self:GetSlashCommandDisplayName(commandId, slashCommandName)
-    if self.repeatPanelPaused then self.repeatPanelPaused[self:GetReminderStateKey(commandId,guildName)]=nil end
+    if self.repeatPanelDisabled then self.repeatPanelDisabled[self:GetReminderStateKey(commandId,guildName)]=nil end
 
     if self:GetGuildRunAt(commandId, guildName) == "SCHEDULED" then
         if stopAutomation then
