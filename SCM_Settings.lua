@@ -1115,13 +1115,8 @@ local function BuildMessagesBehaviorSettings(parent)
         SmartChatMsg:RefreshSettingsUI()
     end)
 
-    local function HasAutomationBehaviorEnabled()
-        if SmartChatMsg.settings.pendingGuildAutoPopulateOnZone == true then
-            return true
-        end
-
-        local repeatMinutes = tonumber(SmartChatMsg.settings.pendingGuildReminderMinutes or "")
-        return repeatMinutes ~= nil and repeatMinutes > 0
+    local function CanOpenStatusPanel()
+        return SmartChatMsg:IsMessagesSelectionComplete()
     end
 
     local autoPopulateCheckbox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesAutoPopulateCheckbox", container, "ZO_CheckButton")
@@ -1191,7 +1186,7 @@ local function BuildMessagesBehaviorSettings(parent)
     runAtLabel:SetAnchor(TOPLEFT, openStatusPanelCheckbox, BOTTOMLEFT, -70, 12)
     ZO_CheckButton_SetLabelText(openStatusPanelCheckbox, "Open Status Panel on Run")
     ZO_CheckButton_SetToggleFunction(openStatusPanelCheckbox, function(_, checked)
-        if not HasAutomationBehaviorEnabled() then
+        if not CanOpenStatusPanel() then
             SmartChatMsg.settings.pendingGuildOpenStatusPanelOnRun = false
         else
             SmartChatMsg.settings.pendingGuildOpenStatusPanelOnRun = checked == true
@@ -1367,15 +1362,20 @@ local function BuildMessagesBehaviorSettings(parent)
 
         ZO_CheckButton_SetCheckState(autoPopulateCheckbox, SmartChatMsg.settings.pendingGuildAutoPopulateOnZone == true)
 
-        local automationEnabled = HasAutomationBehaviorEnabled()
-        if not automationEnabled then
-            SmartChatMsg.settings.pendingGuildOpenStatusPanelOnRun = false
-        end
+        local automationEnabled = CanOpenStatusPanel()
         ZO_CheckButton_SetCheckState(openStatusPanelCheckbox, automationEnabled and SmartChatMsg.settings.pendingGuildOpenStatusPanelOnRun == true)
         openStatusPanelCheckbox:SetMouseEnabled(automationEnabled)
         openStatusPanelCheckbox:SetAlpha(automationEnabled and 1 or 0.5)
 
-        local frequencyEnabled = shouldShow and SmartChatMsg.settings.pendingGuildAutoPopulateOnZone ~= true
+        local scheduled = shouldShow and SmartChatMsg:GetGuildRunAt(SmartChatMsg.savedVars.selectedMessagesCommand,SmartChatMsg:GetSelectedGuildNameForMessages()) == "SCHEDULED"
+        local ordinary = shouldShow and not scheduled
+        for _,control in ipairs({reminderLabel,reminderSlider,reminderBackdrop,reminderRetryLabel,retrySlider,reminderRetryBackdrop,cooldownLabel,cooldownSlider,cooldownBackdrop,autoPopulateCheckbox}) do control:SetHidden(not ordinary) end
+        place(autoPopulateCheckbox,0,200)
+        place(openStatusPanelCheckbox,0,scheduled and 0 or 232)
+        place(runAtLabel,0,scheduled and 36 or 268)
+        place(soundLabel,0,scheduled and 84 or 316)
+        container:SetHeight(scheduled and 140 or 370)
+        local frequencyEnabled = ordinary and SmartChatMsg.settings.pendingGuildAutoPopulateOnZone ~= true
         reminderEditBox:SetMouseEnabled(frequencyEnabled)
         if reminderEditBox.SetEditEnabled then reminderEditBox:SetEditEnabled(frequencyEnabled) end
         reminderBackdrop:SetAlpha(frequencyEnabled and 1 or 0.5)
@@ -1395,9 +1395,9 @@ local function BuildMessagesBehaviorSettings(parent)
         local retryMax=math.max(0,math.min(60,repeatMinutes,cooldownMinutes))
         refreshSlider(reminderSlider,reminderLabel,"Repeat Frequency",repeatMinutes,0,1440,frequencyEnabled,true)
         refreshSlider(retrySlider,reminderRetryLabel,"Retry Delay",reminderRetryText,0,retryMax,repeatEnabled,true)
-        refreshSlider(cooldownSlider,cooldownLabel,"Cooldown",cooldownMinutes,15,480,shouldShow,false)
-        cooldownEditBox:SetMouseEnabled(shouldShow)
-        if cooldownEditBox.SetEditEnabled then cooldownEditBox:SetEditEnabled(shouldShow) end
+        refreshSlider(cooldownSlider,cooldownLabel,"Cooldown",cooldownMinutes,15,480,ordinary,false)
+        cooldownEditBox:SetMouseEnabled(ordinary)
+        if cooldownEditBox.SetEditEnabled then cooldownEditBox:SetEditEnabled(ordinary) end
         syncing=false
         RefreshRunAtDropdown()
         RefreshSoundDropdown()
@@ -1410,6 +1410,16 @@ local function BuildMessagesBehaviorSettings(parent)
         container:SetHidden(not shouldShow)
     end
 
+    local function help(control,text)
+        control:SetMouseEnabled(true)
+        control:SetHandler("OnMouseEnter",function(c) InitializeTooltip(InformationTooltip,c,TOP,0,8);SetTooltipText(InformationTooltip,text) end)
+        control:SetHandler("OnMouseExit",function() ClearTooltip(InformationTooltip) end)
+    end
+    help(reminderLabel,"How often an On Demand or Startup command prepares another message. Off stops timed repetition. Scheduled commands use each period's own Repeat Frequency.")
+    help(reminderRetryLabel,"How often to try again when a repeated message was not sent. Off uses the normal repeat interval. Capped by the smaller positive Repeat Frequency and Cooldown.")
+    help(cooldownLabel,"Cooldown for automatic zone-arrival messages. Scheduled delivery uses its period settings instead.")
+    help(openStatusPanelCheckbox,"Open the status panel when this command runs, or when its scheduled promotion becomes active. Closing the panel does not stop messages.")
+    help(autoPopulateCheckbox,"Prepare chat on entering an eligible parent zone instead of using ordinary timed repetition.")
     SmartChatMsg.settings.controls.messagesBehaviorReminderSlider=reminderSlider
     SmartChatMsg.settings.controls.messagesBehaviorReminderRetrySlider=retrySlider
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCooldownSlider=cooldownSlider
@@ -2134,13 +2144,14 @@ function SmartChatMsg:CreateSettingsPanel()
                         control:SetHeight(370)
                         messagesBehaviorSettingsHolder = BuildMessagesBehaviorSettings(control)
                         messagesBehaviorSettingsHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
+                        control:SetHeight(messagesBehaviorSettingsHolder:GetHeight())
                     end,
                     refreshFunc = function(control)
                         if messagesBehaviorSettingsHolder and messagesBehaviorSettingsHolder.RefreshEditor then
                             messagesBehaviorSettingsHolder:RefreshEditor()
                         end
 
-                        control:SetHeight(SmartChatMsg:IsMessagesSelectionComplete() and 370 or 0)
+                        control:SetHeight(SmartChatMsg:IsMessagesSelectionComplete() and messagesBehaviorSettingsHolder:GetHeight() or 0)
                     end,
                 },
                 {
@@ -2207,6 +2218,16 @@ function SmartChatMsg:CreateSettingsPanel()
             if panel==self.settings.panel then self:RefreshEventTimingExpansion() end
         end)
     end
+    local serial=0
+    local function registerSections(list)
+        for _,option in ipairs(list) do if option.type=="submenu" then
+            serial=serial+1
+            option.reference=option.reference or ("SCM_ContextSection"..serial)
+            registerSections(option.controls or {})
+        end end
+    end
+    registerSections(optionsTable)
+    self.settings.optionDefinitions=optionsTable
     LAM2:RegisterOptionControls("SmartChatMsgOptionsPanel", optionsTable)
 end
 

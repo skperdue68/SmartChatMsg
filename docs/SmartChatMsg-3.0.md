@@ -57,7 +57,7 @@ Scheduled uses the event and Period Timeline instead. Save and activate engages 
 
 Repeat Frequency: Off means no timed repeat; otherwise it controls the interval for ordinary repeated messages. The slider covers Off through 1440 minutes. Retry Delay: after an unsent repeated message times out, this controls when to try again. Off uses the normal repeat behavior. Its slider covers Off through 60 minutes, capped by the smaller positive Repeat Frequency and Cooldown. Retry is unavailable without timed repetition.
 Auto Populate Chat on Zone prepares a message when you enter an eligible parent zone. This replaces ordinary timed repetition, so Repeat Frequency is disabled while it is enabled. Cooldown is the automatic zone cooldown; its slider covers 15–480 minutes. Existing values outside slider ranges are retained until deliberately changed. Exact-minute entry remains available.
-Open Status Panel on Run shows the status window when this combination starts. Notify Sound selects the preparation sound; Preview plays it in ESO and None is silent. These settings belong to the selected command and guild.
+Open Status Panel on Run is available for On Demand, Startup and Scheduled combinations. It shows the status window when the command runs or when scheduled promotion becomes active; closing the panel does not disable the command. Notify Sound selects the preparation sound; Preview plays it in ESO and None is silent. These settings belong to the selected command and guild.
 
 
 > SCREENSHOT PLACEHOLDER: 04-ordinary-delivery.png — Capture an On Demand combination with Repeat Frequency, Retry Delay, Cooldown sliders plus zone/status/sound controls.
@@ -84,7 +84,7 @@ Use separate message selections for these periods. A starting notice should not 
 ## Send once, time-sensitive notices, and closing announcements
 
 Send once means one confirmed announcement for that period and event occurrence. It does not repeat when its frequency comes around. A matching announcement from someone else can also complete it. Preparing chat alone does not complete it. A future event occurrence starts fresh.
-Lateness allowance defines the short opportunity after a one-time notice becomes due. If the window passes while you are offline, the expired notice is skipped. Keep entire reminder window available until sent allows that one announcement during its full configured window instead of only the short grace.
+Lateness allowance defines the short opportunity after a one-time notice becomes due. If the window passes while you are offline, the expired notice is skipped. Send once anytime in this period allows that one announcement during its full configured window instead of only the short grace.
 Time-sensitive notices can bypass ordinary inter-schedule pacing, but still respect startup protection, chat safety, eligibility, duplicate suppression, and daily limits. They prepare chat; they do not automatically press Enter.
 Allow a closing announcement after the event ends is an advanced exception for notices such as “The auction is closed.” It permits the selected period beyond the duration cap. Keep its own stop/grace short and usually enable Send once. It is different from ordinary invitations while an event is still running.
 
@@ -158,3 +158,8 @@ Message names and display order created by the companion are retained in saved d
 ## Screenshot capture checklist
 
 The illustrated placeholders throughout this guide are intentionally empty. Capture the current 3.0 interface with readable text, expanded relevant sections, and private account information cropped or blurred. Send the images with the numbered filenames below so they can replace the placeholders. The guide remains fully usable without them.
+
+
+## Context-sensitive settings
+
+In the ESO settings, Scheduled hides ordinary Repeat Frequency, Retry Delay, Cooldown and Auto Populate Chat on Zone controls; periods provide their own timing. Editable submenus open when you load a command/guild or when they become relevant, and unavailable or read-only sections close. Your manual collapse is retained until the section becomes relevant again or you select a different command/guild. Hover over period flags and timing controls for explanations.
