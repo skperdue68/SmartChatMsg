@@ -155,9 +155,19 @@ end
 
 function SmartChatMsg:GetStatusPanelHeaderText()
     local text='SmartChatMsg Status | Scheduled sending: '..(self:IsScheduledSendingEnabled() and 'ON' or 'OFF')
-    local pause=self.scheduledSendPause
-    if pause and pause.endsAt>GetTimeStamp() then text=text..' | Other schedules wait '..self:FormatStatusDuration(pause.endsAt-GetTimeStamp()) end
     return text
+end
+
+function SmartChatMsg:GetStatusPanelCountdownText()
+    local now=GetTimeStamp()
+    if self.scheduleStartupEndsAt and self.scheduleStartupEndsAt>now then
+        return 'Startup delay: '..self:FormatStatusDuration(self.scheduleStartupEndsAt-now)
+    end
+    local pause=self.scheduledSendPause
+    if pause and pause.endsAt>now then
+        return 'Other schedules wait '..self:FormatStatusDuration(pause.endsAt-now)
+    end
+    return ''
 end
 
 function SmartChatMsg:GetRepeatCardTimingText(row)
@@ -736,7 +746,7 @@ function SmartChatMsg:GetStatusPanelTargetSize(active, rows)
         contentWidth = math.max(contentWidth, self:EstimateStatusPanelTextWidth("No repeat commands configured."))
     end
 
-    contentWidth=math.max(contentWidth,measured(panel and panel.titleLabel,self:GetStatusPanelHeaderText()))
+    contentWidth=math.max(contentWidth,measured(panel and panel.titleLabel,self:GetStatusPanelHeaderText())+self:EstimateStatusPanelTextWidth(self:GetStatusPanelCountdownText())+16)
     local width = math.max(minWidth, math.min(maxWidth, contentWidth + 72))
 
     local height = 58
@@ -824,7 +834,12 @@ function SmartChatMsg:ApplyStatusPanelLayout(panel, width)
     local closeButtonReserve = 30
 
     panel.dragBar:SetWidth(math.max(120, contentWidth - closeButtonReserve))
-    panel.titleLabel:SetWidth(math.max(120, contentWidth - closeButtonReserve))
+    local countdownWidth=self:EstimateStatusPanelTextWidth(self:GetStatusPanelCountdownText())+8
+    if panel.headerCountdown then
+        panel.headerCountdown:SetWidth(countdownWidth)
+        panel.headerCountdown:SetHidden(self:GetStatusPanelCountdownText()=='')
+    end
+    panel.titleLabel:SetWidth(math.max(120, contentWidth - closeButtonReserve - countdownWidth - 12))
     panel.divider:SetWidth(contentWidth)
     panel.listHeader:SetWidth(contentWidth)
     panel.currentLabel:SetWidth(contentWidth)
@@ -1189,6 +1204,13 @@ function SmartChatMsg:CreateStatusPanel()
     title:SetText(self:GetStatusPanelHeaderText())
     title:SetAnchor(TOPLEFT, dragBar, TOPLEFT, 0, 0)
 
+    local headerCountdown = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCountdown", panel, CT_LABEL)
+    headerCountdown:SetFont("ZoFontGameSmall")
+    headerCountdown:SetColor(0.95, 0.83, 0.46, 1)
+    headerCountdown:SetText(self:GetStatusPanelCountdownText())
+    headerCountdown:SetAnchor(TOPRIGHT, panel, TOPRIGHT, -44, 14)
+    headerCountdown:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
+
     local closeButton = WINDOW_MANAGER:CreateControl("SCM_StatusPanelCloseButton", panel, CT_BUTTON)
     closeButton:SetDimensions(24, 24)
     closeButton:SetAnchor(TOPRIGHT, panel, TOPRIGHT, -10, 8)
@@ -1360,6 +1382,7 @@ function SmartChatMsg:CreateStatusPanel()
     panel.backdrop = backdrop
     panel.dragBar = dragBar
     panel.titleLabel = title
+    panel.headerCountdown = headerCountdown
     panel.closeButton = closeButton
     panel.statusLabel = statusLabel
     panel.commandLabel = commandLabel
@@ -1390,6 +1413,7 @@ function SmartChatMsg:RefreshStatusPanel()
     end
 
     panel.titleLabel:SetText(self:GetStatusPanelHeaderText())
+    if panel.headerCountdown then panel.headerCountdown:SetText(self:GetStatusPanelCountdownText()) end
     local active = self:GetActiveAutoPopulate()
     local rows = {}
 
