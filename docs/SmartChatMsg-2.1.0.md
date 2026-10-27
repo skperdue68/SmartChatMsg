@@ -237,3 +237,10 @@ Special event pattern **Rotating event** cycles an ordered list of named activit
 In ordinary message rows, the Enabled checkbox includes or excludes a template from On Demand, Startup, ordinary repeat and Zone selection. Disabled text stays stored and can still be previewed. Retry cannot restore a disabled template. If none are enabled, no message is prepared. Disabling untouched prepared text withdraws it while preserving player edits.
 
 Scheduled phases and reminder rows keep their own message pools and ignore these ordinary flags; returning to ordinary mode restores the selections. Incoming peer matching still recognizes disabled templates. SavedVariables and full settings import/export preserve the flags by guild name and message UUID. Identical text with different UUIDs remains distinct, and local locked templates retain private choices.
+
+
+### Daily limit scope and ordinary delivery sliders
+
+Daily announcement limit is shown in the main period controls and works even when Availability is off. Leave Share daily limit across this command and guild unchecked for a separate limit per period (the default). Check it to share one limit across all periods and all messages for this command and guild. Unlimited disables the selected limit. Confirmed sends and matching announcements from other players count; preparation and timeout do not. Counts survive reload/logout and reset at midnight in the scheduling timezone. Resetting all cooldowns clears these counts. Status reports Period daily limit reached or Command daily limit reached with the count and limit. Portable exports include these settings but retain the importing player’s own usage history.
+
+On Demand and Startup delivery uses sliders with exact-minute entry: Repeat Frequency Off–1440 minutes, Retry Delay Off–60 minutes, and Cooldown 15–480 minutes. Retry is capped by the smaller positive Repeat Frequency and Cooldown. Auto Populate Chat on Zone disables timed repetition. Existing values outside slider ranges remain unchanged until deliberately edited.

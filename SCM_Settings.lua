@@ -1029,7 +1029,8 @@ end
 
 local function BuildMessagesBehaviorSettings(parent)
     local container = WINDOW_MANAGER:CreateControl("SCM_MessagesBehaviorSettingsContainer", parent, CT_CONTROL)
-    container:SetDimensions(ROW_WIDTH, 235)
+    container:SetDimensions(ROW_WIDTH, 370)
+    local syncing=false
 
     local function HasActiveRepeatAfter()
         local value = tonumber(SmartChatMsg.settings.pendingGuildReminderMinutes or "")
@@ -1051,6 +1052,7 @@ local function BuildMessagesBehaviorSettings(parent)
     reminderEditBox:SetMaxInputChars(4)
     reminderEditBox:SetText("")
     reminderEditBox:SetHandler("OnTextChanged", function(self)
+        if syncing then return end
         local text = self:GetText() or ""
         local digitsOnly = text:gsub("[^%d]", "")
 
@@ -1089,6 +1091,7 @@ local function BuildMessagesBehaviorSettings(parent)
     reminderRetryEditBox:SetMaxInputChars(4)
     reminderRetryEditBox:SetText("")
     reminderRetryEditBox:SetHandler("OnTextChanged", function(self)
+        if syncing then return end
         if SmartChatMsg.settings.pendingGuildAutoPopulateOnZone == true or not HasActiveRepeatAfter() then
             return
         end
@@ -1218,6 +1221,7 @@ local function BuildMessagesBehaviorSettings(parent)
     cooldownEditBox:SetMaxInputChars(4)
     cooldownEditBox:SetText("")
     cooldownEditBox:SetHandler("OnTextChanged", function(self)
+        if syncing then return end
         local text = self:GetText() or ""
         local digitsOnly = text:gsub("[^%d]", "")
 
@@ -1299,7 +1303,49 @@ local function BuildMessagesBehaviorSettings(parent)
         soundComboBox:SetSelectedItem(currentSelection)
     end
 
+    -- Stack the ordinary delivery controls so their labels and thumbs stay readable.
+    local function place(control,x,y)
+        control:ClearAnchors();control:SetAnchor(TOPLEFT,container,TOPLEFT,x,y)
+    end
+    reminderLabel:SetDimensions(ROW_WIDTH-100,26);place(reminderLabel,0,0)
+    reminderRetryLabel:SetDimensions(ROW_WIDTH-100,26);place(reminderRetryLabel,0,64)
+    cooldownLabel:SetDimensions(ROW_WIDTH-100,26);place(cooldownLabel,0,128)
+    for index,backdrop in ipairs({reminderBackdrop,reminderRetryBackdrop,cooldownBackdrop}) do
+        backdrop:SetDimensions(80,28);place(backdrop,ROW_WIDTH-90,(index-1)*64)
+    end
+    place(autoPopulateCheckbox,0,200);place(openStatusPanelCheckbox,0,232)
+    place(runAtLabel,0,268);place(soundLabel,0,316)
+    local function slider(name,y,edit)
+        local c=WINDOW_MANAGER:CreateControl(name,container,CT_SLIDER)
+        c:SetDimensions(ROW_WIDTH-110,20);place(c,0,y)
+        c:SetOrientation(ORIENTATION_HORIZONTAL);c:SetValueStep(1)
+        c:SetThumbTexture("EsoUI/Art/Miscellaneous/scrollbox_elevator.dds","EsoUI/Art/Miscellaneous/scrollbox_elevator_disabled.dds",nil,8,16)
+        local track=WINDOW_MANAGER:CreateControl(name.."Track",c,CT_TEXTURE)
+        track:SetTexture("EsoUI/Art/Miscellaneous/scrollbox_scrollbar.dds")
+        track:SetDimensions(ROW_WIDTH-110,4);track:SetAnchor(CENTER,c,CENTER,0,0)
+        local function changed(self,value)
+            if syncing or not self.behaviorEnabled then return end
+            local n=math.floor((tonumber(value) or self:GetValue())+0.5)
+            n=math.max(self.behaviorMin,math.min(self.behaviorMax,n))
+            if edit:GetText()~=tostring(n) then edit:SetText(tostring(n)) end
+        end
+        c:SetHandler("OnValueChanged",changed)
+        c:SetHandler("OnSliderReleased",function(self)changed(self,self:GetValue())end)
+        return c
+    end
+    local reminderSlider=slider("SCM_MessagesReminderSlider",32,reminderEditBox)
+    local retrySlider=slider("SCM_MessagesReminderRetrySlider",96,reminderRetryEditBox)
+    local cooldownSlider=slider("SCM_MessagesAutoPopulateCooldownSlider",160,cooldownEditBox)
+    local function refreshSlider(c,label,title,value,low,high,enabled,off)
+        value=tonumber(value) or 0
+        label:SetText(title.." — "..(off and value==0 and "Off" or tostring(value).." minutes"))
+        c.behaviorMin,c.behaviorMax,c.behaviorEnabled=low,high,enabled
+        c:SetMinMax(low,high);c:SetValue(math.max(low,math.min(high,value)))
+        c:SetMouseEnabled(enabled);c:SetAlpha(enabled and 1 or 0.5)
+    end
+
     container.RefreshEditor = function()
+        syncing=true
         local shouldShow = SmartChatMsg:IsMessagesSelectionComplete()
 
         if reminderEditBox:GetText() ~= (SmartChatMsg.settings.pendingGuildReminderMinutes or "") then
@@ -1333,12 +1379,6 @@ local function BuildMessagesBehaviorSettings(parent)
         reminderLabel:SetAlpha(frequencyEnabled and 1 or 0.5)
 
         local repeatEnabled = frequencyEnabled and HasActiveRepeatAfter()
-        if not repeatEnabled then
-            SmartChatMsg.settings.pendingGuildReminderRetryMinutes = "0"
-            if reminderRetryEditBox:GetText() ~= "0" then
-                reminderRetryEditBox:SetText("0")
-            end
-        end
 
         reminderRetryEditBox:SetMouseEnabled(repeatEnabled)
         if reminderRetryEditBox.SetEditEnabled then
@@ -1347,6 +1387,15 @@ local function BuildMessagesBehaviorSettings(parent)
         reminderRetryBackdrop:SetAlpha(repeatEnabled and 1 or 0.5)
         reminderRetryLabel:SetAlpha(repeatEnabled and 1 or 0.5)
 
+        local repeatMinutes=tonumber(SmartChatMsg.settings.pendingGuildReminderMinutes) or 0
+        local cooldownMinutes=tonumber(cooldownText) or 60
+        local retryMax=math.max(0,math.min(60,repeatMinutes,cooldownMinutes))
+        refreshSlider(reminderSlider,reminderLabel,"Repeat Frequency",repeatMinutes,0,1440,frequencyEnabled,true)
+        refreshSlider(retrySlider,reminderRetryLabel,"Retry Delay",reminderRetryText,0,retryMax,repeatEnabled,true)
+        refreshSlider(cooldownSlider,cooldownLabel,"Cooldown",cooldownMinutes,15,480,shouldShow,false)
+        cooldownEditBox:SetMouseEnabled(shouldShow)
+        if cooldownEditBox.SetEditEnabled then cooldownEditBox:SetEditEnabled(shouldShow) end
+        syncing=false
         RefreshRunAtDropdown()
         RefreshSoundDropdown()
 
@@ -1358,6 +1407,9 @@ local function BuildMessagesBehaviorSettings(parent)
         container:SetHidden(not shouldShow)
     end
 
+    SmartChatMsg.settings.controls.messagesBehaviorReminderSlider=reminderSlider
+    SmartChatMsg.settings.controls.messagesBehaviorReminderRetrySlider=retrySlider
+    SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCooldownSlider=cooldownSlider
     SmartChatMsg.settings.controls.messagesBehaviorReminderEditBox = reminderEditBox
     SmartChatMsg.settings.controls.messagesBehaviorReminderRetryEditBox = reminderRetryEditBox
     SmartChatMsg.settings.controls.messagesBehaviorAutoPopulateCheckbox = autoPopulateCheckbox
@@ -2136,9 +2188,9 @@ function SmartChatMsg:CreateSettingsPanel()
                 {
                     type = "custom",
                     reference = "SCM_MessagesBehaviorSettingsHolder",
-                    minHeight = 0, maxHeight = 235,
+                    minHeight = 0, maxHeight = 370,
                     createFunc = function(control)
-                        control:SetHeight(235)
+                        control:SetHeight(370)
                         messagesBehaviorSettingsHolder = BuildMessagesBehaviorSettings(control)
                         messagesBehaviorSettingsHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
                     end,
@@ -2147,7 +2199,7 @@ function SmartChatMsg:CreateSettingsPanel()
                             messagesBehaviorSettingsHolder:RefreshEditor()
                         end
 
-                        control:SetHeight(SmartChatMsg:IsMessagesSelectionComplete() and 235 or 0)
+                        control:SetHeight(SmartChatMsg:IsMessagesSelectionComplete() and 370 or 0)
                     end,
                 },
                 {
