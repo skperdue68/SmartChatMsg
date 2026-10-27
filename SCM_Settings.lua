@@ -342,7 +342,15 @@ function SmartChatMsg.settings:SaveBehaviorSettings()
         return true
     end
 
-    local ok, err = SmartChatMsg:SetGuildReminderMinutes(commandId, guildName, self.pendingGuildReminderMinutes)
+    local ok, err = SmartChatMsg:SetGuildRunAt(commandId, guildName, self.pendingGuildRunAt)
+    if not ok then return false,err end
+
+    ok, err = SmartChatMsg:SetGuildReminderMinutes(commandId, guildName, self.pendingGuildReminderMinutes)
+    if not ok then
+        return false, err
+    end
+
+    ok, err = SmartChatMsg:SetGuildAutoPopulateCooldownMinutes(commandId, guildName, self.pendingGuildAutoPopulateCooldownMinutes)
     if not ok then
         return false, err
     end
@@ -353,16 +361,6 @@ function SmartChatMsg.settings:SaveBehaviorSettings()
     end
 
     ok, err = SmartChatMsg:SetGuildAutoPopulateOnZone(commandId, guildName, self.pendingGuildAutoPopulateOnZone == true)
-    if not ok then
-        return false, err
-    end
-
-    ok, err = SmartChatMsg:SetGuildAutoPopulateCooldownMinutes(commandId, guildName, self.pendingGuildAutoPopulateCooldownMinutes)
-    if not ok then
-        return false, err
-    end
-
-    ok, err = SmartChatMsg:SetGuildRunAt(commandId, guildName, self.pendingGuildRunAt)
     if not ok then
         return false, err
     end
