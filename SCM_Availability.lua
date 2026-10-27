@@ -268,7 +268,7 @@ function S:BuildScheduleOptionControls()
   end,disabled=function() return not selected() end}
  end
  pane[#pane+1]=hourField('Allowed from (HH:MM)','startMinute');pane[#pane+1]=hourField('Allowed until (HH:MM, 24:00 is midnight)','endMinute')
- pane[#pane+1]={type='editbox',name='Maximum announcements per server day (optional)',getFunc=function() return a() and tostring(a().maxPerDay or '') or '' end,setFunc=function(v) local value=a(true);if value then value.maxPerDay=v~='' and (tonumber(v) or v) or nil;refresh() end end}
+ pane[#pane+1]=self:BuildSchedulingSlider('Maximum announcements per server day','SCM_PeriodDailyLimitSlider',0,20,function()return a() and a().maxPerDay or 0 end,function(n)local value=a(true);if value then value.maxPerDay=n>0 and n or nil;refresh()end end,function(n)return n==0 and 'Unlimited' or tostring(n)end,function()return not selected()end)
  for day,name in ipairs({'Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'}) do local index=day
   pane[#pane+1]={type='checkbox',name='Available on '..name,getFunc=function() return not a() or not a().weekdays or a().weekdays[index]==true end,setFunc=function(v)
    local value=a(true);if not value then return end;if not value.weekdays then value.weekdays={};for n=1,7 do value.weekdays[n]=true end end;value.weekdays[index]=v==true or nil;refresh()

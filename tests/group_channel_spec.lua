@@ -14,7 +14,7 @@ f.incoming(CHAT_CHANNEL_PARTY,'Group test announcement');eq(s:GetGuildLastUsedAt
 f.entry('b','other','Amber Traders','Group test announcement','Guild')
 f.incoming(CHAT_CHANNEL_PARTY,'Group test announcement');eq(s:GetGuildLastUsedAt('other','Amber Traders'),nil)
 ZO_SavedVars={NewAccountWide=function() return s.savedVars end}
-assert(s:ImportSettingsFromString(s:BuildExportString()));eq(s:GetSavedChatChannel('ad','Amber Traders'),'Group')
+assert(s:ImportSettingsFromString(f.currentExport()));eq(s:GetSavedChatChannel('ad','Amber Traders'),'Group')
 assert(s:SaveGuildSchedule('ad','Amber Traders',{mode='WINDOW',enabled=true,startDate='2026-10-09',startTime='08:00 PM',endDate='2026-10-09',endTime='09:00 PM',intervalMinutes=5}))
 now=s:GetGuildSchedule('ad','Amber Traders').startsAtUtc;s:ResetAllCooldowns();s:TickSchedules()
 eq(CHAT_SYSTEM.channel,CHAT_CHANNEL_PARTY);assert(s.pendingRestoreState.metadata.scheduledDelivery)

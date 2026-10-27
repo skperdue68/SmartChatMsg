@@ -3,20 +3,18 @@ local s,eq=f.scm,f.eq
 f.reset();f.entry('a','ad','Amber Traders','First announcement');f.entry('b','ad','Amber Traders','Second announcement')
 s.savedVars.selectedMessagesCommand='ad';s.GetSelectedGuildNameForMessages=function() return 'Amber Traders' end;s.RefreshSettingsUI=function() end
 local d=s:GetScheduleEditorDraft();d.mode='EVENT';d.eventDate='2026-10-16';d.eventTime='08:00 PM';d.startDate='2026-10-15';d.startTime='08:00 PM';d.endDate='2026-10-16';d.endTime='09:00 PM';d.messagePhases.a={BEFORE=true};d.messagePhases.b={LIVE=true}
-assert(s.ConvertScheduleDraftToTimeline,'Timeline conversion missing')
-assert(s:ConvertScheduleDraftToTimeline());eq(d.timelineVersion,1);assert(d.legacyTimelineBackup);assert(#d.reminders>=2)
-local backup=d.legacyTimelineBackup;eq(backup.timelineVersion,nil);eq(backup.messagePhases.a.BEFORE,true)
+eq(d.timelineVersion,1);d.reminders[1].messageIds={'a'}
 local first=d.reminders[1];eq(first.messageIds[1],'a');assert(first.id)
 local second=s:AddTimelineReminder();assert(second.id~=first.id);eq(s:GetSelectedTimelineReminder(),second)
 local choices=s:GetScheduleMessageChecklist('TIMELINE');eq(#choices,2);choices[1].setFunc(true);eq(second.messageIds[1],'a');choices[1].setFunc(false);eq(#second.messageIds,0)
 local id=s:AddTimelineImportantTime('Ticket sales close',-60);assert(d.importantTimes[id]);second.start={kind='MARK',name=id};assert(not s:RemoveTimelineImportantTime(id));second.start={kind='OFFSET',minutes=-60};assert(s:RemoveTimelineImportantTime(id))
 second.messageIds={'a'};second.finish={kind='OFFSET',minutes=0};local ctx,reason=s:GetTimelinePreviewContext(second.id);assert(ctx,reason);eq(ctx.reminderId,second.id);assert(ctx.now>=ctx.occurrence.eventAtUtc-3600 and ctx.now<ctx.occurrence.eventAtUtc)
 local function find(list,name) for _,c in ipairs(list) do if c.name==name then return c end;if c.controls then local v=find(c.controls,name);if v then return v end end end end
-local controls=s:BuildScheduleOptionControls();assert(find(controls,'Event timeline'));assert(find(controls,'Add reminder'));assert(find(controls,'Important times'));assert(find(controls,'Save and activate'));assert(find(controls,'Reminder name'));assert(find(controls,'Start time is based on'))
-find(controls,'Minutes before / after event (start)').setFunc('-120');eq(second.start.minutes,-120)
-find(controls,'Prepare only once').setFunc(true);eq(second.once,true)
+local controls=s:BuildScheduleOptionControls();assert(find(controls,'Period Timeline'));assert(find(controls,'Add period'));assert(find(controls,'Important times'));assert(find(controls,'Save and activate'));assert(find(controls,'Period Label'));assert(find(controls,'Period Starts date'))
+find(controls,'Period Starts hour').setFunc('06');eq(second.start.time,'06:00 PM')
+find(controls,'Send once').setFunc(true);eq(second.once,true)
 find(controls,'Time-sensitive reminder').setFunc(true);eq(second.timeSensitive,true)
-find(controls,'Reminder name').setFunc('Tickets close');eq(second.label,'Tickets close')
+find(controls,'Period Label').setFunc('Tickets close');eq(second.label,'Tickets close')
 assert(s:RemoveTimelineReminder(second.id));eq(s:GetSelectedTimelineReminder(),first)
 print('PASS timeline editor conversion, stable rows, message selections, named-time references, simulated row preview and control callbacks')
 -- Native reminder cards stay bounded, wrap, select by stable ID and expose wheel input.
@@ -49,24 +47,14 @@ local holder=native();first.label=string.rep('A reminder with a long readable ti
 s:RefreshTimelineCards(holder,false);eq(holder.height,180);assert(holder.timelineRows[1].height>=holder.timelineRows[1].label:GetTextHeight()+16)
 local added=s:AddTimelineReminder();s:RefreshTimelineCards(holder,false);holder.timelineRows[1].OnMouseUp(nil,1,true);eq(s:GetSelectedTimelineReminder(),first)
 holder.timelineRows[1].label.OnMouseWheel(nil,-1);eq(holder.timelineScroll.offset,40)
-assert(holder.timelineRows[1].label.text:find('calendar days',1,true));assert(holder.timelineRows[1].label.text:find('Normal',1,true))
+assert(holder.timelineRows[1].label.text:find('2026-',1,true));assert(holder.timelineRows[1].label.text:find('Normal',1,true))
 -- Testing one row never changes the real clock, saved schedule or selected row.
 local observed; s.AddLocalChatMessage=function(_,text) observed=text end
 local before=GetTimeStamp();local output,testContext=s:TestMessagePreview('a','TIMELINE');assert(output and testContext);eq(GetTimeStamp(),before);eq(testContext.reminderId,first.id)
--- Combining is explicit, operates only on saved schedules and uses selected IDs.
-local getSchedule=s.GetGuildSchedule
-s.GetGuildSchedule=function() return d end;s.scheduleEditor.source=d
-local merge=s.MergeTimelineEvents;local merged
-s.MergeTimelineEvents=function(_,target,guild,ids) merged={target,guild,ids};return true end
-controls=s:BuildScheduleOptionControls()
-local combine=find(controls,'Combine selected schedules into this event')
-s.scheduleEditor.dirty=true;eq(combine.disabled(),true)
-s.scheduleEditor.dirty=false;s.scheduleEditor.mergeSources={other=true,ad=true};eq(combine.disabled(),false)
-combine.func();eq(merged[1],'ad');eq(merged[2],'Amber Traders');eq(#merged[3],1);eq(merged[3][1],'other')
-s.GetGuildSchedule=getSchedule;s.MergeTimelineEvents=merge
+assert(not find(controls,'Combine selected schedules into this event'))
 -- Legacy modes have no implicit conversion.
 f.reset();s.savedVars.selectedMessagesCommand='ad';s.scheduleEditor=nil
-local legacy=s:GetScheduleEditorDraft();eq(legacy.timelineVersion,nil);eq(s:ConvertScheduleDraftToTimeline(),false)
+local legacy=s:GetScheduleEditorDraft();eq(legacy.timelineVersion,1);assert(not find(controls,'Convert this event to reminder timeline'))
 print('PASS native timeline cards, wrapped summaries, selection, wheel input and preview clock isolation')
 -- Shared legacy migration keeps civil day boundaries across the DST change.
 f.reset();f.entry('migration','ad','Amber Traders','Migration announcement');s.savedVars.selectedMessagesCommand='ad';s.scheduleEditor=nil

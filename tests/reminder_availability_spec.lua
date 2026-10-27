@@ -39,15 +39,15 @@ local before=s:GetReminderAvailabilityCount(c,row,now);local unrelated=f.entry('
 c.availabilityUsage={};c.timelineUsage={['old:row']={lastSentAt=now-10,peerAt=now-5}};eq(s:GetReminderAvailabilityCount(c,row,now),1)
 -- Hour changes and portable imports preserve recipient daily counters.
 c.paused=false;row.paused=false;local edit=copy(c);edit.availabilityUsage={};edit.reminders[1].availability.startMinute=480;assert(s:SaveGuildSchedule('ad','Amber Traders',edit));c=s:GetGuildSchedule('ad','Amber Traders');eq(c.availabilityUsage['row:2026-10-29'].count,1)
-ZO_SavedVars={NewAccountWide=function() return s.savedVars end};s:InitializeSavedVars();c=s:GetGuildSchedule('ad','Amber Traders');eq(c.availabilityUsage['row:2026-10-29'].count,1)
+ZO_SavedVars={NewAccountWide=function() return s.savedVars end};f.currentSchedules();s:InitializeSavedVars();c=s:GetGuildSchedule('ad','Amber Traders');eq(c.availabilityUsage['row:2026-10-29'].count,1)
 c.reminders[1].availability.dateOverrides={['2026-10-30']={startMinute=540,endMinute=1200}};c.reminders[1].availability.weekdayOverrides={[3]={startMinute=600,endMinute=1260}}
-local exported=s:BuildExportString();assert(exported:find('SCHEDULEAVAILABILITY_V1',1,true));assert(not exported:find('availabilityUsage',1,true));assert(s:ImportSettingsFromString(exported));c=s:GetGuildSchedule('ad','Amber Traders');eq(c.availabilityUsage['row:2026-10-29'].count,1);eq(c.reminders[1].availability.dateOverrides['2026-10-30'].startMinute,540);eq(c.reminders[1].availability.weekdayOverrides[3].endMinute,1260)
+local exported=f.currentExport();assert(exported:find('SCHEDULEAVAILABILITY_V1',1,true));assert(not exported:find('availabilityUsage',1,true));assert(s:ImportSettingsFromString(exported));c=s:GetGuildSchedule('ad','Amber Traders');eq(c.availabilityUsage['row:2026-10-29'].count,1);eq(c.reminders[1].availability.dateOverrides['2026-10-30'].startMinute,540);eq(c.reminders[1].availability.weekdayOverrides[3].endMinute,1260)
 s:ResetAllCooldowns();eq(next(c.availabilityUsage),nil)
 for _,bad in ipairs({{enabled=true,startMinute=420,endMinute=420},{enabled=false,startMinute=-1},{enabled=true,endMinute=0},{enabled=true,maxPerDay=0},{enabled=true,maxPerDay=math.huge},{enabled=true,weekdays={[8]=true}},{enabled=true,dateOverrides={['2026-02-30']={startMinute=0,endMinute=1440}}},{enabled=true,weekdayOverrides={[3]={startMinute=0,endMinute=0}}}}) do assert(not s:NormalizeSchedule(draft(bad))) end
 -- Native controls edit/reset overrides without touching the cap or counters.
 s.savedVars.selectedMessagesCommand='ad';s.GetSelectedGuildNameForMessages=function() return 'Amber Traders' end;s.RefreshSettingsUI=function() end;s.scheduleEditor=nil
-local controls=s:BuildScheduleOptionControls();local function find(list,name) for _,control in ipairs(list) do if control.name==name then return control end;if control.controls then local hit=find(control.controls,name);if hit then return hit end end end end
-find(controls,'Limit reminder availability').setFunc(true);find(controls,'Allowed from (HH:MM)').setFunc('07:00');find(controls,'Maximum announcements per server day (optional)').setFunc('2');find(controls,'Available on Sunday').setFunc(false)
+local controls=s:BuildScheduleOptionControls();local function find(list,name) for _,control in ipairs(list) do if control.name==name or control.reference==name then return control end;if control.controls then local hit=find(control.controls,name);if hit then return hit end end end end
+find(controls,'Limit reminder availability').setFunc(true);find(controls,'Allowed from (HH:MM)').setFunc('07:00');find(controls,'SCM_PeriodDailyLimitSlider').setFunc('2');find(controls,'Available on Sunday').setFunc(false)
 find(controls,'Override weekday').setFunc('Tuesday');find(controls,'Weekday override from (HH:MM)').setFunc('08:00');local editor=s:GetScheduleEditorDraft();eq(editor.reminders[1].availability.weekdayOverrides[3].startMinute,480)
 find(controls,'Reset selected weekday hours').func();eq(editor.reminders[1].availability.weekdayOverrides[3],nil)
 find(controls,'Override opening date').setFunc(s:ScheduleDateToPicker('2026-10-30'));find(controls,'Date override from (HH:MM)').setFunc('09:00');eq(editor.reminders[1].availability.dateOverrides['2026-10-30'].startMinute,540)
@@ -77,7 +77,7 @@ eq(s:GetReminderAvailabilityCount(c,c.reminders[1],now),0);eq(s:GetReminderAvail
 f.incoming(CHAT_CHANNEL_GUILD_1,'Shared peer text');eq(s:GetReminderAvailabilityCount(c,c.reminders[2],now),2,'one increment per physical message, not per duplicate template')
 -- Source legacy timelineUsage must not bootstrap a fresh recipient's daily cap.
 f.reset();f.entry('msg','ad','Amber Traders','Portable capped notice','Guild');d=draft({enabled=true,maxPerDay=1});assert(s:SaveGuildSchedule('ad','Amber Traders',d));c=s:GetGuildSchedule('ad','Amber Traders');now=at(c,'2026-10-29','08:00 AM')
-c.timelineUsage={[tostring(c.eventAtUtc)..':row']={lastSentAt=now,peerAt=now,nextDueAt=now+1800}};local source=s:BuildExportString();local recipientClock=now
+c.timelineUsage={[tostring(c.eventAtUtc)..':row']={lastSentAt=now,peerAt=now,nextDueAt=now+1800}};local source=f.currentExport();local recipientClock=now
 f.reset();now=recipientClock;assert(s:ImportSettingsFromString(source));c=s:GetGuildSchedule('ad','Amber Traders');eq(s:GetReminderAvailabilityCount(c,c.reminders[1],now),0,'source history is not recipient daily usage')
 -- Existing recipient history still bootstraps when its explicit counter is absent.
 c.availabilityUsage={};c.timelineUsage={[tostring(c.eventAtUtc)..':row']={lastSentAt=now-10}};assert(s:ImportSettingsFromString(source));c=s:GetGuildSchedule('ad','Amber Traders');eq(s:GetReminderAvailabilityCount(c,c.reminders[1],now),1)

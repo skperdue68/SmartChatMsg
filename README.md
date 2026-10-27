@@ -157,87 +157,27 @@ Guild to run without a guild parameter. Select the saved output channel in setti
 - **Scheduled:** save an enabled window in Scheduling. No command is needed
   at its start time. Selecting Scheduled without a valid saved window does nothing.
 
-## Set up a schedule
+## Scheduling with Period Timeline
 
-Select a command, guild, and output channel in Messages Settings, set **Run At** to **Scheduled**, then open
-**Scheduling (selected timezone)** inside **Create / Edit / Delete Messages**. Choose what you want to do:
+Set **Run At** to **Scheduled**, choose the guild/output channel, then open **Scheduling**. Set one actual **Event date and time**, its optional duration, and recurrence. There is no Schedule type selector and no old-format conversion button.
 
-- **Run during a window:** pick a start date/time and stop date/time, choose
-  messages, and set how often to prepare one. No event date is required.
-- **Remind me at set times:** pick the first date/time and recurrence. Each
-  occurrence prepares one message; no separate event or stop date is required.
-- **Promote an event:** pick the event date/time, how many days beforehand to
-  begin promoting it, and how long after the start to stop.
+Under **Period Timeline**, select or add a period. Set its **Period Label**, **Period Status**, **Period Starts** and **Period Stops** dates/server clocks, **Repeat Frequency**, and message-pool checkboxes. One randomly selected eligible message is prepared each time it is due. Different periods can use different frequencies and messages without separate commands. **Send once** makes a one-time notice; its lateness allowance controls how late that notice can appear while online.
 
-Dates use a calendar picker; times use your global scheduling timezone (ET by default). Saved schedules reopen
-with readable date/time values. Internal timestamps never appear as settings.
-The review shows the start, stop, event time (when applicable), and upcoming occurrences. **Save and activate** starts automatically at the scheduled time while you are online; **Save disabled** keeps your setup without running it. Changes remain a draft until saved. The Scheduling section is disabled unless Run At is Scheduled for the selected command and guild.
+Normal periods start on or before the event. **Allow promotion after event starts** permits underway invitations; event duration limits them unless the explicit after-event exception is enabled. For an 8–10 PM event, use a pre-event period ending at 8 PM and an underway period from 8–10 PM with its own messages. You can add a Send once announcement at 8 PM too.
 
-### Repeat a schedule
+Dates use the date-picker extension; clocks use constrained hour/minute/AM-PM choices in the guild timezone. Period dates follow future occurrences and keep server clocks consistent through daylight saving. Existing period anchors retain their meaning until edited. Invalid clocks and backwards periods are rejected.
 
-Choose once, daily, weekly, every two weeks, monthly on the selected date, or
-monthly on the selected weekday (for example, the third Friday). The selected
-initial date anchors recurring weeks and months. Weekday selections and the
-custom interval under **More repeat options** refine repeated reminders. Timed reminders have a two-minute
-eligibility window; overdue offline reminders are skipped. Schedule recurrence is separate from
-how often a message is prepared during an active window.
+Native sliders mirror the web editor: duration **0 = Not set** through **240 minutes**, recurrence interval **1–10**, period repeat frequency **1–1440 minutes**, and daily announcement maximum **0 = Unlimited** through **20**. Not set and Unlimited are stored by omitting the optional value, not as a zero-length event or zero allowed messages. Existing larger values are retained until deliberately changed. Slider labels show readable durations.
 
-Selected-zone wall-clock times remain consistent across daylight saving changes.
-Dates that do not exist in a month and times skipped by the spring clock change
-are skipped. Preview the next occurrences to check your choice.
+**Important times** provides named moments for substitutions such as `%eventtime:tickets%` and `%eventcountdown:tickets%`. Each period has a bounded, scrollable message-pool selector. **Availability** can restrict its days/hours and daily maximum. **Preview Period Timeline** and clicking a message preview show what the periods will do.
 
-### Choose several messages for each event phase
+Use **Save and activate** to validate and enable, or **Save disabled** to keep the configuration off. Draft edits do not change the running schedule until saved. ESO must be running; press Enter to send prepared text. Scheduling is disabled for On Demand and Startup combinations, which retain their ordinary command-wide pools.
 
-Expand the message choices and check the variations you want. Each checklist
-has a bounded scroll area; use its scrollbar or mouse wheel to see all messages.
-Long messages wrap within their own rows. You can assign
-several messages to each phase and assign one message to several phases:
+Only current Period Timeline schedules load or import. Older phase/window/reminder schedules are not converted. Imports containing unsupported schedules are rejected before replacing current settings; on startup unsupported schedule records are ignored while their command/message content remains. A fresh editor starts directly in the current format.
 
-- **Before event day:** promotion start until midnight on the selected-zone event day.
-- **On event day:** midnight until the event starts.
-- **Starting soon (optional):** enable this in Event and promotion timing and
-  enter the lead time in minutes (120 means two hours). It takes over from the
-  earlier phase at that threshold and runs until the event starts, within the
-  promotion window. Select its messages and a Message interval override, such
-  as five minutes. It can begin the previous evening for an early-morning event.
-- **After event starts:** event start until the post-start duration ends. Set Promote after start (minutes) in this section to 0 to stop exactly at event start, or a positive value such as 120 to promote for two hours afterward. Its interval override controls frequency within that duration.
+### Recurrence
 
-SmartChatMsg randomly selects from the messages eligible in the current phase,
-using its existing message rotation. Each phase can use its own interval; a
-phase can also prepare a message once. Missing phase choices do not fall back to
-an unrelated phase. Simple windows and timed reminders use one message pool.
-With Starting soon enabled, Before event day and On event day end when that
-phase begins. Leave it disabled to retain the original three event phases.
-Full settings export/import includes its lead time, messages, interval and
-once-only option. Existing schedules leave it disabled.
-
-Event templates can include `%eventdate%`, `%eventtime%`, and `%eventwhen%`.
-`%eventwhen%` describes the selected-zone calendar day: weekday/date when further away,
-tomorrow the day before, and today throughout the event day (including after
-the start). It does not change to hours/minutes or "already started". Countdown
-annotations and phase-specific message wording provide those details.
-They refer to the current occurrence of a recurring event. Example:
-`%guild% trial %eventwhen%, %eventdate% at %eventtime%.`
-
-### Start, stop, and multiple promotions
-
-Enabled schedules engage automatically while ESO is running and stop at their
-window end. Logging in late uses the current occurrence rather than replaying
-missed reminders. SmartChatMsg fills chat; you still press Enter to send.
-
-Use separate commands for independent promotions. Multiple Repeat schedules can
-run together, sharing the chat box without replacing typed text. Only one Zone
-automation can own zone arrivals at a time. Zone output is also available with
-scheduled interval delivery.
-
-Pause/resume in scheduling settings. `/yourcommand 1 off` pauses that guild's
-schedule until resumed. Peer messages reset the matching command/guild cooldown
-with an extra random 30â€“90 seconds; they do not resume paused schedules.
-The status panel reports engagement, waiting, and the next eligible time in your scheduling timezone.
-Local notifications announce schedule starts/ends and cooldown delays once per
-change. These notices are visible only to you. Matching peer messages are
-recorded even while a command is inactive, and later activation honors that
-recorded cooldown.
+Choose once, daily, weekly, every other week, monthly on date, or monthly on weekday. The original event date anchors the pattern. The recurrence interval multiplies the chosen unit; Every other week × 2 means every four weeks. Weekday choices describe event occurrences, not advertising days. Use period Availability for advertising days/hours.
 
 ## Message substitutions and countdowns
 
@@ -410,7 +350,7 @@ Promotion starts date/time, reflecting unsaved edits and the next event occurren
 ## Faction rotation and month-final events (2.0)
 
 Select the command/guild in Create/Edit/Delete Messages, choose Scheduled, and
-open Scheduling. Choose Promote an event and your repeat schedule, then select
+open Scheduling. Choose your event date and repeat schedule, then select
 the optional Special event pattern. Existing schedules default to None.
 
 For PvP, choose Faction rotation. Open its section and set Faction frequency (weeks)
@@ -464,7 +404,7 @@ Status cards show days in long countdowns, compact promotion details and local-c
 
 ### Rotating events and cancelled occurrences
 
-Choose **Rotating event** under Special event pattern for a repeating Promote an event schedule. Add 1–50 named activities, order them with Move activity up/down, and set Occurrences per activity (1–1000). Each activity has a stable ID; renaming or moving it preserves message assignments. Use `%eventactivity%` in templates and choose All activities or a specific activity in each message row. The rotation runs from the original Event date even while offline and works with reminder timelines.
+Choose **Rotating event** under Special event pattern for a repeating scheduled event. Add 1–50 named activities, order them with Move activity up/down, and set Occurrences per activity (1–1000). Each activity has a stable ID; renaming or moving it preserves message assignments. Use `%eventactivity%` in templates and choose All activities or a specific activity in each message row. The rotation runs from the original Event date even while offline and works with reminder timelines.
 
 In **Occurrence cancellations**, select a nominal occurrence and choose **Keep rotation** or **Postpone rotation**, then save. Both suppress that occurrence's reminders, queued requests and manual sends. Keep advances the rotation as usual; Postpone holds one nominal slot. For faction rotations, Postpone holds the schedule-zone civil-day span from that occurrence to its next nominal occurrence before applying the existing calendar-week blocks. A biweekly cancellation therefore holds two weeks; a monthly cancellation holds its actual month span. Dates outside the repeat cadence never advance or hold either rotation. DST does not change the civil-day calculation.
 
@@ -497,3 +437,9 @@ For On Demand and Startup combinations, use each message row's **Enabled** check
 Scheduled combinations use their own phase/reminder selections and ignore ordinary pool flags. Switching back to On Demand or Startup restores the ordinary selections. Disabled templates remain in the library and still recognize relevant announcements from other players for cooldown tracking. SavedVariables stores `disabledMessageIds={[messageUUID]=true}` on the command/guild settings. Native editing and reload preserve it. Portable settings export/import carries these choices with `MESSAGEPOOL_V1` records, matching by guild name and message UUID; locally locked templates retain their private selection.
 
 Status-panel command buttons now alternate between Enable and Disable. Disabled ordinary repeat entries remain available to re-enable during the UI session; scheduled entries appear only within their scheduled occurrence. Active entries still sort first, so disabling can move a card down the list. Existing saved paused schedules display inactive and Enable clears their paused state.
+
+### Conservative spelling matches
+
+Incoming duplicate detection first tries the existing exact/normalized match. If that fails, a conservative spelling pass tolerates inserted, omitted, substituted or adjacent transposed English letters in fixed message text. Short notices with fewer than 40 fixed non-space/non-punctuation characters still require an exact match. The allowance is one letter edit for 40–159 such characters, two for 160–239, and three for longer messages. This is spelling tolerance, not a semantic similarity test.
+
+Guild identity, guild links, numbers/prices, clocks/timezones and resolved event values remain protected. Punctuation and non-ASCII characters remain exact (normal capitalization, spacing and chat-color normalization still apply). Greeting, zone, event-when and countdown substitutions continue to use their existing validated matching rules. It still requires another sender and the correct channel/guild; accepted matches reset the same cooldowns with the existing 30–90 second randomized delay. No setting or SavedVariables migration is required.

@@ -218,7 +218,7 @@ function SmartChatMsg:InitializeSavedVars()
                         lastUsedGuildIndex = (type(settings.lastUsedGuildIndex) == "number" and settings.lastUsedGuildIndex >= 1 and settings.lastUsedGuildIndex <= 5 and settings.lastUsedGuildIndex == math.floor(settings.lastUsedGuildIndex)) and settings.lastUsedGuildIndex or nil,
                         lastAutoPopulateSentAtByZone = cleanedZoneTimestamps,
                         observedChatCooldowns = self:NormalizeObservedChatCooldowns(settings.observedChatCooldowns),
-                        schedule = self:NormalizeSchedule(settings.schedule),
+                        schedule = type(settings.schedule)=='table' and settings.schedule.timelineVersion==1 and self:NormalizeSchedule(settings.schedule) or nil,
                     }
 
                     if cleanedByGuild[normalizedGuildKey].lastUsedParamText == "" then
@@ -672,6 +672,10 @@ function SmartChatMsg:ApplyImportedSettings(imported)
     if type(imported) ~= "table" then
         return false, "Import data is invalid."
     end
+
+    for _,guilds in pairs(imported.commandGuildSettings or {}) do for _,settings in pairs(guilds) do
+        if settings.schedule and (type(settings.schedule)~='table' or settings.schedule.timelineVersion~=1) then return false,'Unsupported schedule format. Only Period Timeline schedules can be imported; older schedules are not converted.' end
+    end end
 
     -- Resolve a locked activity by stable ID first, then by a unique exact name.
     -- This supports portable imports from independently created rotations without

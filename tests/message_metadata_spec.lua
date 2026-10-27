@@ -9,16 +9,16 @@ local private=f.entry('private','ad','Amber Traders','Private body','Guild')
 private.name='Private label';private.displayOrder=3;private.locked=true
 local invalid=f.entry('invalid','ad','Amber Traders','Invalid metadata','Guild')
 invalid.name=string.rep('猫',81);invalid.displayOrder=1.5
-s:InitializeSavedVars()
+f.currentSchedules();s:InitializeSavedVars()
 eq(entry.name,label,'startup trims and retains Unicode label')
 eq(entry.displayOrder,17);eq(entry.text,'Outgoing body')
 eq(invalid.name,nil,'overlong label is omitted rather than byte-truncated')
 eq(invalid.displayOrder,nil,'fractional order is omitted')
 for _,value in ipairs({0,-1,1000001,math.huge}) do
- entry.displayOrder=value;s:InitializeSavedVars();eq(entry.displayOrder,nil)
+ entry.displayOrder=value;f.currentSchedules();s:InitializeSavedVars();eq(entry.displayOrder,nil)
 end
 entry.displayOrder=17
-local exported=s:BuildExportString()
+local exported=f.currentExport()
 assert(not exported:find('Private label',1,true),'locked metadata is private')
 assert(not exported:find('Private body',1,true),'locked body is private')
 local collision=exported:gsub('\nEND$','\nMESSAGE|private|ad|1|Amber Traders|Changed body|0|0|Changed label|99\nEND')

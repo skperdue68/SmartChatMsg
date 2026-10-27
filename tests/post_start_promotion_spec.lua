@@ -25,8 +25,8 @@ local event=cfg.eventAtUtc
 local nextEvent=s:GetScheduleOccurrence(cfg,event)
 eq(nextEvent.eventAtUtc,event+7*86400);eq(nextEvent.endsAtUtc,nextEvent.eventAtUtc)
 ZO_SavedVars={NewAccountWide=function() return s.savedVars end}
-assert(s:ImportSettingsFromString(s:BuildExportString()))
-eq(s:GetGuildSchedule('ad','Amber Traders').endDelayMinutes,0)
+assert(s:ImportSettingsFromString(f.currentExport()))
+eq(s:GetGuildSchedule('ad','Amber Traders').timelineVersion,1)
 -- The post-start phase uses its own pool and interval and stops exclusively.
 d.recurrence='NONE';d.endDelayMinutes=120;d.phaseIntervals={LIVE=15};now=1000000
 assert(s:SaveGuildSchedule('ad','Amber Traders',d))
@@ -51,12 +51,8 @@ local function find(list,name)
     end
 end
 local controls=s:BuildScheduleOptionControls()
-local after=assert(find(controls,'After event starts'),'post-start messages need a clear settings section')
-local duration=assert(find(after.controls,'Promote after start (minutes)'))
-duration.setFunc('0');eq(s:GetScheduleEditorDraft().endDelayMinutes,'0')
-local normalized=assert(s:NormalizeSchedule(s:GetScheduleEditorDraft()))
-eq(normalized.endsAtUtc,normalized.eventAtUtc)
-eq(s:GetMessagePreviewContext(s.savedVars.messages[2],'LIVE'),nil,'zero has no post-start preview time')
+assert(not find(controls,'After event starts'),'old phase sections are removed')
+assert(find(controls,'Period Timeline'));assert(find(controls,'Allow promotion after event starts'));assert(find(controls,'Period Stops date'))
 for _,value in ipairs({-1,1.5,'bad',math.huge}) do d.endDelayMinutes=value;assert(not s:NormalizeSchedule(d)) end
 d.endDelayMinutes=0;d.eventTime='12:00 AM';assert(not s:NormalizeSchedule(d),'empty promotion window is invalid')
 print('zero stops at event start; post-start messages have their own duration, interval, pool and transfer')

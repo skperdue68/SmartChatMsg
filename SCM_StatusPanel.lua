@@ -167,7 +167,7 @@ function SmartChatMsg:GetRepeatCardTimingText(row)
     if row.isActive then
         text=text.." | Next Send: "..tostring(row.nextSendText)
         if row.nextSendAt and row.nextSendAt<math.huge then
-            text=text.." at "..(os.date("%I:%M %p",row.nextSendAt) or "Unknown time"):gsub("^0", "")
+            text=text.." at "..(os.date("%I:%M:%S %p",row.nextSendAt) or "Unknown time")
         end
     end
     return text

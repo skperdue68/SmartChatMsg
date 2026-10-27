@@ -22,7 +22,7 @@ assert(s:SetGuildSchedulingTimeZone('Blue Traders','GLOBAL'))
 eq(s:GetGuildSchedulingTimeZone('Blue Traders'),'CT')
 eq(s:GetGuildSchedule('ad','Blue Traders').eventAtUtc,amber.eventAtUtc+3600)
 ZO_SavedVars={NewAccountWide=function() return s.savedVars end}
-local export=s:BuildExportString()
+local export=f.currentExport()
 assert(s:SetSchedulingTimeZone('PT'));assert(s:ImportSettingsFromString(export))
 eq(s:GetSchedulingTimeZone(),'CT');eq(s:GetGuildSchedulingTimeZone('Amber Traders'),'MT')
 eq(s:GetGuildSchedulingTimeZone('Blue Traders'),'CT')

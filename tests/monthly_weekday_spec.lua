@@ -38,8 +38,8 @@ c=assert(s:NormalizeSchedule(c));eq(s:GetScheduleOccurrenceDate(c,c.eventAtUtc),
 -- Full backups and SavedVars roundtrip explicit fields alongside timeline data.
 f.entry('notice','ad','Amber Traders','Meet %eventactivity%','Guild')
 d=draft();d.timelineVersion=1;d.importantTimes={};d.reminders={{id='row',label='Reminder',start={kind='OFFSET',minutes=-60},finish={kind='OFFSET',minutes=0},intervalMinutes=15,messageIds={'notice'}}}
-assert(s:SaveGuildSchedule('ad','Amber Traders',d));ZO_SavedVars={NewAccountWide=function() return s.savedVars end};s:InitializeSavedVars()
-local exported=s:BuildExportString();assert(exported:find('SCHEDULEMONTHLY_V1|ad|Amber Traders|LAST|1',1,true));assert(s:ImportSettingsFromString(exported))
+assert(s:SaveGuildSchedule('ad','Amber Traders',d));ZO_SavedVars={NewAccountWide=function() return s.savedVars end};f.currentSchedules();s:InitializeSavedVars()
+local exported=f.currentExport();assert(exported:find('SCHEDULEMONTHLY_V1|ad|Amber Traders|LAST|1',1,true));assert(s:ImportSettingsFromString(exported))
 c=s:GetGuildSchedule('ad','Amber Traders');eq(c.monthlyWeek,'LAST');eq(c.monthlyWeekday,1);eq(c.reminders[1].id,'row');eq(dates(c,2),'2026-10-25,2026-11-29')
 local before=c;assert(not s:ImportSettingsFromString(exported:gsub('|LAST|1','|LAST|8')));eq(s:GetGuildSchedule('ad','Amber Traders'),before)
 for _,bad in ipairs({0,6,-1,1.5,math.huge,'last','bogus'}) do local invalid=draft();invalid.monthlyWeek=bad;assert(not s:NormalizeSchedule(invalid)) end

@@ -131,8 +131,9 @@ test('disabled state survives settings import and enables next',function()
     setup()
     s:ToggleReminderAutomationFromStatusPanel('ad','Amber Traders')
     ZO_SavedVars={NewAccountWide=function() return s.savedVars end}
-    local export=s:BuildExportString();assert(s:ImportSettingsFromString(export))
+    local export=f.currentExport();assert(s:ImportSettingsFromString(export))
     local state,nextState=s:GetReminderPanelControlState('ad','Amber Traders');eq(state,'OFF');eq(nextState,'ON')
+
 end)
 local failures=0
 for _,t in ipairs(tests) do local ok,err=pcall(t[2]);if ok then print('PASS '..t[1]) else failures=failures+1;print('FAIL '..t[1]..': '..tostring(err)) end end
