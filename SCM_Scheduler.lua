@@ -320,6 +320,7 @@ function SmartChatMsg:ResetAllCooldowns()
                 schedule.nextDueAt=nil;schedule.nextDuePhase=nil;schedule.nextDueOccurrence=nil
                 schedule.completedOccurrences={}
                 schedule.timelineUsage={}
+                schedule.availabilityUsage={}
             end
             if active and settings.runAt~="SCHEDULED" then repeats[#repeats+1]={command.id,guild} end
         end

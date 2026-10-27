@@ -318,13 +318,14 @@ function SmartChatMsg:HandleIncomingChatMessage(eventCode, messageType, fromName
             if guildName and self:GetSavedChatChannel(entry.commandId, guildName) == channel
                 and (channel == "Zone" or channel == "Group" or self:StringsEqualIgnoreCase(guildName, receivingGuild)) then
                 local key = self:GetReminderStateKey(entry.commandId, guildName)
-                if key and not matched[key] and self:MatchesIncomingMessage(entry, guildName, normalizedText) then
-                    matched[key] = true
-                    self:MarkObservedChatUsage(entry, guildName, channel)
+                if key and self:MatchesIncomingMessage(entry, guildName, normalizedText) then
+                    if not matched[key] then matched[key]={guildName=guildName,entries={}} end
+                    local entries=matched[key].entries;entries[#entries+1]=entry
                 end
             end
         end
     end
+    for _,match in pairs(matched) do self:MarkObservedChatUsage(match.entries[1],match.guildName,channel,match.entries) end
     if next(matched) and self.statusPanelVisible then self:RefreshStatusPanel() end
 end
 
