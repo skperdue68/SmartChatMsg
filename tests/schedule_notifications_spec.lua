@@ -6,10 +6,10 @@ s.scheduleNoticeStates,s.cooldownNoticeDeadlines={},{}
 assert(s:SaveGuildSchedule("ad","Amber Traders",{mode="WINDOW",enabled=true,startDate="2026-10-08",startTime="08:00 PM",endDate="2026-10-08",endTime="09:00 PM",delivery="REPEAT",intervalMinutes=5}))
 local config=s:GetGuildSchedule("ad","Amber Traders")
 now=config.startsAtUtc;s:TickSchedules();s:TickSchedules()
-eq(#notices,2);assert(notices[1]:find("schedule started",1,true));assert(notices[1]:find("EDT",1,true))
+eq(#notices,2);assert(notices[1]:find("Schedule started",1,true));assert(notices[1]:find("EDT",1,true))
 assert(notices[2]:find("Press Enter",1,true))
 now=config.endsAtUtc;s:TickSchedules();s:TickSchedules()
-eq(#notices,3);assert(notices[3]:find("schedule ended",1,true))
+eq(#notices,3);assert(notices[3]:find("Schedule ended",1,true))
 s:NotifyCooldownDelay("ad","Amber Traders",now+60);s:NotifyCooldownDelay("ad","Amber Traders",now+60)
 eq(#notices,4);assert(notices[4]:find("delayed by cooldown",1,true))
 -- Passive matching before activation, including reload and a further observation.
