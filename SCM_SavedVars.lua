@@ -10,6 +10,8 @@ SmartChatMsg.defaults = {
     chatChannels = {}, -- [commandId] = { [guildKey] = "Zone"|"Guild"|"Officer" }
     schedulingTimeZone = "ET",
     guildSchedulingTimeZones = {},
+    guildRoster = {}, -- Recipient membership metadata; never part of portable settings.
+    guildRosterUpdatedAt = nil,
     commandGuildSettings = {}, -- [commandId] = { [guildKey] = { reminderMinutes = n|nil, reminderRetryMinutes = n, autoPopulateOnZone = bool, autoPopulateCooldownMinutes = n, runAt = "ON_DEMAND"|"STARTUP"|"SCHEDULED", openStatusPanelOnRun = bool, populateSound = "DUEL_START"|"NONE"|soundKey, lastUsedAt = unixTime|nil, lastUsedParamText = "..."|nil, lastUsedGuildIndex = n|nil, lastAutoPopulateSentAtByZone = { [zoneKey] = unixTime, ... } }, ... }
 
     selectedMessagesCommand = nil, -- commandId
@@ -27,8 +29,65 @@ SmartChatMsg.defaults = {
     },
 }
 
+local function rosterInteger(value,min,max)
+    return type(value)=='number' and value==math.floor(value) and value>=min and value<=max
+end
+local function cleanGuildRoster(self,raw)
+    if type(raw)~='table' then return nil end
+    local result,ids,slots={},{},{}
+    for index,row in ipairs(raw) do
+        if index>5 or type(row)~='table' or not rosterInteger(row.guildId,1,9007199254740991)
+            or not rosterInteger(row.guildIndex,1,5) or type(row.guildName)~='string'
+            or self:Trim(row.guildName)=='' or ids[row.guildId] or slots[row.guildIndex] then return nil end
+        result[index]={guildId=row.guildId,guildIndex=row.guildIndex,guildName=self:Trim(row.guildName)}
+        ids[row.guildId],slots[row.guildIndex]=true,true
+    end
+    for key in pairs(raw) do if not rosterInteger(key,1,#result) then return nil end end
+    return result
+end
+
+-- Commit only a complete valid response. Startup can precede guild API readiness;
+-- player activation and self-membership events can confirm an actually empty roster.
+function SmartChatMsg:RefreshGuildRoster(allowEmpty)
+    if not self.savedVars or type(GetGuildId)~='function' or type(GetGuildName)~='function' then return false end
+    local expected
+    if type(GetNumGuilds)=='function' then
+        local ok,count=pcall(GetNumGuilds)
+        if not ok or not rosterInteger(count,0,5) then return false end
+        expected=count
+    end
+    local snapshot,ids={},{}
+    for slot=1,5 do
+        local ok,id=pcall(GetGuildId,slot)
+        if not ok or not rosterInteger(id,0,9007199254740991) then return false end
+        if id~=0 then
+            if ids[id] then return false end
+            local nameOk,name=pcall(GetGuildName,id)
+            if not nameOk or type(name)~='string' or self:Trim(name)=='' then return false end
+            snapshot[#snapshot+1]={guildId=id,guildIndex=slot,guildName=self:Trim(name)};ids[id]=true
+        end
+    end
+    if expected and expected~=#snapshot or #snapshot==0 and not allowEmpty then return false end
+    local clockOk,updatedAt=pcall(GetTimeStamp)
+    if not clockOk or not rosterInteger(updatedAt,0,9007199254740991) then return false end
+    self.savedVars.guildRoster,self.savedVars.guildRosterUpdatedAt=snapshot,updatedAt
+    return true
+end
+
+function SmartChatMsg:RegisterGuildRosterEvents()
+    for _,event in ipairs({EVENT_GUILD_SELF_JOINED or false,EVENT_GUILD_SELF_LEFT or false}) do
+        if event then
+            EVENT_MANAGER:RegisterForEvent(self.name..'_GuildRoster'..tostring(event),event,function() self:RefreshGuildRoster(true) end)
+        end
+    end
+end
+
 function SmartChatMsg:InitializeSavedVars()
     self.savedVars = ZO_SavedVars:NewAccountWide("SmartChatMsgSavedVars", 1, nil, self.defaults)
+    local roster=cleanGuildRoster(self,self.savedVars.guildRoster)
+    self.savedVars.guildRoster=roster or {}
+    if not roster or not rosterInteger(self.savedVars.guildRosterUpdatedAt,0,9007199254740991) then self.savedVars.guildRosterUpdatedAt=nil end
+    self:RefreshGuildRoster(false)
     if type(self.savedVars.guildSchedulingTimeZones)~="table" then self.savedVars.guildSchedulingTimeZones={} end
     local guildZones={}
     for guild,zone in pairs(self.savedVars.guildSchedulingTimeZones) do
