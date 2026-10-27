@@ -342,7 +342,7 @@ function S:BuildScheduleOptionControls()
    refresh()
   end,function(n)return n==0 and 'Unlimited' or tostring(n)end,function()return not selected()end)
   slider.tooltip=tooltip
-  local shared={type='checkbox',name='Share daily limit across this command and guild',tooltip=tooltip,getFunc=function()return self:GetScheduleEditorDraft().dailyLimitShared==true end,setFunc=function(v)self:GetScheduleEditorDraft().dailyLimitShared=v==true;refresh()end,disabled=function()return not selected()end}
+  local shared={type='checkbox',name='Share Limit to ALL periods',tooltip='Unchecked: the daily limit applies only to this period. Checked: one daily limit is shared by ALL periods for this command and guild; an announcement from any period counts toward it.',getFunc=function()return self:GetScheduleEditorDraft().dailyLimitShared==true end,setFunc=function(v)self:GetScheduleEditorDraft().dailyLimitShared=v==true;refresh()end,disabled=function()return not selected()end}
   local index=#target+1;for n,control in ipairs(target) do if control.reference=='SCM_PeriodFrequencySlider' then index=n+1;break end end
   table.insert(target,index,slider);table.insert(target,index+1,shared)
  end

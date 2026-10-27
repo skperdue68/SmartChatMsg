@@ -26,3 +26,12 @@ local recurrence=find(controls,'SCM_PeriodRecurrenceSlider');eq(recurrence.min,1
 local daily=find(controls,'SCM_PeriodDailyLimitSlider');eq(daily.max,20);daily.setFunc(2);eq(row.availability.maxPerDay,2);daily.setFunc(0);eq(row.availability.maxPerDay,nil);assert(daily.name():find('Unlimited',1,true))
 local before=d.recurrenceInterval;recurrence.setFunc(-1);eq(d.recurrenceInterval,before)
 print('PASS bounded native sliders, unset/unlimited labels and readable durations')
+
+local afterStart=find(controls,'Allow promotion after event starts');d.eventDurationMinutes=nil;eq(afterStart.disabled(),true);d.eventDurationMinutes=120;eq(afterStart.disabled(),false)
+assert(find(controls,'Allow a closing announcement after the event ends'))
+s:AddTimelineImportantTime();controls=s:BuildScheduleOptionControls()
+local mark=d.importantTimes[s.scheduleEditor.markId];assert(mark)
+find(controls,'Important time date').setFunc(s:ScheduleDateToPicker('2026-11-03'))
+find(controls,'Important time hour').setFunc('07');find(controls,'Important time minute').setFunc('00');find(controls,'Important time AM/PM').setFunc('PM')
+eq(mark.offsetMinutes,-60)
+print('PASS important time calendar follows event and after-start duration requirement')
