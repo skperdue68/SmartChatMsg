@@ -18,8 +18,8 @@ local timer=assert(EVENT_MANAGER.updates[s:GetReminderTimerName('ad','Amber Trad
 local schedule=s.ScheduleCommandReminder;local fallback=0;s.ScheduleCommandReminder=function() fallback=fallback+1 end
 assert(s:SetGuildReminderRetryMinutes('ad','Amber Traders',0));s:HandleReminderPopulateTimeout({commandId='ad',guildName='Amber Traders',lastUsedAt=now-1});eq(fallback,1);s.ScheduleCommandReminder=schedule
 -- Legacy/raw larger values are safely effective-capped across reload/import.
-settings.reminderRetryMinutes=40;ZO_SavedVars={NewAccountWide=function() return s.savedVars end};s:InitializeSavedVars();eq(s:GetGuildEffectiveReminderRetryMinutes('ad','Amber Traders'),10)
-assert(s:ImportSettingsFromString(s:BuildExportString()));eq(s:GetGuildEffectiveReminderRetryMinutes('ad','Amber Traders'),10)
+settings.reminderRetryMinutes=40;ZO_SavedVars={NewAccountWide=function() return s.savedVars end};f.currentSchedules();s:InitializeSavedVars();eq(s:GetGuildEffectiveReminderRetryMinutes('ad','Amber Traders'),10)
+assert(s:ImportSettingsFromString(f.currentExport()));eq(s:GetGuildEffectiveReminderRetryMinutes('ad','Amber Traders'),10)
 -- Scheduled combinations keep their existing active schedule interval cap.
 assert(s:SaveGuildSchedule('ad','Amber Traders',{mode='EVENT',enabled=true,eventDate='2026-10-30',eventTime='08:00 PM',promotionDays=2,endDelayMinutes=60,intervalMinutes=30}))
 local cfg=s:GetGuildSchedule('ad','Amber Traders');now=cfg.eventAtUtc-3600

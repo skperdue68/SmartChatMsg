@@ -51,8 +51,8 @@ local changed=s:ApplyMessageSubstitutions(entry.text,'ad','Amber Traders');asser
 -- Save/load/full import preserves stable IDs, order, exceptions and locked groups.
 c.occurrenceExceptions={['2026-10-01']={action='POSTPONE'},['2026-10-08']={action='KEEP'}}
 assert(s:SetMessageLocked('b',true));ZO_SavedVars={NewAccountWide=function() return s.savedVars end}
-s:InitializeSavedVars();c=s:GetGuildSchedule('ad','Amber Traders');eq(c.rotationEvents[1].id,'stable-a');eq(c.occurrenceExceptions['2026-10-01'].action,'POSTPONE')
-local exported=s:BuildExportString();assert(exported:find('SCHEDULEACTIVITY_V1',1,true));assert(s:ImportSettingsFromString(exported));c=s:GetGuildSchedule('ad','Amber Traders')
+f.currentSchedules();s:InitializeSavedVars();c=s:GetGuildSchedule('ad','Amber Traders');eq(c.rotationEvents[1].id,'stable-a');eq(c.occurrenceExceptions['2026-10-01'].action,'POSTPONE')
+local exported=f.currentExport();assert(exported:find('SCHEDULEACTIVITY_V1',1,true));assert(s:ImportSettingsFromString(exported));c=s:GetGuildSchedule('ad','Amber Traders')
 eq(c.rotationEvents[1].name,'Renamed trial');eq(c.rotationEvery,2);eq(c.messageVariants.b,'stable-b');eq(c.occurrenceExceptions['2026-10-08'].action,'KEEP')
 -- Independently created activity IDs reconcile by unique exact name for locks.
 local foreign=exported:gsub('stable%-b','foreign-b')

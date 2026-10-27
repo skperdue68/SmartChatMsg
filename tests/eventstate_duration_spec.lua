@@ -21,7 +21,7 @@ for _,bad in ipairs({-1,1.5,'ten',math.huge}) do local d=draft(bad);eq(s:Normali
 print('PASS event duration caps, boundary once notices, explicit post-event delivery and reminder states')
 
 f.reset();f.entry('m','ad','Amber Traders','Event notice','Guild');assert(s:SaveGuildSchedule('ad','Amber Traders',draft(60)));local cfg=s:GetGuildSchedule('ad','Amber Traders');cfg.reminders[1].enabled=false;cfg.reminders[2].paused=true;cfg.reminders[2].allowAfterEventEnd=true
-ZO_SavedVars={NewAccountWide=function()return s.savedVars end};assert(s:ImportSettingsFromString(s:BuildExportString()));cfg=s:GetGuildSchedule('ad','Amber Traders');eq(cfg.eventDurationMinutes,60);eq(cfg.reminders[1].enabled,false);eq(cfg.reminders[2].paused,true);eq(cfg.reminders[2].allowAfterEventEnd,true)
+ZO_SavedVars={NewAccountWide=function()return s.savedVars end};assert(s:ImportSettingsFromString(f.currentExport()));cfg=s:GetGuildSchedule('ad','Amber Traders');eq(cfg.eventDurationMinutes,60);eq(cfg.reminders[1].enabled,false);eq(cfg.reminders[2].paused,true);eq(cfg.reminders[2].allowAfterEventEnd,true)
 print('PASS duration, period states and explicit after-event exceptions survive transfer')
 
 f.reset();f.entry('m','ad','Amber Traders','Join us','Guild');local d=draft(60);d.reminders[2].enabled=false;assert(s:SaveGuildSchedule('ad','Amber Traders',d));cfg=s:GetGuildSchedule('ad','Amber Traders');now=cfg.eventAtUtc+3540;s:TickSchedules();assert(s.pendingRestoreState,'invitation prepares before end');now=cfg.eventAtUtc+3601;s:TickSchedules();eq(s.pendingRestoreState,nil,'untouched invitation is withdrawn at event end')

@@ -8,7 +8,7 @@ s.savedVars.messages[1].guildIndex=1
 local settings=s:GetCommandGuildSettings("ad","Amber Traders",true)
 settings.lastUsedGuildIndex=1;settings.lastUsedParamText="1";settings.runAt="STARTUP"
 assert(s:SaveGuildSchedule("ad","Amber Traders",{mode="EVENT",enabled=false,eventDate="2026-10-24",eventTime="08:00 PM",promotionDays=2,endDelayMinutes=60,intervalMinutes=15}))
-local exported=s:BuildExportString()
+local exported=f.currentExport()
 assert(exported:find("SCM_EXPORT_V2",1,true)==1,"exports must identify the name-based format")
 assert(not exported:find("Talk in /g1 or /o2",1,true),"literal slot references must be named in the export")
 assert(exported:find("DEFAULT|Amber Traders",1,true))
@@ -47,7 +47,7 @@ GetGuildName=function(id) if id==101 then return "Blue Traders" elseif id==202 t
 assert(s:ImportSettingsFromString(legacy))
 eq(s.savedVars.defaultGuildIndex,2);eq(s.savedVars.messages[1].guildIndex,2)
 eq(s.savedVars.messages[1].text,"Use /g2.")
-local stable=s:BuildExportString()
+local stable=f.currentExport()
 local before=s.savedVars.messages[1].text
 assert(not s:ImportSettingsFromString("not an export"))
 eq(s.savedVars.messages[1].text,before)
@@ -71,7 +71,7 @@ for _,parameter in ipairs({"g1","o1"}) do
  f.reset();f.entry("prefixed","ad","Amber Traders","A public notice.","Guild")
  local cfg=s:GetCommandGuildSettings("ad","Amber Traders",true)
  cfg.lastUsedGuildIndex=1;cfg.lastUsedParamText=parameter;cfg.runAt="STARTUP"
- local encoded=s:BuildExportString()
+ local encoded=f.currentExport()
  GetGuildName=function(id) if id==101 then return "Blue Traders" elseif id==202 then return "Amber Traders" end;return "" end
  assert(s:ImportSettingsFromString(encoded))
  eq(s:GetCommandGuildSettings("ad","Amber Traders",false).lastUsedParamText,parameter:sub(1,1).."2")
@@ -81,7 +81,7 @@ print("guild and officer command parameters preserve their channel and remap the
 
 -- Quoted slash references are normal prose, not literal sender slot numbers.
 f.reset();f.entry("quoted","ad","Amber Traders",[[Use "/g1" and '/o2' to chat.]],"Guild")
-local quoted=s:BuildExportString()
+local quoted=f.currentExport()
 GetGuildName=function(id) if id==101 then return "Blue Traders" elseif id==202 then return "Amber Traders" end;return "" end
 assert(s:ImportSettingsFromString(quoted))
 eq(s.savedVars.messages[1].text,[[Use "/g2" and '/o1' to chat.]])

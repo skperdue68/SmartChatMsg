@@ -25,7 +25,7 @@ eq(s:GetGuildLastUsedAt('ad','Amber Traders'),now)
 local nextEvent=s:GetScheduleOccurrence(c,s:ParseZonedDateTime('2026-10-14','12:00 PM',nil,'PT'))
 eq(s:FormatScheduleDateTime(nextEvent.eventAtUtc,c),'2026-10-20 08:00 PM PDT')
 ZO_SavedVars={NewAccountWide=function() return s.savedVars end}
-local exported=s:BuildExportString();assert(s:SetSchedulingTimeZone('ET'))
+local exported=f.currentExport();assert(s:SetSchedulingTimeZone('ET'))
 assert(s:ImportSettingsFromString(exported));eq(s:GetSchedulingTimeZone(),'PT')
 eq(s:GetGuildSchedule('ad','Amber Traders').eventAtUtc,old+10800)
 eq(s:FormatEasternDateTime(old),'2026-10-13 08:00 PM EDT','explicit Eastern helpers stay Eastern')

@@ -68,9 +68,9 @@ test("schedule configuration survives reload and additive V1 export/import", fun
     assert(scm:SaveGuildSchedule("ad", "Amber Traders", draft()))
     scm:GetGuildSchedule("ad", "Amber Traders").paused=true
     ZO_SavedVars={NewAccountWide=function() return scm.savedVars end}
-    scm:InitializeSavedVars()
+    f.currentSchedules();scm:InitializeSavedVars()
     eq(scm:GetGuildSchedule("ad", "Amber Traders").paused,true)
-    local exported=scm:BuildExportString()
+    local exported=f.currentExport()
     local ok, reason=scm:ImportSettingsFromString(exported)
     assert(ok,reason)
     local s=scm:GetGuildSchedule("ad", "Amber Traders")
@@ -234,8 +234,8 @@ test("settings draft validates transactionally and persists message phase edits"
     day[1].setFunc(true)
     byName["Save and activate"].func()
     assert(scm:GetGuildSchedule("ad","Amber Traders").messagePhases.a.DAY)
-    byName["Pause saved schedule"].func(); eq(scm:GetGuildSchedule("ad","Amber Traders").paused,true)
-    byName["Resume saved schedule"].func(); eq(scm:GetGuildSchedule("ad","Amber Traders").paused,false)
+    scm:PauseGuildSchedule("ad","Amber Traders"); eq(scm:GetGuildSchedule("ad","Amber Traders").paused,true)
+    scm:ResumeGuildSchedule("ad","Amber Traders"); eq(scm:GetGuildSchedule("ad","Amber Traders").paused,false)
     scm.GetSelectedGuildNameForMessages=original
 end)
 test("queued Zone requests recheck current zone eligibility before delivery", function()
@@ -276,7 +276,7 @@ test("busy startup uses lower priority than manual and retains confirmation owne
 end)
 test("malformed schedule message import returns an error and leaves saved data unchanged", function()
     savedRuntime(); local before=scm:GetGuildSchedule("ad","Amber Traders")
-    local export=scm:BuildExportString()
+    local export=f.currentExport()
     export=export:gsub("END", "SCHEDULEMESSAGE_V1|ad|amber traders\nEND")
     local ok,reason=scm:ImportSettingsFromString(export)
     eq(ok,false); assert(reason); eq(scm:GetGuildSchedule("ad","Amber Traders"),before)
@@ -375,7 +375,7 @@ test("Starting soon settings and assignments survive full export import",functio
     local d=draft();d.startingSoonEnabled=true;d.startingSoonMinutes=90
     d.messagePhases.b={SOON=true};d.phaseIntervals.SOON=3;d.phaseOnce={SOON=true}
     assert(scm:SaveGuildSchedule("ad","Amber Traders",d))
-    local exported=scm:BuildExportString();local ok,reason=scm:ImportSettingsFromString(exported);assert(ok,reason)
+    local exported=f.currentExport();local ok,reason=scm:ImportSettingsFromString(exported);assert(ok,reason)
     local s=scm:GetGuildSchedule("ad","Amber Traders")
     eq(s.startingSoonEnabled,true);eq(s.startingSoonMinutes,90)
     eq(s.phaseIntervals.SOON,3);eq(s.phaseOnce.SOON,true);eq(s.messagePhases.b.SOON,true)

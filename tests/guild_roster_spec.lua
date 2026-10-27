@@ -6,7 +6,7 @@ GetGuildId=function(slot) return memberships[slot] and memberships[slot].guildId
 GetGuildName=function(id) for _,row in pairs(memberships) do if row.guildId==id then return row.guildName end end;return '' end
 GetNumGuilds=function() return advertisedCount or #memberships end
 ZO_SavedVars={NewAccountWide=function() return s.savedVars end}
-s:InitializeSavedVars();eq(#s.savedVars.commands,0);eq(#s.savedVars.guildRoster,2)
+f.currentSchedules();s:InitializeSavedVars();eq(#s.savedVars.commands,0);eq(#s.savedVars.guildRoster,2)
 eq(s.savedVars.guildRoster[1].guildId,101);eq(s.savedVars.guildRoster[1].guildIndex,1);eq(s.savedVars.guildRoster[1].guildName,'Amber Traders');eq(s.savedVars.guildRosterUpdatedAt,now)
 local cached=s.savedVars.guildRoster;local timestamp=s.savedVars.guildRosterUpdatedAt
 -- Incomplete API responses must not replace any part of the previous snapshot.
@@ -21,19 +21,19 @@ memberships={{guildId=202,guildName='Blue Traders Renamed'},{guildId=101,guildNa
 assert(s:RefreshGuildRoster(false));eq(s.savedVars.guildRoster[1].guildId,202);eq(s.savedVars.guildRoster[1].guildName,'Blue Traders Renamed');eq(s.savedVars.guildRoster[2].guildIndex,2);eq(s.savedVars.guildRosterUpdatedAt,now)
 -- Startup zero is protected, including across repeated SavedVars reloads.
 cached=s.savedVars.guildRoster;timestamp=s.savedVars.guildRosterUpdatedAt;memberships={};now=now+60
-assert(not s:RefreshGuildRoster(false));s:InitializeSavedVars();eq(s.savedVars.guildRoster[1].guildId,202);eq(s.savedVars.guildRosterUpdatedAt,timestamp)
+assert(not s:RefreshGuildRoster(false));f.currentSchedules();s:InitializeSavedVars();eq(s.savedVars.guildRoster[1].guildId,202);eq(s.savedVars.guildRosterUpdatedAt,timestamp)
 assert(s:RefreshGuildRoster(true));eq(#s.savedVars.guildRoster,0);eq(s.savedVars.guildRosterUpdatedAt,now)
 -- Invalid old cache fields sanitize when no ready response can replace them.
-s.savedVars.guildRoster='bad';s.savedVars.guildRosterUpdatedAt=math.huge;s:InitializeSavedVars();eq(#s.savedVars.guildRoster,0);eq(s.savedVars.guildRosterUpdatedAt,nil)
+s.savedVars.guildRoster='bad';s.savedVars.guildRosterUpdatedAt=math.huge;f.currentSchedules();s:InitializeSavedVars();eq(#s.savedVars.guildRoster,0);eq(s.savedVars.guildRosterUpdatedAt,nil)
 s.savedVars.guildRoster={{guildId=101,guildIndex=1,guildName='Good'},{guildId=202,guildIndex=1,guildName='Duplicate slot'}};s.savedVars.guildRosterUpdatedAt=42
-s:InitializeSavedVars();eq(#s.savedVars.guildRoster,0);eq(s.savedVars.guildRosterUpdatedAt,nil)
+f.currentSchedules();s:InitializeSavedVars();eq(#s.savedVars.guildRoster,0);eq(s.savedVars.guildRosterUpdatedAt,nil)
 -- GetNumGuilds is optional; valid live slots still refresh on older API fixtures.
 GetNumGuilds=nil;memberships={{guildId=303,guildName='New Guild'}};assert(s:RefreshGuildRoster(false));eq(s.savedVars.guildRoster[1].guildName,'New Guild')
 local last=s.savedVars.guildRosterUpdatedAt;local originalName=GetGuildName;GetGuildName=nil;now=now+1
 assert(not s:RefreshGuildRoster(true));eq(s.savedVars.guildRosterUpdatedAt,last);GetGuildName=originalName
 -- Portable text exports omit membership metadata. Import retains/refetches the
 -- recipient roster, rather than adopting a source player's cached memberships.
-local text=s:BuildExportString();assert(not text:find('guildRoster',1,true));assert(not text:find('New Guild',1,true))
+local text=f.currentExport();assert(not text:find('guildRoster',1,true));assert(not text:find('New Guild',1,true))
 assert(s:ImportSettingsFromString(text));eq(s.savedVars.guildRoster[1].guildId,303)
 memberships={{guildId=404,guildName='Recipient New Guild'}};assert(s:ImportSettingsFromString(text));eq(s.savedVars.guildRoster[1].guildId,404)
 -- Exercise real addon-load registration, activation and guarded self join/leave.

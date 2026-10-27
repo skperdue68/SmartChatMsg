@@ -1,4 +1,4 @@
-# SmartChatMsg 2.0 — User Guide
+# SmartChatMsg 2.1.0 — User Guide
 
 SmartChatMsg prepares reusable messages in ESO's chat box. **Press Enter to send them.** It runs only while you are online with the addon loaded; it cannot send announcements while ESO is closed.
 
@@ -57,58 +57,27 @@ If your chat contains a draft or another prepared message, the request waits wit
 
 For example, Repeat Every 10 and Cooldown 60 caps Retry Delay to 10 minutes. Repeat Every 60 and Cooldown 10 also caps Retry Delay to 10 minutes. Zero or blank still resumes the normal repeat interval after timeout. Zone delivery uses its own per-zone cooldown instead of this repeat loop. Scheduled combinations use the delivery and intervals inside Scheduling.
 
-## Scheduling
+## Scheduling with Period Timeline
 
-Select **Run At → Scheduled**, then open **Scheduling (your guild's timezone name Time)** beneath Enter Message. Use **Guild timezone** near the top to choose Eastern, Central, Mountain, Pacific, or Use global default. This section is disabled for On Demand or Startup combinations. There are three schedule types.
+Set **Run At** to **Scheduled**, choose the guild/output channel, then open **Scheduling**. Set one actual **Event date and time**, its optional duration, and recurrence. There is no Schedule type selector and no old-format conversion button.
 
-### Run during a window
+Under **Period Timeline**, select or add a period. Set its **Period Label**, **Period Status**, **Period Starts** and **Period Stops** dates/server clocks, **Repeat Frequency**, and message-pool checkboxes. One randomly selected eligible message is prepared each time it is due. Different periods can use different frequencies and messages without separate commands. **Send once** makes a one-time notice; its lateness allowance controls how late that notice can appear while online.
 
-Use this for a message that stays relevant over a period: volunteer recruitment, an open guild poll, ticket sales, or housing contest entries.
+Normal periods start on or before the event. **Allow promotion after event starts** permits underway invitations; event duration limits them unless the explicit after-event exception is enabled. For an 8–10 PM event, use a pre-event period ending at 8 PM and an underway period from 8–10 PM with its own messages. You can add a Send once announcement at 8 PM too.
 
-1. Under **Window dates and times**, set the start and end dates and times.
-2. Choose the recurrence, or leave it non-repeating for a one-off campaign.
-3. Under **Message delivery**, choose Repeat while active or On zone arrival.
-4. Select several messages and the message interval.
-5. Review the preview, then click **Save and activate**.
+Dates use the date-picker extension; clocks use constrained hour/minute/AM-PM choices in the guild timezone. Period dates follow future occurrences and keep server clocks consistent through daylight saving. Existing period anchors retain their meaning until edited. Invalid clocks and backwards periods are rejected.
 
-No event date or event phases are needed. The start is inclusive and the end is exclusive.
+Native sliders mirror the web editor: duration **0 = Not set** through **240 minutes**, recurrence interval **1–10**, period repeat frequency **1–1440 minutes**, and daily announcement maximum **0 = Unlimited** through **20**. Not set and Unlimited are stored by omitting the optional value, not as a zero-length event or zero allowed messages. Existing larger values are retained until deliberately changed. Slider labels show readable durations.
 
-### Remind me at set times
+**Important times** provides named moments for substitutions such as `%eventtime:tickets%` and `%eventcountdown:tickets%`. Each period has a bounded, scrollable message-pool selector. **Availability** can restrict its days/hours and daily maximum. **Preview Period Timeline** and clicking a message preview show what the periods will do.
 
-Set the first reminder's date and time and its recurrence. Each occurrence prepares one randomly selected message. There is a two-minute eligibility window; reminders missed while offline are skipped, rather than delivered as a backlog.
+Use **Save and activate** to validate and enable, or **Save disabled** to keep the configuration off. Draft edits do not change the running schedule until saved. ESO must be running; press Enter to send prepared text. Scheduling is disabled for On Demand and Startup combinations, which retain their ordinary command-wide pools.
 
-### Promote an event
+Only current Period Timeline schedules load or import. Older phase/window/reminder schedules are not converted. Imports containing unsupported schedules are rejected before replacing current settings; on startup unsupported schedule records are ignored while their command/message content remains. A fresh editor starts directly in the current format.
 
-Use this when messages should change as an event or submission deadline approaches.
+### Recurrence
 
-1. Under **Event and promotion timing**, set the **Event date**, hour, minute, and AM/PM. This original date is also the recurrence and faction-rotation anchor.
-2. Set **Start promoting (days before event)**. **0 starts at midnight on event day in the selected timezone.** Positive values start that many calendar days earlier at the event's clock time: 1 for an 8 PM event starts at 8 PM the previous day; 2 starts at 8 PM two days earlier. DST can make the elapsed duration differ from exactly 24/48 hours. The preview shows the actual promotion start.
-3. Under **After event starts**, set **Promote after start (minutes)**. **0 stops exactly at the event start**—ideal for a raffle or submission deadline. A positive duration keeps promotion active afterward; for example, 120 allows messages for two hours while people can still join. Select the ongoing-event messages in this section and optionally set their own message interval. Duration and message interval are different settings.
-4. Optionally enable **Starting soon** and choose its lead time, such as 120 minutes.
-5. Set delivery, recurrence, phase messages, and intervals, then review and save.
-
-The phases use these same names in settings and status:
-
-| Phase | When it applies |
-| --- | --- |
-| **Before event day** | Promotion starts until midnight on event day. |
-| **On event day** | Midnight until the event starts, unless Starting soon takes over earlier. |
-| **Starting soon** | The configured final minutes before the event, within the promotion window. |
-| **After event starts** | Event start until the configured post-start duration expires. A duration of 0 gives this phase no running time. |
-
-Scheduled message views are sorted by their earliest selected phase: Before event day, On event day, Starting soon, After event starts, then messages not selected for any enabled phase. A message in several phases appears in its earliest group; a default message enabled for all phases appears in the first group. Within a group, the existing order stays stable. Sorting changes only the view, not the saved message list or random message selection.
-
-The order updates as you check or uncheck messages, including unsaved changes. Phase lists keep the top visible message and your offset within it; the main settings page keeps its scroll offset. The existing sections and message controls are reused. Near the end of a shortened list, scrolling is limited to the remaining content.
-
-Each phase can have several checked messages; one eligible message is chosen randomly each time. A message can be included in several phases. **Message interval override (optional)** overrides the default interval for that phase; leave it blank to inherit the default. For example: every 180 minutes before event day, every 60 minutes on event day, and every 15 minutes starting soon.
-
-### Prepare only once
-
-**Prepare only once before event day**, **on event day**, **during Starting soon**, and **when event starts** apply independently to their respective phases. When checked, that phase gets one announcement per event occurrence. It selects one random eligible message, not one of every checked variation. After a confirmed send, the phase is complete. An unsent message may be retried while the phase remains eligible. A recognized matching announcement from another player also counts as usage. Each recurring event has a fresh allowance.
-
-### Save controls and previews
-
-**Save and activate** validates and enables the schedule. **Save disabled** keeps the configuration without running it. Edits are drafts until saved. Review shows readable times, the promotion window, and upcoming occurrences. **Next event** shows the next future event date without replacing your original anchor.
+Choose once, daily, weekly, every other week, monthly on date, or monthly on weekday. The original event date anchors the pattern. The recurrence interval multiplies the chosen unit; Every other week × 2 means every four weeks. Weekday choices describe event occurrences, not advertising days. Use period Availability for advertising days/hours.
 
 ## Repeat schedule and More repeat options
 
@@ -127,13 +96,13 @@ Recurrence repeats the **whole window, reminder, or event**. It does not control
 
 ## Special event patterns
 
-These are optional refinements for **repeating Promote an event** schedules. They work with any supported recurrence; Every other week is not required.
+These are optional refinements for **repeating scheduled event** schedules. They work with any supported recurrence; Every other week is not required.
 
 ### Faction rotation
 
 Select **Special event pattern → Faction rotation**. Under **Faction rotation**, choose the first faction, optional second/third factions, and **Faction frequency (weeks)**. Choose **Not used** for slots you do not need.
 
-The **Event date under Event and promotion timing** starts the first faction's block. Each selected faction runs for the chosen number of calendar weeks, then the order repeats. The complete cycle is frequency × number of selected factions: three factions at four weeks each gives 12 weeks; two factions at two weeks each gives four weeks. Rotation continues across weeks you are offline.
+The **Event date under Event date and time** starts the first faction's block. Each selected faction runs for the chosen number of calendar weeks, then the order repeats. The complete cycle is frequency × number of selected factions: three factions at four weeks each gives 12 weeks; two factions at two weeks each gives four weeks. Rotation continues across weeks you are offline.
 
 **Use `%eventfaction%` in a message to show the proper full faction name for that event.** In phase message rows, choose All selected factions for a reusable template or choose one faction for wording specific to it. Phase selections still control when the message runs.
 
@@ -198,11 +167,11 @@ Use **Import / Export Settings** for full settings transfer. It includes command
 
 ## Quick test
 
-Create a dedicated test command and one message, choose your guild and output channel, and set Run At to Scheduled. For a simple test, choose Run during a window, starting now and ending 15 minutes later, with a five-minute message interval. Save and activate. Wait for the three-minute startup hold if you just loaded the addon, leave chat input empty, and watch `/scm status`. Press Enter when a message is prepared. A housing zone is convenient for a Zone test; use guild chat when testing guild-channel matching.
+Create a dedicated test command and one message, choose your guild and output channel, and set Run At to Scheduled. For a simple test, set an event 15 minutes ahead and a period starting now and stopping at the event, with a five-minute Repeat Frequency. Save and activate. Wait for the three-minute startup hold if you just loaded the addon, leave chat input empty, and watch `/scm status`. Press Enter when a message is prepared. A housing zone is convenient for a Zone test; use guild chat when testing guild-channel matching.
 
 `/scm resetcooldowns` clears existing cooldowns for testing, including once-completion deadlines. It preserves schedule dates, paused/disabled states, and the startup delay. Other schedules' spacing is also reset. A future or expired schedule remains future or expired; resetting cooldowns does not move its dates.
 
-When you select **Promote an event**, **Event and promotion timing** opens automatically so the event date and time are visible. You can collapse it yourself; ordinary settings refreshes keep that choice. Selecting a different event configuration opens its timing section again.
+When you select **Scheduled**, **Event date and time** opens automatically so the event date and time are visible. You can collapse it yourself; ordinary settings refreshes keep that choice. Selecting a different event configuration opens its timing section again.
 
 ## Multiple event deadlines and countdowns
 

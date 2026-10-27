@@ -179,7 +179,7 @@ test("peer cooldown survives saved-variable initialization and retains each zone
     incoming(3, "Amber Traders is recruiting!")
     scm.GetPlayerZoneId = originalZone
     ZO_SavedVars = { NewAccountWide = function() return scm.savedVars end }
-    scm:InitializeSavedVars()
+    fixture.currentSchedules();scm:InitializeSavedVars()
     eq(scm:GetAutoPopulateCooldownEndsAt("ad", "Amber Traders", 41), 1003660)
     eq(scm:GetAutoPopulateCooldownEndsAt("ad", "Amber Traders", 99), 1003670)
 end)

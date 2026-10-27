@@ -88,4 +88,23 @@ local function incoming(channel, text, sender, display)
     assert(type(scm.HandleIncomingChatMessage) == "function", "incoming-message listener is missing")
     scm:HandleIncomingChatMessage(EVENT_CHAT_MESSAGE_CHANNEL, channel, sender or "Other Character", text, false, display or "@Other")
 end
-return {scm=scm, reset=reset, entry=entry, incoming=incoming, eq=eq}
+-- Old unit fixtures still exercise date/phase arithmetic internally. Public
+-- roundtrip fixtures must explicitly emit the current period format.
+local function currentSchedules()
+ for id,guilds in pairs(scm.savedVars.commandGuildSettings or {}) do for guild,settings in pairs(guilds) do
+  local c=settings.schedule
+  if c and c.timelineVersion~=1 then
+   local rows,variants=scm:BuildLegacyTimelineRows(c,id,guild,c.eventAtUtc)
+   assert(rows,variants)
+   local p=scm:GetScheduleParts(c.eventAtUtc,c);local d={};for key,value in pairs(c) do d[key]=value end
+   d.mode='EVENT';d.timelineVersion=1;d.eventDate=string.format('%04d-%02d-%02d',p.year,p.month,p.day);d.eventTime=string.format('%02d:%02d %s',p.hour%12==0 and 12 or p.hour%12,p.min,p.hour>=12 and 'PM' or 'AM');d.importantTimes={};d.reminders=rows;d.messageVariants=variants or c.messageVariants or {};d.timelineUsage={}
+   if #rows==0 then d.reminders={{id='fixture-period',label='Period',start={kind='OFFSET',minutes=-60},finish={kind='OFFSET',minutes=0},intervalMinutes=15,lateMinutes=5,messageIds={}}} end
+   settings.schedule=assert(scm:NormalizeSchedule(d))
+  end
+ end end
+end
+local function currentExport()
+ local originals={};for _,guilds in pairs(scm.savedVars.commandGuildSettings or {}) do for _,settings in pairs(guilds) do originals[settings]=settings.schedule end end
+ currentSchedules();local value=scm:BuildExportString();for settings,original in pairs(originals) do settings.schedule=original end;return value
+end
+return {scm=scm, reset=reset, entry=entry, incoming=incoming, eq=eq,currentExport=currentExport,currentSchedules=currentSchedules}
