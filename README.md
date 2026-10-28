@@ -25,3 +25,8 @@ Older schedule formats are not loaded or automatically converted. Preserve a bac
 
 
 Native settings import merges commands/messages, retaining items absent from the import and recipient usage history. Matching events receive the imported timeline/settings. Web selective event bundles and native text exports use different transfer formats; see the guide before sharing.
+
+
+## Optional native Event Planner
+
+Use `/scm schedule` for the new resizable three-column ESO window: command/event list, period cards, and a wider editor with message previews. `/scm` retains the original settings, which remain available for advanced options and import/export. Drafts use Save/Cancel and preserve live cooldown/usage history. See the guide’s Custom ESO Event Planner section for the current scope and testing steps.

@@ -63,7 +63,8 @@ end
 
 function SmartChatMsg:HandleScmCommand(paramText)
     local normalized=zo_strlower(self:Trim(paramText or ""))
-    if normalized=="" or normalized=="schedule" then self:OpenSettings();return true
+    if normalized=="" then self:OpenSettings();return true
+    elseif normalized=="schedule" then return self:OpenEventPlanner()
     elseif normalized=="on" then return self:SetScheduledSendingEnabled(true)
     elseif normalized=="off" then return self:SetScheduledSendingEnabled(false)
     elseif normalized=="status" then self:ToggleStatusPanel();return true
