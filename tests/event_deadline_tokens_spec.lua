@@ -57,3 +57,19 @@ kind,offset=s:ParseScheduledEventToken("EVENTTIME-3H")
 eq(kind,"eventtime");eq(offset,-10800)
 kind,offset=s:ParseScheduledEventToken("eventtime-30m")
 eq(offset,-1800)
+
+-- Explicit deadlines must not round away the offset on long countdowns.
+local longContext={schedule=schedule,occurrence=s:BuildScheduleOccurrence(schedule,schedule.eventAtUtc),now=schedule.eventAtUtc-(10*86400+6*3600+17*60)}
+eq(s:ResolveScheduledEventTokens('%eventcountdown% / %eventcountdown-60m% / %eventcountdown-1h% / %eventcountdown-4h%', 'ad','Amber Traders',longContext), '10d 6h 17m / 10d 5h 17m / 10d 5h 17m / 10d 2h 17m')
+eq(s:FormatEventCountdown(31*60),'31m')
+eq(s:FormatEventCountdown(1),'1m')
+eq(s:FormatEventCountdown(0),'now')
+eq(s:FormatEventCountdown(-1),'passed')
+
+for _,value in ipairs({'1m','4m','17m','31m','59m','10d 5h 17m','~10d 6h'}) do
+ assert(s:IsValidIncomingMatchCapture({kind='eventcountdown'},value),'peer countdown must remain valid: '..value)
+end
+assert(not s:IsValidIncomingMatchCapture({kind='eventcountdown'},'60m'))
+local peer=f.entry('precise-peer','ad','Amber Traders','Raffle countdown: %eventcountdown%.','Guild')
+assert(s:MatchesIncomingMessage(peer,'Amber Traders',s:NormalizeIncomingChatText('Raffle countdown: 10d 5h 17m.')))
+assert(s:MatchesIncomingMessage(peer,'Amber Traders',s:NormalizeIncomingChatText('Raffle countdown: 1m.')))

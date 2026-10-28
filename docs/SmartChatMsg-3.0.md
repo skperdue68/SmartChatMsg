@@ -231,3 +231,5 @@ The active saved period card shows **Next eligible** between Stops and frequency
 Phase changes reflow only the period list, preserving its scroll anchor; ticking the countdown does not rebuild the editor or interrupt typing. The green dot still marks the active saved period and the gold card marks your editing selection.
 
 Guild settings uses its own centered dialog container. Saving or cancelling hides the dialog without moving the launch button or leaving dialog fields attached to it.
+
+Explicit `%eventcountdown%` substitutions (including offsets and named important times) show days, hours, and minutes without coarse rounding. For example, `10d 6h 17m` becomes `10d 5h 17m` with `%eventcountdown-1h%`. Positive durations round up only to the next minute; deadlines show `now` or `passed` when reached. Automatically inserted countdowns retain their approximate display.

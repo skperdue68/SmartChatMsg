@@ -187,7 +187,9 @@ function SmartChatMsg:IsValidIncomingMatchCapture(capture,value)
  if capture.kind=='greeting' then return value=='morning' or value=='afternoon' or value=='evening'
  elseif capture.kind=='zone' then return self:IsKnownIncomingZoneName(value)
  elseif capture.kind=='eventwhen' then return self:IsMatchingEventWhen(value,capture.details)
- elseif capture.kind=='eventcountdown' then return value=='now' or value=='passed' or self:IsGeneratedCountdownText(value,'soon')
+ elseif capture.kind=='eventcountdown' then
+  local minutes=tonumber(value:match('^(%d+)m$'))
+  return (minutes and minutes>=1 and minutes<=59) or value=='now' or value=='passed' or self:IsGeneratedCountdownText(value,'soon')
  else return self:IsGeneratedTimeAddition(value,capture.details) end
 end
 
