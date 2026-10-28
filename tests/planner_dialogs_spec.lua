@@ -31,3 +31,15 @@ s.ImportSettingsFromString=function()imports=imports+1;return true end
 local old=s.plannerModel;click(transfer,'import');click(confirm,'accept');assert(imports==2 and s.plannerModel~=old)
 s.BuildExportString=export;s.ImportSettingsFromString=importer
 print('PASS native global settings transactions and transfer confirmation, dirty guards, failure text retention and refresh')
+
+-- Clicking the editor takes focus; full exports are selected even beyond the viewport.
+local dialog=s:OpenPlannerTransfer();local edit=dialog.plannerControls.text.edit
+assert(edit.handlers.OnMouseDown,'Missing click-to-focus handler')
+edit.handlers.OnMouseDown(edit,MOUSE_BUTTON_INDEX_LEFT);assert(edit.focused)
+assert(edit.copyEnabled and edit.pasteEnabled)
+local oldExport=s.BuildExportString;local longExport='SCM_EXPORT_V2\n'..string.rep('MESSAGE|long text\n',5000)..'LAST_RECORD'
+s.BuildExportString=function()return longExport end;s.plannerModel.dirty=false
+click(dialog,'export');assert(edit.focused and edit.selection[2]==#longExport);assert(edit:GetText():find('LAST_RECORD',1,true))
+edit.selection=nil;click(dialog,'selectAll');assert(edit.selection[2]==#longExport)
+s.BuildExportString=oldExport
+print('PASS click focus, copy/paste flags, auto-selection and explicit Select all for long exports')

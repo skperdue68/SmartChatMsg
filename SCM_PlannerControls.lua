@@ -68,6 +68,15 @@ function UI.edit(parent,key,text,x,y,w,h,callback,multiline,help,maxChars)
     edit:SetFont(UI.fonts.body);edit:SetColor(unpack(UI.theme.text));edit:SetMaxInputChars(maxChars or (multiline and 2000 or 120))
     edit:SetMultiLine(multiline==true);edit:SetMouseEnabled(true)
     edit:SetEditEnabled(true)
+    edit:SetCopyEnabled(true);edit:SetPasteEnabled(true);edit:SetSelectAllOnFocus(false)
+    edit:SetNewLineEnabled(multiline==true);edit:SetSelectionColor(0.28,0.46,0.58,0.90)
+    edit:SetHandler('OnMouseDown',function(c,button)if button==MOUSE_BUTTON_INDEX_LEFT then c:TakeFocus()end end)
+    if multiline then
+        edit:SetHandler('OnMouseWheel',function(c,delta)
+            if c:HasFocus()then c:SetTopLineIndex(math.max(1,math.min(c:GetScrollExtents()+1,c:GetTopLineIndex()-delta)))
+            elseif c.plannerScroll then ZO_Scroll_OnMouseWheel(c.plannerScroll,delta)end
+        end)
+    end
     edit:SetHandler('OnTextChanged',nil);edit:SetText(tostring(text or ''))
     edit:SetHandler('OnTextChanged',function(c)if not S.plannerRefreshing then callback(c:GetText()) end end)
     edit:SetHandler('OnEscape',function(c)c:LoseFocus()end)
