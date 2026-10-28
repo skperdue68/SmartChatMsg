@@ -3951,12 +3951,20 @@ local function scm_format_about_duration(totalMinutes)
     return body
 end
 
--- Explicit countdowns share the existing compact duration display, but
--- describe a reached deadline instead of showing a future countdown.
+-- Explicit deadline tokens retain minute precision so offsets remain visible.
+-- Automatic countdown insertion keeps its separate approximate formatter.
 function SmartChatMsg:FormatEventCountdown(seconds)
     if seconds<0 then return "passed" end
     if seconds==0 then return "now" end
-    return scm_format_about_duration(math.ceil(seconds/60))
+    local total=math.ceil(seconds/60)
+    local days=math.floor(total/1440)
+    local hours=math.floor((total%1440)/60)
+    local minutes=total%60
+    local parts={}
+    if days>0 then parts[#parts+1]=days.."d" end
+    if hours>0 then parts[#parts+1]=hours.."h" end
+    if minutes>0 then parts[#parts+1]=minutes.."m" end
+    return table.concat(parts," ")
 end
 
 local function scm_has_digit_before(text, s)

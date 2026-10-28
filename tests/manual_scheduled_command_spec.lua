@@ -22,7 +22,7 @@ now=now+60
 assert(s:HandleScmCommand('send recruit'))
 eq(s.pendingRestoreState.metadata.selectedEntryId,'day')
 assert(CHAT_SYSTEM:GetEditControl():GetText():find('today',1,true))
-assert(CHAT_SYSTEM:GetEditControl():GetText():find('(~1h)',1,true))
+assert(CHAT_SYSTEM:GetEditControl():GetText():find('(59m)',1,true))
 eq(s:GetGuildLastUsedAt('ad','Amber Traders'),now-60,'preparing is not sending')
 sent()
 eq(s:GetGuildLastUsedAt('ad','Amber Traders'),now)
