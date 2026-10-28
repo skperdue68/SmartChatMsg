@@ -55,7 +55,7 @@ s.plannerModel=s:CreatePlannerDraft(m.commandId,m.guild);s:RefreshEventPlanner()
 local globals=s.plannerWindow.plannerControls.globalSettings;globals.draft.zone='CT';globals.draft.seconds=90;globals.draft.guild=2;globals.plannerControls.save.handlers.OnClicked()
 assert(s:GetSchedulingTimeZone()=='CT' and s:GetRevertChatSeconds()==90 and s:GetDefaultGuildIndex()==2)
 assert(s.plannerModel.source==s:GetGuildSchedule(s.plannerModel.commandId,s.plannerModel.guild))
-s:OpenPlannerGuildSettings();local guildDialog=s.plannerWindow.plannerControls.guildSettings
+s:OpenPlannerGuildSettings();local guildDialog=s.plannerWindow.plannerControls.guildSettingsDialog
 guildDialog.plannerControls.zone.combo.entries[5].callback();guildDialog.plannerControls.save.handlers.OnClicked()
 assert(s:GetGuildSchedulingTimeZoneOverride(s.plannerModel.guild)=='PT');assert(s.plannerModel.schedule.timeZone=='PT')
 

@@ -222,3 +222,12 @@ Sliders include exact-number entry. Invalid or out-of-range values are not saved
 ### Copying an export
 
 In the planner Import / Export dialog, click **Export**. The text field automatically takes keyboard focus and selects the entire export, including offscreen lines. Press **Ctrl+C** to copy it. **Select all** repeats the focus-and-select action if you clicked elsewhere. Paste with **Ctrl+V**. Clicking inside the text also focuses it normally; copy/paste and multiline cursor scrolling are enabled.
+
+
+### Live eligibility in period cards
+
+The active saved period card shows **Next eligible** between Stops and frequency. Its elapsed countdown updates every second and uses this command/guild’s actual scheduled deadline, including observed-message cooldowns, startup delay and spacing between other scheduled commands. It does not use unsaved period edits. When applicable it instead shows Ready now, a prepared-message prompt, waiting for chat/zone arrival, sending off, the period/command daily limit, or no further send before this period ends. Eligibility is not automatic transmission: press Enter when a message is prepared.
+
+Phase changes reflow only the period list, preserving its scroll anchor; ticking the countdown does not rebuild the editor or interrupt typing. The green dot still marks the active saved period and the gold card marks your editing selection.
+
+Guild settings uses its own centered dialog container. Saving or cancelling hides the dialog without moving the launch button or leaving dialog fields attached to it.

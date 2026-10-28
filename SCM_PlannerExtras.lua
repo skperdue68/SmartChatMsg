@@ -89,7 +89,7 @@ end
 function S:OpenPlannerGuildSettings()
     self:RequestPlannerAction(function()
         self:RefreshPlannerAfterExternalChange();local m=self.plannerModel
-        local c=UI.box(self.plannerWindow,'guildSettings',0,0,680,330,true);c:ClearAnchors();c:SetAnchor(CENTER,self.plannerWindow,CENTER,0,0);c:SetDrawTier(DT_HIGH);c:SetMouseEnabled(true);UI.hide(c)
+        local c=UI.box(self.plannerWindow,'guildSettingsDialog',0,0,680,330,true);c:ClearAnchors();c:SetAnchor(CENTER,self.plannerWindow,CENTER,0,0);c:SetDrawTier(DT_HIGH);c:SetMouseEnabled(true);UI.hide(c)
         local value=self:GetGuildSchedulingTimeZoneOverride(m.guild)
         UI.label(c,'title',m.guild..' — guild settings',22,18,636,32,true)
         UI.label(c,'label','Scheduling timezone',22,68,636,26)
@@ -102,6 +102,40 @@ function S:OpenPlannerGuildSettings()
         end,true)
         UI.button(c,'cancel','Cancel',348,280,310,function()c:SetHidden(true)end)
     end)
+end
+function S:GetPlannerLivePeriod()
+    local m=self.plannerModel
+    if not m or not m.commandId or m.runAt~='SCHEDULED' or self:GetGuildRunAt(m.commandId,m.guild)~='SCHEDULED' then return nil end
+    local live=self:GetGuildSchedule(m.commandId,m.guild)
+    if not live or not live.enabled or live.paused then return nil end
+    local row=self:GetActiveTimelineReminder(live,GetTimeStamp())
+    if not row then local _,limited=self:GetScheduledDailyLimitNotice(m.commandId,m.guild);row=limited end
+    return row,live
+end
+function S:GetPlannerPeriodEligibilityText(periodId)
+    local row,live=self:GetPlannerLivePeriod();if not row or row.id~=periodId then return nil end
+    local m=self.plannerModel;local now=GetTimeStamp()
+    if not self:IsScheduledSendingEnabled()then return 'Scheduled sending off' end
+    local limit=self:GetReminderDailyLimit(live,row,now)
+    if limit.reached then return (limit.shared and 'Command' or 'Period')..' daily limit reached ('..limit.count..'/'..limit.limit..')' end
+    local wait=self:GetScheduleChatWaitText(m.commandId,m.guild)
+    if wait and wait:find('Message ready',1,true)then return 'Message ready - press Enter' end
+    local occurrence=self:GetScheduleOccurrence(live,now)
+    local _,finish=self:GetTimelineReminderWindow(live,occurrence,row)
+    local due=self:GetScheduledDueAt(m.commandId,m.guild,row.id)
+    local pacing=self:GetSchedulePacingDelay(m.commandId,m.guild)
+    due=math.max(now,due,pacing or 0)
+    if due==math.huge or not finish or due>=finish then return 'No further send in this period' end
+    if row.availability and row.availability.enabled then
+        local windows=self:GetEffectiveReminderWindows(live,row,occurrence,due,math.min(finish,due+400*86400))
+        if not windows[1]then return 'Next eligible: Waiting for allowed hours' end
+        due=math.max(due,windows[1].start)
+    end
+    if due>now then return 'Next eligible: '..self:FormatStatusDuration(due-now),due end
+    if wait then return 'Next eligible: Waiting for chat' end
+    if live.delivery=='ZONE'then return 'Next eligible: On zone arrival' end
+    if #self:GetScheduledMessageEntries(m.commandId,m.guild)==0 then return 'Next eligible: No messages selected' end
+    return 'Next eligible: Ready now',now
 end
 function S:DeletePlannerCommand()
     local m=self.plannerModel;if not m.commandId then return end

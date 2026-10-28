@@ -8,11 +8,16 @@ UI.fonts={body='$(MEDIUM_FONT)|18|soft-shadow-thin',heading='$(BOLD_FONT)|20|sof
 function UI.control(parent,key,kind,virtual)
     parent.plannerControls=parent.plannerControls or {}
     local c=parent.plannerControls[key]
+    local controlKind=virtual or kind
+    if c and c.plannerControlKind and c.plannerControlKind~=controlKind then
+        error('SmartChatMsg planner control key reused for incompatible types: '..tostring(key))
+    end
     if not c then
         S.plannerControlSerial=(S.plannerControlSerial or 0)+1
         local name='SCM_PlannerControl'..S.plannerControlSerial
         c=virtual and WINDOW_MANAGER:CreateControlFromVirtual(name,parent,virtual) or WINDOW_MANAGER:CreateControl(name,parent,kind)
         parent.plannerControls[key]=c
+        c.plannerControlKind=controlKind
     end
     c.plannerScroll=parent.plannerScroll
     if c.plannerScroll then c:SetHandler('OnMouseWheel',function(_,delta)ZO_Scroll_OnMouseWheel(c.plannerScroll,delta)end) end

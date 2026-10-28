@@ -108,6 +108,10 @@ function S:RefreshPlannerPeriods(parent,w,h)
     local occurrence,c,reason=self:GetPlannerOccurrence(m)
     UI.label(parent,'summary',occurrence and self:FormatScheduleDateTime(occurrence.eventAtUtc,c)..'\n'..tostring(m.schedule.recurrence or 'NONE'):gsub('_',' ') or tostring(reason),14,83,w-28,64)
     local scroll,child,cw=UI.scroll(parent,'periods',8,154,w-16,h-208);UI.hide(child)
+    local snapshot=self:CaptureMessageListScroll(scroll,self.plannerPeriodRows)
+    local active=self:GetPlannerLivePeriod();local activeId=active and active.id
+    self.plannerPeriodLayoutKey=tostring(m.commandId)..':'..m.guild..':'..tostring(activeId)
+    self.plannerPeriodRows={};self.plannerPeriodCountdownHeights={}
     local y=0
     local function cardDate(at)
         if not at then return 'Choose dates' end
@@ -116,7 +120,7 @@ function S:RefreshPlannerPeriods(parent,w,h)
         return string.format('%s %d, %d  %d:%02d %s %s',months[p.month],p.day,p.year,p.hour%12==0 and 12 or p.hour%12,p.min,p.hour>=12 and 'PM' or 'AM',p.timezone)
     end
     for _,r in ipairs(m.schedule.reminders or {}) do
-        local id=r.id;local card=UI.box(child,'period'..id,2,y,cw-4,100,m.periodId==id);card:SetMouseEnabled(true)
+        local id=r.id;local card=UI.box(child,'period'..id,2,y,cw-4,100,m.periodId==id);UI.hide(card);card:SetMouseEnabled(true)
         card.plannerSelected=m.periodId==id
         local function select()self:SelectPlannerPeriod(m,id);m.tab='period';self.plannerDetailScroll=0;self:RefreshEventPlanner()end
         card:SetHandler('OnMouseUp',function(_,button,inside)if button==MOUSE_BUTTON_INDEX_LEFT and inside then select()end end)
@@ -135,6 +139,17 @@ function S:RefreshPlannerPeriods(parent,w,h)
             local lineHeight=math.max(22,line:GetTextHeight()+2);line:SetHeight(lineHeight);lineY=lineY+lineHeight+2
             line:SetMouseEnabled(true);line:SetHandler('OnMouseUp',function(_,button,inside)if button==MOUSE_BUTTON_INDEX_LEFT and inside then select()end end);lines[#lines+1]=line
         end
+        if id==activeId then
+            local text=self:GetPlannerPeriodEligibilityText(id)
+            if text then
+                local countdown=UI.label(card,'eligibility',text,12,lineY+4,cw-28,10000)
+                countdown:SetFont(UI.fonts.small);countdown:SetColor(unpack(UI.theme.green))
+                local height=math.max(24,countdown:GetTextHeight()+2);countdown:SetHeight(height)
+                self.plannerPeriodCountdownHeights[id]=height;lineY=lineY+height+10
+                UI.tooltip(countdown,'Live eligibility for this saved period, command and guild. Includes cooldown, observed announcements, startup delay and spacing. Draft edits apply only after saving. You still press Enter to send.')
+                countdown:SetHandler('OnMouseUp',function(_,button,inside)if button==MOUSE_BUTTON_INDEX_LEFT and inside then select()end end)
+            end
+        end
         local divider=UI.control(card,'divider',CT_BACKDROP);UI.place(divider,12,lineY+3,cw-28,1)
         divider:SetEdgeTexture('EsoUI/Art/Tooltips/UI-SliderBackdrop.dds',32,1);divider:SetEdgeColor(0.25,0.35,0.39,1);divider:SetMouseEnabled(false)
         lineY=lineY+12
@@ -142,10 +157,12 @@ function S:RefreshPlannerPeriods(parent,w,h)
         frequency:SetColor(unpack(UI.theme.teal));local frequencyHeight=math.max(24,frequency:GetTextHeight()+2);frequency:SetHeight(frequencyHeight)
         frequency:SetMouseEnabled(true);frequency:SetHandler('OnMouseUp',function(_,button,inside)if button==MOUSE_BUTTON_INDEX_LEFT and inside then select()end end)
         card:SetHeight(lineY+frequencyHeight+12)
+        self.plannerPeriodRows[#self.plannerPeriodRows+1]={id=id,y=y,height=card:GetHeight()}
         for _,control in ipairs({card,label,lines[1],lines[2],frequency,dot})do control:SetHandler('OnMouseWheel',function(_,delta)ZO_Scroll_OnMouseWheel(scroll,delta)end)end
         y=y+card:GetHeight()+10
     end
     UI.scrollEnd(scroll,child,y)
+    self:RestoreMessageListScroll(scroll,snapshot,self.plannerPeriodRows)
     UI.button(parent,'add','+ Period',12,h-44,math.floor((w-28)/2),function()local r,error=self:AddPlannerPeriod(m);if not r then self:PlannerError(error);return end;m.tab='period';self:RefreshEventPlanner()end)
     UI.button(parent,'timeline','Preview timeline',math.floor(w/2)+2,h-44,math.floor((w-28)/2),function()self:PreviewPlannerTimeline()end)
 end
@@ -155,16 +172,23 @@ function S:RefreshPlannerActivityIndicators()
     if sending then sending:SetText('Scheduled sending: '..(self:IsScheduledSendingEnabled() and 'ON' or 'OFF'))end
     local m=self.plannerModel;local pane=self.plannerPeriods
     if not m or m.runAt~='SCHEDULED' or not pane or not pane.plannerControls.periods then return end
-    local live=m.commandId and self:GetGuildSchedule(m.commandId,m.guild)
-    local active=live and live.enabled and not live.paused and self:GetGuildRunAt(m.commandId,m.guild)=='SCHEDULED' and self:GetActiveTimelineReminder(live,GetTimeStamp())
-    if live and live.enabled and not live.paused and not active then
-        local _,limitedPeriod=self:GetScheduledDailyLimitNotice(m.commandId,m.guild)
-        active=limitedPeriod
-    end
+    local active=self:GetPlannerLivePeriod()
+    local key=tostring(m.commandId)..':'..m.guild..':'..tostring(active and active.id)
+    if self.plannerPeriodLayoutKey~=key then self:RefreshPlannerPeriods(pane,pane:GetWidth(),pane:GetHeight())end
     local child=pane.plannerControls.periods:GetNamedChild('Scroll'):GetNamedChild('Child')
     for _,row in ipairs(m.schedule.reminders or {})do
         local card=child.plannerControls and child.plannerControls['period'..row.id]
-        if card and card.plannerControls.activeDot then card.plannerControls.activeDot:SetHidden(not active or active.id~=row.id)end
+        if card and card.plannerControls.activeDot then
+            card.plannerControls.activeDot:SetHidden(not active or active.id~=row.id)
+            local countdown=card.plannerControls.eligibility
+            if countdown and active and active.id==row.id then
+                countdown:SetText(self:GetPlannerPeriodEligibilityText(row.id) or '')
+                local height=math.max(24,countdown:GetTextHeight()+2)
+                if height~=self.plannerPeriodCountdownHeights[row.id]then
+                    self:RefreshPlannerPeriods(pane,pane:GetWidth(),pane:GetHeight());self:RefreshPlannerActivityIndicators();return
+                end
+            end
+        end
     end
 end
 function S:PlannerNumber(parent,key,label,value,min,max,x,y,w,set,zero,exactMax,exactMin)
