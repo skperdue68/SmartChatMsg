@@ -190,7 +190,7 @@ Open `/scm schedule` or choose **Open Event Planner (new window)** in `/scm`. Th
 
 Drag the title to move the window; use its resize grip to resize. Position and dimensions are saved per account. Small displays use independent scrolling panes.
 
-**Existing settings** keeps the original editor available. Save your edits first if you want to keep them, then use it for import/export, command renaming, guild timezone changes, special-pattern configuration, named important times, occurrence cancellations and date/weekday availability overrides. Those advanced values are preserved when saving the new window. No new library dependency or SavedVariables schedule format is required.
+**Global settings** opens account defaults: default guild, default scheduling timezone, and the chat-clearing timeout. **Guild settings** changes the selected guild timezone or follows the global default. **Advanced** configures monthly rules, recurrence weekdays, rotations, cancellations and named important times. **Period** includes weekday/date availability overrides and resets; **Messages** includes message groups and individual Apply/Revert. **Import / Export** is available directly in the left column. Existing settings remains an optional alternate interface; none of these settings requires it. No new library dependency or SavedVariables schedule format is required.
 
 > SCREENSHOT PLACEHOLDER: 08-custom-planner.png — Capture the full custom ESO window with Tuesday Tours selected, the six period cards visible or scrollable, and one selected period’s message pool and parsed preview. Also capture Event settings and Message library tabs in separate images if space permits. This is the actual native interface; do not use the concept rendering as a product screenshot.
 
@@ -202,3 +202,18 @@ The custom planner uses a charcoal/blue palette, warm white native fonts, muted 
 A gold-tinted period card is the period selected for editing. A green indicator marks the currently active **saved** period, independently of the selected private draft. It updates once per second without rebuilding the editor, changing focus or resetting scroll. Hover over the indicator for an explanation. A green indicator does not mean a send is immediate: global sending state, startup delay, cooldowns, daily limits and chat protection still apply.
 
 Each card shows its name, Starts, Stops, and frequency in separate controls. Frequency has its own row beneath a divider. Heights are measured so wrapped dates/names do not consume the frequency row. One-time notices say Send once and do not invent an end time.
+
+
+## Complete settings in the custom planner
+
+The new window now exposes every configuration control from the current original settings. See `ESO-Planner-Settings-Parity.md` for the control-by-control audit. There are no known original-only settings.
+
+Use the left **Global settings** button for default guild, default timezone and **Auto-remove pending chat after** (30 seconds to 5 minutes, slider or exact entry). This is separate from the top Guild selector, which only chooses what you are editing. The top **Guild settings** button edits that guild’s timezone override.
+
+The **Advanced** tab contains monthly weekday rules, recurrence weekday filters, faction/activity rotations, occurrence cancellation and undo, and named important-time calendars/clocks and tokens. **Period** includes after-start permission, pause, closing notices, once/late options, limits, allowed hours and weekday/date overrides with Reset. **Messages** exposes template groups, membership, individual Apply and Revert, and enablement. Apply saves that template only; Save changes applies the rest of the event draft. Renaming and deleting commands are available in Event/Command settings; deletion confirms its effect on every guild.
+
+The native **Import / Export** dialog uses the same guild-name matching and merge rules as the original settings. Export reads saved settings; pending drafts must first be saved. Import confirms before applying. Global/guild dialogs and imports refresh the selected event afterward so it cannot later save a stale schedule reference.
+
+Sliders include exact-number entry. Invalid or out-of-range values are not saved. The planner also opens without guild membership for global settings and command management; a guild is required for messages and scheduling.
+
+> SCREENSHOT PLACEHOLDER: 09-planner-globals.png — Capture the new Global settings dialog with its default guild, default timezone and chat timeout slider. Capture Advanced monthly/rotation/important-time controls and Period availability override/reset controls separately for the parity guide.

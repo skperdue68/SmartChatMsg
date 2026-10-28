@@ -6,6 +6,18 @@ local function copy(v)
     local out={};for k,x in pairs(v) do out[k]=copy(x) end;return out
 end
 S.CopyPlannerValue=copy
+local function snapshot(model)
+    local result={messages={}}
+    for _,key in ipairs({'name','guild','runAt','channel','behavior','schedule'})do result[key]=copy(model[key])end
+    for _,m in ipairs(model.messages)do result.messages[m.id]={text=m.text,name=m.name,displayOrder=m.displayOrder}end
+    return result
+end
+local function equal(a,b)
+    if type(a)~=type(b)then return false end;if type(a)~='table'then return a==b end
+    for k,v in pairs(a)do if not equal(v,b[k])then return false end end
+    for k in pairs(b)do if a[k]==nil then return false end end;return true
+end
+function S:IsPlannerDraftDirty(model)return not equal(snapshot(model),model.baseline)end
 local function contains(list,id) for _,v in ipairs(list or {}) do if v==id then return true end end return false end
 local function uniqueId(self,list)
     local base=self:GenerateUuid();local id=base;local n=1;local used={}
@@ -36,6 +48,7 @@ function S:CreatePlannerDraft(commandId,guild)
     if commandId then for _,entry in ipairs(self:GetMessageEntriesForCommandAndGuild(commandId,guild) or {}) do model.messages[#model.messages+1]=copy(entry) end end
     if not source then self:AddPlannerPeriod(model);model.dirty=false end
     model.periodId=(model.schedule.reminders or {})[1] and model.schedule.reminders[1].id
+    model.baseline=snapshot(model)
     return model
 end
 function S:GetPlannerPeriod(model)
@@ -92,6 +105,10 @@ function S:SetPlannerBoundary(model,key,date,time)
     local occurrence,c,reason=self:GetPlannerOccurrence(model);local row=self:GetPlannerPeriod(model)
     if not occurrence or not row then return false,reason or 'Choose a period and valid event date/time.' end
     local at,error=self:ParseScheduleDateTime(date,time,'FIRST',c);if not at then return false,error end
+    local previousStart=self:ResolveTimelineAnchor(c,occurrence,row.start)
+    if key=='start' and at>occurrence.eventAtUtc and not row.allowAfterEventEnd and not (previousStart and previousStart>occurrence.eventAtUtc) and not (model.allowAfterStart or {})[row.id] then
+        return false,'Enable Allow promotion after event starts before moving this period after the event.'
+    end
     local p=self:GetScheduleParts(occurrence.eventAtUtc,c)
     local eventDate=string.format('%04d-%02d-%02d',p.year,p.month,p.day)
     local a=self:ParseScheduleDateTime(date,'12:00 PM','FIRST',c)
@@ -131,9 +148,11 @@ function S:ValidatePlannerDraft(model)
     if name=='' or #name>25 or self:IsReservedCommandName(name) then return nil,'Use a command name of 1–25 letters/numbers that is not reserved.' end
     local command=model.commandId and self:GetCommandById(model.commandId)
     if model.commandId and not command then return nil,'This command was removed in another editor. Cancel and reopen the planner.' end
-    if command and name~=command.name then return nil,'Rename existing commands in the existing settings.' end
-    if not model.commandId and self:CommandNameExists(name) then return nil,'That command name already exists.' end
-    if not self:GetGuildSlotByName(model.guild) then return nil,'Choose an available guild.' end
+    if self:CommandNameExists(name,model.commandId) then return nil,'That command name already exists.' end
+    if not self:GetGuildSlotByName(model.guild) then
+        if model.runAt=='ON_DEMAND' and #model.messages==0 then return 'COMMAND_ONLY' end
+        return nil,'Choose an available guild.'
+    end
     if model.channel~='Guild' and model.channel~='Officer' and model.channel~='Zone' and model.channel~='Group' then return nil,'Choose an output channel.' end
     if model.runAt~='SCHEDULED' and model.runAt~='STARTUP' and model.runAt~='ON_DEMAND' then return nil,'Choose a Run at type.' end
     local ids={};for _,m in ipairs(model.messages) do
@@ -173,6 +192,11 @@ function S:SavePlannerDraft(model)
         local ok,error=self:AddCommand(model.name);if not ok then return false,error end
         for _,c in ipairs(self:GetCommands()) do if c.name==self:SanitizeCommandName(model.name) then model.commandId=c.id;break end end
     end
+    if normalized=='COMMAND_ONLY' then
+        if self:GetCommandById(model.commandId).name~=self:SanitizeCommandName(model.name) then self:RenameCommand(model.commandId,model.name) end
+        model.name=self:GetCommandById(model.commandId).name;model.dirty=false;model.baseline=snapshot(model)
+        return true
+    end
     local replacements={};for _,m in ipairs(model.messages) do replacements[m.id]=m end
     local merged={};for _,entry in ipairs(originalMessages) do
         local staged=replacements[entry.id]
@@ -206,10 +230,12 @@ function S:SavePlannerDraft(model)
     local settings=self:GetCommandGuildSettings(model.commandId,model.guild,true)
     settings.openStatusPanelOnRun=model.behavior.openStatusPanelOnRun==true
     if model.behavior.populateSound then settings.populateSound=model.behavior.populateSound end
+    if self:GetCommandById(model.commandId).name~=self:SanitizeCommandName(model.name) then self:RenameCommand(model.commandId,model.name) end
     model.source=self:GetGuildSchedule(model.commandId,model.guild);model.dirty=false
     if model.source then model.schedule=copy(model.source) end
     local fresh=self:CreatePlannerDraft(model.commandId,model.guild)
     model.behavior,model.messages,model.name=fresh.behavior,fresh.messages,fresh.name
+    model.baseline=snapshot(model)
     self:RegisterDynamicCommands();self:TickSchedules()
     if self.statusPanelVisible then self:RefreshStatusPanel() end
     return true

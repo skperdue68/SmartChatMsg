@@ -63,8 +63,8 @@ function S:OpenEventPlanner()
         self.plannerInitialized=true
     end
     local guild=self.plannerModel and self.plannerModel.guild or self:GetSelectedGuildNameForMessages() or self:GetGuildNameByIndex(1)
-    if not guild then self:AddLocalChatMessage('[SmartChatMsg] Join a guild before using the event planner.');return false end
-    if not self.plannerModel or not self.plannerModel.dirty then
+    if not guild or not self:GetGuildSlotByName(guild)then guild='' end
+    if not self.plannerModel or not self.plannerModel.dirty or self.plannerModel.guild~=guild then
         local id=self.plannerModel and self.plannerModel.commandId or self.savedVars.selectedMessagesCommand
         if not id then local commands=self:GetCommands();id=commands[1] and commands[1].id end
         self.plannerModel=self:CreatePlannerDraft(id,guild)
@@ -79,7 +79,7 @@ function S:RefreshPlannerEvents(parent,w,h)
     parent.plannerControls.title:SetColor(unpack(UI.theme.teal))
     UI.edit(parent,'search',self.plannerSearch or '',12,48,w-24,32,function(text)self.plannerSearch=text;self:RefreshPlannerEventList()end,false,'Filter by command/event name.')
     UI.button(parent,'new','+ Event',12,88,w-24,function()self:RequestPlannerAction(function()self.plannerModel=self:CreatePlannerDraft(nil,self.plannerModel.guild);self.plannerModel.tab='event';self:RefreshEventPlanner()end)end)
-    local scroll,child,cw=UI.scroll(parent,'events',8,128,w-16,h-232);UI.hide(child)
+    local scroll,child,cw=UI.scroll(parent,'events',8,128,w-16,h-280);UI.hide(child)
     local y=0;local m=self.plannerModel
     for _,command in ipairs(self:GetCommands()) do if (command.name or ''):lower():find((self.plannerSearch or ''):lower(),1,true) then
         local id=command.id
@@ -87,8 +87,9 @@ function S:RefreshPlannerEvents(parent,w,h)
         button:SetHeight(45);y=y+51
     end end
     UI.scrollEnd(scroll,child,y)
-    UI.button(parent,'existing','Existing settings',12,h-94,w-24,function()self:OpenPlannerExistingSettings()end,false,'Open the original settings, including import/export and advanced configuration. Save this draft first to keep its changes.')
-    UI.label(parent,'hint','Import / export and advanced options remain in Existing settings.',14,h-56,w-28,50)
+    UI.button(parent,'globals','Global settings',12,h-138,w-24,function()self:OpenPlannerGlobalSettings()end,false,'Default guild, default timezone, and chat-clearing timeout for this account.')
+    UI.button(parent,'transfer','Import / Export',12,h-94,w-24,function()self:OpenPlannerTransfer()end)
+    UI.button(parent,'existing','Existing settings',12,h-50,w-24,function()self:OpenPlannerExistingSettings()end,false,'The original settings remain available while trying the planner. All configuration is also available in this window.')
 end
 function S:RefreshPlannerEventList()
     if self.plannerEvents then self:RefreshPlannerEvents(self.plannerEvents,self.plannerEvents:GetWidth(),self.plannerEvents:GetHeight()) end
@@ -98,6 +99,7 @@ function S:RefreshPlannerPeriods(parent,w,h)
     UI.label(parent,'title',m.runAt=='SCHEDULED' and 'PERIODS' or 'MESSAGE POOL',14,12,w-24,30,true)
     parent.plannerControls.title:SetColor(unpack(UI.theme.teal))
     UI.label(parent,'event',m.name~='' and m.name or 'New event',14,48,w-28,30,true)
+    if not self:GetGuildSlotByName(m.guild)then UI.label(parent,'noGuild','Join a guild to configure message pools and schedules. Global settings and command management are available now.',14,94,w-28,150);return end
     if m.runAt~='SCHEDULED' then
         UI.label(parent,'ordinary','All enabled messages share this command’s random pool. Choose Message library to edit them.',14,92,w-28,120)
         UI.button(parent,'library','Message library',14,220,w-28,function()m.tab='library';self:RefreshEventPlanner()end)
@@ -144,7 +146,8 @@ function S:RefreshPlannerPeriods(parent,w,h)
         y=y+card:GetHeight()+10
     end
     UI.scrollEnd(scroll,child,y)
-    UI.button(parent,'add','+ Period',12,h-44,w-24,function()local r,error=self:AddPlannerPeriod(m);if not r then self:PlannerError(error);return end;m.tab='period';self:RefreshEventPlanner()end)
+    UI.button(parent,'add','+ Period',12,h-44,math.floor((w-28)/2),function()local r,error=self:AddPlannerPeriod(m);if not r then self:PlannerError(error);return end;m.tab='period';self:RefreshEventPlanner()end)
+    UI.button(parent,'timeline','Preview timeline',math.floor(w/2)+2,h-44,math.floor((w-28)/2),function()self:PreviewPlannerTimeline()end)
 end
 function S:RefreshPlannerActivityIndicators()
     if not self.plannerWindow or self.plannerWindow:IsHidden() then return end
@@ -164,14 +167,15 @@ function S:RefreshPlannerActivityIndicators()
         if card and card.plannerControls.activeDot then card.plannerControls.activeDot:SetHidden(not active or active.id~=row.id)end
     end
 end
-function S:PlannerNumber(parent,key,label,value,min,max,x,y,w,set,zero)
-    UI.slider(parent,key,label,tonumber(value) or min,min,math.max(max,tonumber(value) or min),x,y,w,function(n)set(n);self:PlannerChanged()end,function(n)return n==0 and (zero or 'Off') or self:FormatSchedulingMinutes(n)end)
+function S:PlannerNumber(parent,key,label,value,min,max,x,y,w,set,zero,exactMax,exactMin)
+    UI.slider(parent,key,label,tonumber(value) or min,min,math.max(max,tonumber(value) or min),x,y,w,function(n)set(n);self:PlannerChanged()end,function(n)return n==0 and (zero or 'Off') or self:FormatSchedulingMinutes(n)end,nil,exactMax,exactMin)
 end
 function S:BuildPlannerEventEditor(parent,w)
     local m=self.plannerModel;local d=m.schedule;local y=12
     UI.label(parent,'nameLabel','Event / command name',8,y,w-16,26)
-    if m.commandId then UI.label(UI.box(parent,'name',8,y+28,w-16,34),'text',m.name,8,3,w-32,28)
-    else UI.edit(parent,'name',m.name,8,y+28,w-16,34,function(v)m.name=v;self:PlannerChanged()end,false,'1–25 letters/numbers; existing command names are renamed in Existing settings.') end;y=y+80
+    UI.edit(parent,'name',m.name,8,y+28,w-16,34,function(v)m.name=v;self:PlannerChanged()end,false,'1-25 letters/numbers. Renaming applies to all guilds and preserves this command ID.');y=y+80
+    if m.commandId then UI.button(parent,'deleteCommand','Delete command (all guilds)',8,y,w-16,function()self:DeletePlannerCommand()end);y=y+44 end
+    if not self:GetGuildSlotByName(m.guild)then UI.label(parent,'noGuildHelp','You can create, rename or delete commands and edit Global settings without a guild. Join a guild to configure message delivery.',8,y,w-16,120);return y+128 end
     UI.label(parent,'runLabel','Run at',8,y,w-16,25)
     UI.combo(parent,'run',{'On Demand','Startup','Scheduled'},{'ON_DEMAND','STARTUP','SCHEDULED'},m.runAt,8,y+28,w-16,function(v)m.runAt=v;if v=='SCHEDULED' and #(d.reminders or {})==0 then self:AddPlannerPeriod(m)end;self:PlannerChanged();self:RefreshEventPlanner()end);y=y+76
     if m.runAt=='SCHEDULED' then
@@ -193,7 +197,7 @@ function S:BuildPlannerEventEditor(parent,w)
             for _,o in ipairs(items)do lines[#lines+1]=self:FormatScheduleDateTime(o.eventAtUtc,c)..(c.specialPattern~='NONE' and ' — '..self:GetScheduleVariantLabel(self:GetScheduleEventVariant(c,o.eventAtUtc),c.specialPattern,c) or '')end
             UI.label(parent,'upcoming',table.concat(lines,'\n'),8,y,w-16,140);y=y+148
         end
-        UI.button(parent,'advanced','Patterns, important times & advanced settings',8,y,w-16,function()self:OpenPlannerExistingSettings()end,false,'Save changes first, then use Existing settings for faction/rotating event lists, occurrence cancellations, monthly patterns and named important times. They are preserved when saving here.');y=y+44
+        UI.button(parent,'advanced','Patterns, important times & advanced settings',8,y,w-16,function()m.tab='advanced';self:RefreshEventPlanner()end);y=y+44
     else
         local b=m.behavior
         local function minutes(v)return v==0 and 'Off' or self:FormatSchedulingMinutes(v)end
@@ -203,20 +207,31 @@ function S:BuildPlannerEventEditor(parent,w)
             b.reminderRetryMinutes=math.min(b.reminderRetryMinutes or 0,cap)
             local holder=parent.plannerControls.retry
             if holder then
+                holder.exactMax=cap;holder.sliderMax=cap
+                holder.plannerDisabled=b.autoPopulateOnZone==true or not b.reminderMinutes or b.reminderMinutes<=0
+                holder:SetAlpha(holder.plannerDisabled and 0.4 or 1)
+                holder.plannerControls.slider:SetMouseEnabled(not holder.plannerDisabled);holder.plannerControls.exact.edit:SetEditEnabled(not holder.plannerDisabled)
                 holder.plannerControls.slider:SetMinMax(0,cap);holder.plannerControls.slider:SetValue(b.reminderRetryMinutes)
                 holder.plannerControls.label:SetText('Retry Delay — '..minutes(b.reminderRetryMinutes))
             end
         end
-        UI.slider(parent,'repeat','Repeat Frequency',repeatValue,0,math.max(1440,repeatValue),8,y,w-16,function(v)if b.autoPopulateOnZone then return end;b.reminderMinutes=v>0 and v or nil;updateRetry();self:PlannerChanged()end,minutes,'Off disables timed repetition. Auto Populate Chat on Zone is an alternative to repetition.')
-        if b.autoPopulateOnZone then parent.plannerControls['repeat']:SetMouseEnabled(false);parent.plannerControls['repeat']:SetAlpha(0.4);parent.plannerControls['repeat'].plannerControls.slider:SetMouseEnabled(false)else parent.plannerControls['repeat']:SetAlpha(1);parent.plannerControls['repeat'].plannerControls.slider:SetMouseEnabled(true)end;y=y+70
+        UI.slider(parent,'repeat','Repeat Frequency',repeatValue,0,math.max(1440,repeatValue),8,y,w-16,function(v)if b.autoPopulateOnZone then return end;b.reminderMinutes=v>0 and v or nil;updateRetry();self:PlannerChanged()end,minutes,'Off disables timed repetition. Auto Populate Chat on Zone is an alternative to repetition.',9999)
+        local repeatControl=parent.plannerControls['repeat'];repeatControl.plannerDisabled=b.autoPopulateOnZone==true
+        repeatControl:SetAlpha(repeatControl.plannerDisabled and 0.4 or 1);repeatControl.plannerControls.slider:SetMouseEnabled(not repeatControl.plannerDisabled);repeatControl.plannerControls.exact.edit:SetEditEnabled(not repeatControl.plannerDisabled);y=y+70
         local cap=math.min(repeatValue>0 and repeatValue or math.huge,b.autoPopulateCooldownMinutes or 60)
-        self:PlannerNumber(parent,'retry','Retry Delay',math.min(b.reminderRetryMinutes or 0,cap),0,cap,8,y,w-16,function(v)b.reminderRetryMinutes=v end);y=y+70
-        self:PlannerNumber(parent,'cooldown','Cooldown',b.autoPopulateCooldownMinutes or 60,15,480,8,y,w-16,function(v)b.autoPopulateCooldownMinutes=v;updateRetry()end);y=y+70
+        self:PlannerNumber(parent,'retry','Retry Delay',math.min(b.reminderRetryMinutes or 0,cap),0,cap,8,y,w-16,function(v)b.reminderRetryMinutes=v end)
+        local retryControl=parent.plannerControls.retry;retryControl.plannerDisabled=b.autoPopulateOnZone==true or not b.reminderMinutes or b.reminderMinutes<=0
+        retryControl:SetAlpha(retryControl.plannerDisabled and 0.4 or 1);retryControl.plannerControls.slider:SetMouseEnabled(not retryControl.plannerDisabled);retryControl.plannerControls.exact.edit:SetEditEnabled(not retryControl.plannerDisabled);y=y+70
+        self:PlannerNumber(parent,'cooldown','Cooldown',b.autoPopulateCooldownMinutes or 60,15,480,8,y,w-16,function(v)b.autoPopulateCooldownMinutes=v;updateRetry()end,nil,9999,1);y=y+70
         UI.check(parent,'zone','Auto Populate Chat on Zone',b.autoPopulateOnZone==true,8,y,w-16,function(v)b.autoPopulateOnZone=v;self:PlannerChanged();self:RefreshEventPlanner()end);y=y+38
     end
     UI.check(parent,'status','Open Status Panel on Run',m.behavior.openStatusPanelOnRun==true,8,y,w-16,function(v)m.behavior.openStatusPanelOnRun=v;self:PlannerChanged()end);y=y+38
-    local sounds=self:GetUsefulSoundOptions();UI.label(parent,'soundLabel','Notify Sound',8,y,w-16,25)
-    UI.combo(parent,'sound',sounds,nil,m.behavior.populateSound or 'DUEL_START',8,y+28,w-16,function(v)m.behavior.populateSound=v;self:PlannerChanged()end);return y+80
+    local sounds=self:GetUsefulSoundOptions();local soundPresent=false;for _,key in ipairs(sounds)do if key==(m.behavior.populateSound or 'DUEL_START')then soundPresent=true end end
+    if not soundPresent then sounds[#sounds+1]=m.behavior.populateSound end
+    UI.label(parent,'soundLabel','Notify Sound',8,y,w-16,25)
+    UI.combo(parent,'sound',sounds,nil,m.behavior.populateSound or 'DUEL_START',8,y+28,w-132,function(v)m.behavior.populateSound=v;self:PlannerChanged()end)
+    UI.button(parent,'soundPreview','Preview',w-114,y+28,106,function()local key=m.behavior.populateSound or 'DUEL_START';if key~='NONE' and SOUNDS[key] then PlaySound(SOUNDS[key])end end)
+    return y+80
 end
 function S:RefreshPlannerPeriodSummary()
     if self.plannerPeriods then self:RefreshPlannerPeriods(self.plannerPeriods,self.plannerPeriods:GetWidth(),self.plannerPeriods:GetHeight()) end
@@ -244,9 +259,9 @@ function S:BuildPlannerMessagePool(parent,w,y)
         end,'Only checked messages are eligible for random selection in this pool.')
         UI.button(card,'test','Test',w-110,8,76,function()self:PlannerTestMessage(id)end)
         local text=UI.label(card,'text',entry.text,14,40,w-54,10000)
-        local textHeight=math.max(40,text:GetTextHeight());text:SetHeight(textHeight);card:SetHeight(textHeight+52)
+        local textHeight=math.max(40,text:GetTextHeight());text:SetHeight(textHeight);local groupHeight=self:BuildPlannerMessageGroup(card,'group',entry,12,44+textHeight,w-48);card:SetHeight(textHeight+52+groupHeight)
         UI.tooltip(text,entry.text..'\n\nClick Test to render substitutions in the selected period.')
-        y=y+textHeight+62
+        y=y+textHeight+62+groupHeight
     end
     return y
 end
@@ -255,7 +270,8 @@ function S:BuildPlannerPeriodEditor(parent,w)
     if not r then UI.label(parent,'empty','Choose a period from the middle column.',8,12,w-16,60);return 90 end
     local y=12;UI.label(parent,'periodLabel','Period Label',8,y,w-16,25)
     UI.edit(parent,'label',r.label,8,y+28,w-16,34,function(v)r.label=v;self:PlannerChanged();self:RefreshPlannerPeriodSummary()end);y=y+76
-    UI.check(parent,'enabled','Enabled',r.enabled~=false and not r.paused,8,y,160,function(v)r.enabled=v;r.paused=false;self:PlannerChanged();self:RefreshEventPlanner()end)
+    UI.check(parent,'enabled','Enabled',r.enabled~=false,8,y,136,function(v)r.enabled=v;if not v then r.paused=false end;self:PlannerChanged();self:RefreshEventPlanner()end)
+    UI.check(parent,'paused','Paused',r.paused==true,150,y,130,function(v)r.paused=v;self:PlannerChanged();self:RefreshEventPlanner()end,'Pause this period without deleting it or changing its usage.',r.enabled==false)
     UI.button(parent,'remove','Remove period',w-174,y,166,function()local ok,error=self:RemovePlannerPeriod(m);if ok then self:RefreshEventPlanner()else self:PlannerError(error)end end);y=y+44
     local half=math.floor((w-28)/2)
     for i,key in ipairs({'start','finish'})do
@@ -271,9 +287,10 @@ function S:BuildPlannerPeriodEditor(parent,w)
     UI.check(parent,'sensitive','Time-sensitive',r.timeSensitive==true,190,y,210,function(v)r.timeSensitive=v;self:PlannerChanged();self:RefreshEventPlanner()end,'May bypass ordinary spacing between scheduled commands. Startup delay and your chat text remain protected.');y=y+38
     if r.once then
         UI.check(parent,'onceWindow','Send once anytime in this period',r.onceUntilFinish==true,8,y,w-16,function(v)r.onceUntilFinish=v;self:PlannerChanged();self:RefreshEventPlanner()end);y=y+38
-        self:PlannerNumber(parent,'late','Late allowance',r.lateMinutes or 5,1,60,8,y,w-16,function(v)r.lateMinutes=v end);y=y+66
+        self:PlannerNumber(parent,'late','Late allowance',r.lateMinutes or 5,1,1440,8,y,w-16,function(v)r.lateMinutes=v end);y=y+66
     else self:PlannerNumber(parent,'frequency','Repeat Frequency',r.intervalMinutes or 30,1,1440,8,y,w-16,function(v)r.intervalMinutes=v;self:RefreshPlannerPeriodSummary()end);y=y+66 end
     local duration=tonumber(m.schedule.eventDurationMinutes) or 0
+    UI.check(parent,'afterStart','Allow promotion after event starts',duration>0 and ((m.allowAfterStart or {})[r.id]==true or (select(3,self:GetPlannerBoundary(m,'start')) or 0)>(select(1,self:GetPlannerMarkBase(m)) or math.huge)),8,y,w-16,function(v)m.allowAfterStart=m.allowAfterStart or {};m.allowAfterStart[r.id]=v;self:PlannerChanged()end,'Set a positive Event duration, then enable this to move Period Starts after the event start.',duration<=0);y=y+38
     UI.label(parent,'endCap',duration>0 and ('Underway promotion stops at the event end ('..self:FormatSchedulingMinutes(duration)..' after start), unless the closing exception below is enabled.') or 'Set Event duration in Event settings to allow underway invitations after the event starts.',8,y,w-16,56);y=y+62
     UI.check(parent,'closing','Allow a closing announcement after the event ends',r.allowAfterEventEnd==true,8,y,w-16,function(v)r.allowAfterEventEnd=v;self:PlannerChanged();self:RefreshEventPlanner()end,'Use only for a brief closing notice. Keep its finish/grace short; ordinary underway invitations should stop at the event end.');y=y+38
     local a=r.availability or {}
@@ -292,9 +309,10 @@ function S:BuildPlannerPeriodEditor(parent,w)
             end)
         end;y=y+38
         UI.label(parent,'fromLabel','From',8,y,half,25);UI.label(parent,'untilLabel','Until',half+20,y,half,25)
+        UI.tooltip(parent.plannerControls.untilLabel,'An Until clock earlier than From continues into the next day. Overnight windows belong to their opening date. Midnight as the end clock means 24:00.')
         UI.clock(parent,'fromClock',clockMinute(a.startMinute or 0),8,y+28,half,function(v)a.startMinute=minuteClock(v);self:PlannerChanged();self:RefreshEventPlanner()end,m.schedule.timeZone)
         UI.clock(parent,'untilClock',clockMinute((a.endMinute or 1440)%1440),half+20,y+28,half,function(v)local n=minuteClock(v);a.endMinute=n==0 and 1440 or n;self:PlannerChanged();self:RefreshEventPlanner()end,m.schedule.timeZone);y=y+72
-        UI.label(parent,'overrideHint','Existing date and weekday overrides are retained. Edit those in Existing settings.',8,y,w-16,48);y=y+52
+        y=self:BuildPlannerAvailabilityOverrides(parent,w,y)
     end
     y=self:BuildPlannerMessagePool(parent,w,y+8)
     UI.button(parent,'library','Edit message library',8,y,w-16,function()m.tab='library';self:RefreshEventPlanner()end);return y+46
@@ -303,18 +321,29 @@ function S:BuildPlannerLibrary(parent,w)
     local m=self.plannerModel;UI.button(parent,'add','+ Message',8,12,w-16,function()self:AddPlannerMessage(m);self:PlannerChanged();self:RefreshEventPlanner()end)
     local y=58
     for index,entry in ipairs(m.messages)do
-        local id=entry.id;local card=UI.box(parent,'message'..id,8,y,w-16,290,m.messageId==id)
+        local id=entry.id;local card=UI.box(parent,'message'..id,8,y,w-16,290,self:IsPlannerMessageDirty(entry))
         local disabled=m.runAt~='SCHEDULED' and (m.behavior.disabledMessageIds or {})[id]
         UI.label(card,'title',(entry.name or 'Message '..index)..(disabled and ' (disabled)' or ''),12,8,w-48,28,true)
-        UI.edit(card,'name',entry.name or '',12,42,w-48,32,function(v)entry.name=v;self:PlannerChanged()end,false,'Optional name, up to 60 characters. It is never sent to chat.')
+        UI.edit(card,'name',entry.name or '',12,42,w-48,32,function(v)entry.name=v;card.plannerControls.bg:SetEdgeColor(unpack(UI.theme.gold));self:PlannerChanged()end,false,'Optional name, up to 60 characters. It is never sent to chat.')
         UI.edit(card,'text',entry.text,12,84,w-48,122,function(v)
-            entry.text=v;self:PlannerChanged();card.plannerControls.count:SetText(tostring(self:CountMessageCharacters(v))..'/350')
+            entry.text=v;card.plannerControls.bg:SetEdgeColor(unpack(UI.theme.gold));self:PlannerChanged();card.plannerControls.count:SetText(tostring(self:CountMessageCharacters(v))..'/350')
         end,true)
         local counter=UI.label(card,'count',tostring(self:CountMessageCharacters(entry.text or ''))..'/350',12,209,w-48,25);counter:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
-        UI.button(card,'test','Test',12,245,100,function()self:PlannerTestMessage(id)end)
-        UI.button(card,'delete','Remove',122,245,100,function()self:RemovePlannerMessage(m,id);self:PlannerChanged();self:RefreshEventPlanner()end)
-        if m.runAt~='SCHEDULED' then UI.check(card,'pool','Enabled in pool',not disabled,234,247,w-280,function(v)m.behavior.disabledMessageIds=m.behavior.disabledMessageIds or {};m.behavior.disabledMessageIds[id]=not v or nil;self:PlannerChanged();self:RefreshEventPlanner()end)end
-        y=y+302
+        card.plannerControls.name.edit:SetMaxInputChars(60);card.plannerControls.text.edit:SetMaxInputChars(360)
+        local actionWidth=math.floor((w-72)/4)
+        UI.button(card,'apply','Apply',12,245,actionWidth,function()local ok,error=self:ApplyPlannerMessage(m,id);if ok then self:RefreshEventPlanner()else self:PlannerError(error)end end,false,'Save only this template text and optional name. Pool, group and schedule edits still need Save changes.')
+        UI.button(card,'revert','Revert',22+actionWidth,245,actionWidth,function()self:RevertPlannerMessage(m,id);self:RefreshEventPlanner()end)
+        UI.button(card,'test','Test',32+actionWidth*2,245,actionWidth,function()self:PlannerTestMessage(id)end)
+        UI.button(card,'delete','Remove',42+actionWidth*3,245,actionWidth,function()self:RemovePlannerMessage(m,id);self:PlannerChanged();self:RefreshEventPlanner()end)
+        local bottom=286
+        if m.runAt~='SCHEDULED' then UI.check(card,'pool','Enabled in pool',not disabled,12,bottom,w-48,function(v)m.behavior.disabledMessageIds=m.behavior.disabledMessageIds or {};m.behavior.disabledMessageIds[id]=not v or nil;self:PlannerChanged();self:RefreshEventPlanner()end);bottom=bottom+34
+        else
+            bottom=bottom+self:BuildPlannerMessageGroup(card,'libraryGroup',entry,12,bottom,w-48)
+            local used={};for _,period in ipairs(m.schedule.reminders or {})do if has(period.messageIds,id)then used[#used+1]=period.label end end
+            local status=UI.label(card,'used',#used>0 and 'Used: '..table.concat(used,', ') or 'Not selected in any period',12,bottom,w-48,10000)
+            status:SetFont(UI.fonts.small);status:SetColor(unpack(UI.theme.muted));local height=math.max(24,status:GetTextHeight());status:SetHeight(height);bottom=bottom+height+8
+        end
+        card:SetHeight(bottom+10);y=y+bottom+22
     end
     if m.runAt~='SCHEDULED' then y=self:BuildPlannerMessagePool(parent,w,y) end
     return y
@@ -336,22 +365,27 @@ function S:RefreshEventPlanner()
     UI.button(win,'close','X',width-48,10,30,function()self:RequestPlannerAction(function()self.plannerModel=nil;self:HidePlannerWindow()end)end)
     UI.label(win,'guildLabel','Guild',18,58,50,28)
     local guilds={};for i=1,5 do local g=self:GetGuildNameByIndex(i);if g then guilds[#guilds+1]=g end end
-    UI.combo(win,'guild',guilds,nil,m.guild,72,56,250,function(v)self:RequestPlannerAction(function()self.plannerModel=self:CreatePlannerDraft(m.commandId,v);self:RefreshEventPlanner()end)end)
+    local hasGuild=self:GetGuildSlotByName(m.guild)~=nil
+    if hasGuild then UI.combo(win,'guild',guilds,nil,m.guild,72,56,250,function(v)self:RequestPlannerAction(function()self.plannerModel=self:CreatePlannerDraft(m.commandId,v);self:RefreshEventPlanner()end)end)
+    else UI.label(win,'noGuild','No guild memberships',72,58,250,28)end
     UI.label(win,'channelLabel','Output',346,58,70,28)
     UI.combo(win,'channel',{'Guild','Officer','Zone','Group'},nil,m.channel,414,56,180,function(v)m.channel=v;self:PlannerChanged()end)
-    UI.label(win,'zone','Server clock: '..self:GetSchedulingTimeZoneName(m.schedule.timeZone)..' ('..m.schedule.timeZone..')',620,58,width-650,28)
+    UI.label(win,'zone','Guild clock: '..self:GetSchedulingTimeZoneName(m.schedule.timeZone)..' ('..m.schedule.timeZone..')',620,58,width-800,28)
+    UI.button(win,'guildSettings','Guild settings',width-164,56,150,function()self:OpenPlannerGuildSettings()end,false,'Set this guild timezone override, or follow the global default. The Guild selector chooses your editing context; it does not change your default guild.')
+    if not hasGuild then win.plannerControls.channel:SetHidden(true);win.plannerControls.channelLabel:SetHidden(true);win.plannerControls.guildSettings:SetHidden(true);win.plannerControls.zone:SetText('Default clock: '..self:GetSchedulingTimeZoneName())end
     local left=math.max(210,math.floor(width*0.20));local middle=math.max(260,math.floor(width*0.23));local top=102;local bodyHeight=height-172
     local events=UI.box(win,'eventsPane',12,top,left,bodyHeight,false);self.plannerEvents=events;self:RefreshPlannerEvents(events,left,bodyHeight)
     local periods=UI.box(win,'periodPane',24+left,top,middle,bodyHeight,false);self.plannerPeriods=periods;self:RefreshPlannerPeriods(periods,middle,bodyHeight)
     local rightX=36+left+middle;local rightW=width-rightX-12
     local detail=UI.box(win,'detailPane',rightX,top,rightW,bodyHeight,false);UI.hide(detail);detail.plannerControls.bg:SetHidden(false)
-    local tabs=m.runAt=='SCHEDULED' and {{'Event settings','event'},{'Period settings','period'},{'Message library','library'}} or {{'Command settings','event'},{'Message library','library'}}
-    if m.runAt~='SCHEDULED' and m.tab=='period' then m.tab='event' end
+    local tabs=m.runAt=='SCHEDULED' and {{'Event','event'},{'Period','period'},{'Messages','library'},{'Advanced','advanced'}} or {{'Command settings','event'},{'Message library','library'}}
+    if not hasGuild then tabs={{'Command settings','event'}};m.tab='event'end
+    if m.runAt~='SCHEDULED' and (m.tab=='period' or m.tab=='advanced') then m.tab='event' end
     local tabWidth=math.floor((rightW-24)/#tabs)
     for i,t in ipairs(tabs)do local tab=t[2];UI.button(detail,'tab'..tab,t[1],12+(i-1)*tabWidth,12,tabWidth-4,function()m.tab=tab;self:RefreshEventPlanner()end,m.tab==tab)end
     local scroll,child,cw=UI.scroll(detail,'editor',6,54,rightW-12,bodyHeight-226);UI.hide(child)
     local endY
-    if m.tab=='event' then endY=self:BuildPlannerEventEditor(child,cw)elseif m.tab=='library' then endY=self:BuildPlannerLibrary(child,cw)else endY=self:BuildPlannerPeriodEditor(child,cw)end
+    if m.tab=='event' then endY=self:BuildPlannerEventEditor(child,cw)elseif m.tab=='library' then endY=self:BuildPlannerLibrary(child,cw)elseif m.tab=='advanced' and m.runAt=='SCHEDULED' then endY=self:BuildPlannerAdvancedEditor(child,cw)else endY=self:BuildPlannerPeriodEditor(child,cw)end
     UI.scrollEnd(scroll,child,endY+12)
     local preview=UI.box(detail,'preview',12,bodyHeight-160,rightW-24,148,false)
     UI.label(preview,'title','Preview — '..(m.runAt=='SCHEDULED' and 'during selected period' or 'current time'),10,5,rightW-50,25,true)
