@@ -64,12 +64,17 @@ function S:OpenPlannerTransfer()
     local box=UI.edit(c,'text',text,22,140,776,330,function(v)text=v;self.plannerTransferText=v end,true,nil,300000)
     box.edit:SetMaxInputChars(300000)
     local status=UI.label(c,'status','',22,480,776,40)
-    UI.button(c,'export','Export',22,532,178,function()
+    local function selectAll()
+        box.edit:TakeFocus();box.edit:SelectAll()
+        status:SetText('All text selected. Press Ctrl+C to copy it to your clipboard.')
+    end
+    UI.button(c,'export','Export',22,532,144,function()
         if self.plannerModel and self.plannerModel.dirty then status:SetText('Save your event draft before exporting. Your draft is still open and unchanged.');return end
         text=self:BuildExportString();self.plannerTransferText=text;box.edit:SetText(text)
-        status:SetText('Saved settings exported. Select and copy the text above.')
+        selectAll()
     end)
-    UI.button(c,'import','Import',220,532,178,function()
+    UI.button(c,'selectAll','Select all',180,532,144,selectAll,false,'Focus and select the entire text, including lines outside the visible box. Then press Ctrl+C.')
+    UI.button(c,'import','Import',338,532,144,function()
         text=box.edit:GetText();self.plannerTransferText=text
         if self:Trim(text)=='' then status:SetText('Paste exported settings first.');return end
         self:RequestPlannerAction(function()
@@ -80,7 +85,7 @@ function S:OpenPlannerTransfer()
             end)
         end)
     end,true)
-    UI.button(c,'clear','Clear',418,532,178,function()text='';self.plannerTransferText='';box.edit:SetText('');status:SetText('')end)
-    UI.button(c,'cancel','Cancel',616,532,182,function()c:SetHidden(true)end)
+    UI.button(c,'clear','Clear',496,532,144,function()text='';self.plannerTransferText='';box.edit:SetText('');status:SetText('')end)
+    UI.button(c,'cancel','Cancel',654,532,144,function()c:SetHidden(true)end)
     return c
 end

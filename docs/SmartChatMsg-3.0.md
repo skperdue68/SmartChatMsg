@@ -217,3 +217,8 @@ The native **Import / Export** dialog uses the same guild-name matching and merg
 Sliders include exact-number entry. Invalid or out-of-range values are not saved. The planner also opens without guild membership for global settings and command management; a guild is required for messages and scheduling.
 
 > SCREENSHOT PLACEHOLDER: 09-planner-globals.png — Capture the new Global settings dialog with its default guild, default timezone and chat timeout slider. Capture Advanced monthly/rotation/important-time controls and Period availability override/reset controls separately for the parity guide.
+
+
+### Copying an export
+
+In the planner Import / Export dialog, click **Export**. The text field automatically takes keyboard focus and selects the entire export, including offscreen lines. Press **Ctrl+C** to copy it. **Select all** repeats the focus-and-select action if you clicked elsewhere. Paste with **Ctrl+V**. Clicking inside the text also focuses it normally; copy/paste and multiline cursor scrolling are enabled.

@@ -15,6 +15,10 @@ native=function(parent)
     function c:SetHidden(v)self.hidden=v end;function c:IsHidden()return self.hidden end
     function c:SetHandler(k,v)self.handlers[k]=v end
     function c:SetText(v)self.text=v end;function c:GetText()return self.text end
+    function c:TakeFocus()self.focused=true end;function c:HasFocus()return self.focused==true end
+    function c:SelectAll()assert(self.focused,'Selection must take keyboard focus first');self.selection={0,#(self.text or '')}end
+    function c:SetCopyEnabled(v)self.copyEnabled=v end;function c:SetPasteEnabled(v)self.pasteEnabled=v end
+
     function c:GetTextHeight()return math.ceil(#(self.text or '')/math.max(1,self.width/8))*20 end
     function c:GetNamedChild(k)self.children=self.children or {};self.children[k]=self.children[k] or native(self);return self.children[k]end
     return setmetatable(c,{__index=function(_,key)if key:match('^Set')or key=='ClearAnchors' or key=='LoseFocus' or key=='StartMoving' or key=='StopMovingOrResizing' then return function()end end;if key:match('^[A-Z]') then error('Unsupported control method '..key) end;return nil end})
