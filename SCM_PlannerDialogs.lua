@@ -84,4 +84,3 @@ function S:OpenPlannerTransfer()
     UI.button(c,'cancel','Cancel',616,532,182,function()c:SetHidden(true)end)
     return c
 end
-
