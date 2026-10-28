@@ -67,3 +67,15 @@ local windows=assert(s:BuildLegacyTimelineRows(window,'ad','Amber Traders',norma
 local reminder={mode='REMINDER',timeZone='ET',startDate='2026-11-02',startTime='07:00 PM',intervalMinutes=30}
 local singles=assert(s:BuildLegacyTimelineRows(reminder,'ad','Amber Traders',normalized.eventAtUtc));eq(#singles,1);eq(singles[1].once,true);eq(singles[1].lateMinutes,2)
 print('PASS shared legacy conversion for events, windows, reminders and full once windows')
+
+-- Every stored period is reachable through a standard selector, with stable IDs.
+f.reset();s.savedVars.selectedMessagesCommand='ad';s.scheduleEditor=nil
+local periods=s:GetScheduleEditorDraft();periods.reminders={}
+local names={'Monday evening','Tuesday afternoon','Tuesday evening','Starting soon','Tours starting now','Tours underway'}
+for i,label in ipairs(names) do periods.reminders[i]={id='tour-'..i,label=label,start={kind='OFFSET',minutes=-60},finish={kind='OFFSET',minutes=0},intervalMinutes=15,messageIds={}} end
+local options=s:BuildScheduleOptionControls();local selector=find(options,'Edit period');assert(selector,'Missing standard period selector')
+local labels,ids=s.rotationEditorChoiceProviders.SCM_TimelinePeriodSelector();eq(#labels,6);eq(#ids,6)
+for i=1,6 do selector.setFunc(ids[i]);eq(s:GetSelectedTimelineReminder().label,names[i]);eq(selector.getFunc(),ids[i]) end
+periods.reminders[6].label='Renamed underway';labels,ids=s.rotationEditorChoiceProviders.SCM_TimelinePeriodSelector();assert(labels[6]:find('Renamed underway',1,true))
+assert(not s.scheduleEditor.dirty,'Selecting a period must not change the schedule')
+print('PASS all six Tuesday Tours periods selectable by stable ID')

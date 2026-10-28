@@ -322,6 +322,10 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                         local occurrence=schedule and self:GetScheduleOccurrence(schedule,now)
                         if schedule then
                             local description=self:GetSchedulePhaseDescription(command.id,guildName)
+                            if schedule.timelineVersion==1 then
+                                local period=self:GetActiveTimelineReminder(schedule,now)
+                                if period and type(period.label)=='string' and period.label:match('%S') then description='Period: '..description end
+                            end
                             statusText=statusText.." — "..description
                         elseif reminderMinutes then statusText=statusText.." — every "..tostring(reminderMinutes).." minutes" end
                         local displayName=scheduled and (command.name or "Scheduled message") or (self:BuildSlashCommandName(command.name or "command") or "/command")

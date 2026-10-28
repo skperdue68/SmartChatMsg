@@ -19,3 +19,10 @@ eq(s:GetScheduledDailyLimitNotice('ad','Amber Traders'),nil)
 c.reminders[2].once=false;c.paused=true;eq(s:GetScheduledDailyLimitNotice('ad','Amber Traders'),nil)
 c.paused=false;c.enabled=false;eq(s:GetScheduledDailyLimitNotice('ad','Amber Traders'),nil)
 print('PASS status distinguishes period/shared caps and does not invent next-send timestamps')
+
+-- Named active periods are explicitly identified on their status card.
+c.enabled=true;c.paused=false;c.availabilityUsage={};c.timelineUsage={}
+local rows=s:GetRepeatStatusPanelRows()
+local named=false
+for _,r in ipairs(rows) do if r.commandId=='ad' then named=r.statusText:find('Period: ',1,true)~=nil end end
+assert(named,'Status card must identify the named active period')
