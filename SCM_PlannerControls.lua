@@ -62,10 +62,10 @@ function UI.button(parent,key,text,x,y,w,callback,primary,help)
     c:SetHandler('OnMouseExit',function()label:SetColor(unpack(primary and gold or UI.theme.text));if help then ClearTooltip(InformationTooltip)end end)
     c:SetHandler('OnClicked',callback);return c
 end
-function UI.edit(parent,key,text,x,y,w,h,callback,multiline,help)
+function UI.edit(parent,key,text,x,y,w,h,callback,multiline,help,maxChars)
     local box=UI.box(parent,key,x,y,w,h)
     local edit=UI.control(box,'edit',CT_EDITBOX);UI.place(edit,8,4,w-16,h-8)
-    edit:SetFont(UI.fonts.body);edit:SetColor(unpack(UI.theme.text));edit:SetMaxInputChars(multiline and 2000 or 120)
+    edit:SetFont(UI.fonts.body);edit:SetColor(unpack(UI.theme.text));edit:SetMaxInputChars(maxChars or (multiline and 2000 or 120))
     edit:SetMultiLine(multiline==true);edit:SetMouseEnabled(true)
     edit:SetEditEnabled(true)
     edit:SetHandler('OnTextChanged',nil);edit:SetText(tostring(text or ''))
@@ -102,19 +102,35 @@ function UI.combo(parent,key,labels,values,value,x,y,w,callback,help)
     end
     combo:SetSelectedItem(selected);if help then UI.tooltip(c,help) end;return c
 end
-function UI.slider(parent,key,label,value,min,max,x,y,w,callback,format,help)
+function UI.slider(parent,key,label,value,min,max,x,y,w,callback,format,help,exactMax,exactMin)
     local holder=UI.control(parent,key,CT_CONTROL);UI.place(holder,x,y,w,58)
     local labelControl=UI.label(holder,'label',label..' — '..format(value),0,0,w,27)
-    local c=UI.control(holder,'slider',CT_SLIDER);UI.place(c,8,30,w-24,24)
+    holder.exactMin=exactMin or min;holder.exactMax=math.max(exactMax or max,value)
+    holder.sliderMax=max
+    local sliderWidth=math.max(70,w-116)
+    local c=UI.control(holder,'slider',CT_SLIDER);UI.place(c,8,30,sliderWidth,24)
     c:SetOrientation(ORIENTATION_HORIZONTAL)
     c:SetMouseEnabled(true)
     c:SetMinMax(min,max);c:SetValueStep(1)
     c:SetThumbTexture('EsoUI/Art/Buttons/smoothsliderbutton_up.dds','EsoUI/Art/Buttons/smoothsliderbutton_up.dds','EsoUI/Art/Buttons/smoothsliderbutton_up.dds',22,22)
-    local bg=UI.control(c,'track',CT_BACKDROP);UI.place(bg,0,9,w-24,6)
+    local bg=UI.control(c,'track',CT_BACKDROP);UI.place(bg,0,9,sliderWidth,6)
     bg:SetCenterColor(0.09,0.14,0.18,1);bg:SetEdgeColor(0.34,0.45,0.49,1)
     bg:SetEdgeTexture('EsoUI/Art/Tooltips/UI-SliderBackdrop.dds',32,2);bg:SetDrawLayer(DL_BACKGROUND);bg:SetMouseEnabled(false)
     c:SetHandler('OnValueChanged',nil);c:SetValue(value)
-    c:SetHandler('OnValueChanged',function(_,v)if not S.plannerRefreshing then v=math.floor(v+0.5);callback(v);labelControl:SetText(label..' — '..format(v))end end)
+    local syncing=false;local exact
+    local function change(v,typed)
+        if S.plannerRefreshing or syncing or holder.plannerDisabled then return end
+        if not v or v~=math.floor(v) or v<holder.exactMin or v>holder.exactMax then return end
+        syncing=true;value=v
+        if typed then c:SetMinMax(math.min(min,v),math.max(holder.sliderMax,v));c:SetValue(v)end
+        labelControl:SetText(label..' — '..format(v))
+        if exact and exact.edit:GetText()~=tostring(v)then exact.edit:SetText(tostring(v))end
+        syncing=false;callback(v)
+    end
+    exact=UI.edit(holder,'exact',tostring(value),w-86,28,82,30,function(text)change(tonumber(text),true)end,false,'Enter an exact whole-number value in the same units as this slider.',8)
+    exact.edit:SetTextType(TEXT_TYPE_NUMERIC)
+    exact.edit:SetHandler('OnFocusLost',function()if exact.edit:GetText()~=tostring(value)then syncing=true;exact.edit:SetText(tostring(value));syncing=false end end)
+    c:SetHandler('OnValueChanged',function(_,v)change(math.floor(v+0.5),false)end)
     if help then UI.tooltip(holder,help) end;return holder
 end
 function UI.scroll(parent,key,x,y,w,h)

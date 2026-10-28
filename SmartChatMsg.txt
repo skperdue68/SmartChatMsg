@@ -26,6 +26,9 @@ SCM_Availability.lua
 SCM_ImportMerge.lua
 SCM_PlannerModel.lua
 SCM_PlannerControls.lua
+SCM_PlannerDialogs.lua
+SCM_PlannerAdvanced.lua
+SCM_PlannerExtras.lua
 SCM_PlannerWindow.lua
 SCM_PlannerWindow.xml
 SmartChatMsg.lua

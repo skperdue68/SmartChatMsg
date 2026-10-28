@@ -29,4 +29,6 @@ Native settings import merges commands/messages, retaining items absent from the
 
 ## Optional native Event Planner
 
-Use `/scm schedule` for the new resizable three-column ESO window: command/event list, period cards, and a wider editor with message previews. `/scm` retains the original settings, which remain available for advanced options and import/export. Drafts use Save/Cancel and preserve live cooldown/usage history. See the guide’s Custom ESO Event Planner section for the current scope and testing steps.
+Use `/scm schedule` for the new resizable three-column ESO window: command/event list, period cards, and a wider editor with message previews. `/scm` retains the original settings as an alternate interface. The planner now includes Global settings, Guild settings, import/export and an Advanced tab. Drafts use Save/Cancel and preserve live cooldown/usage history. See the guide’s Custom ESO Event Planner section for the current scope and testing steps.
+
+[Original/new ESO settings parity checklist](docs/ESO-Planner-Settings-Parity.md) documents every control and its location.
