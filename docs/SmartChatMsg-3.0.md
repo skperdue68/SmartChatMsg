@@ -193,3 +193,12 @@ Drag the title to move the window; use its resize grip to resize. Position and d
 **Existing settings** keeps the original editor available. Save your edits first if you want to keep them, then use it for import/export, command renaming, guild timezone changes, special-pattern configuration, named important times, occurrence cancellations and date/weekday availability overrides. Those advanced values are preserved when saving the new window. No new library dependency or SavedVariables schedule format is required.
 
 > SCREENSHOT PLACEHOLDER: 08-custom-planner.png — Capture the full custom ESO window with Tuesday Tours selected, the six period cards visible or scrollable, and one selected period’s message pool and parsed preview. Also capture Event settings and Message library tabs in separate images if space permits. This is the actual native interface; do not use the concept rendering as a product screenshot.
+
+
+### Planner visual indicators and controls
+
+The custom planner uses a charcoal/blue palette, warm white native fonts, muted gold for the selected item and primary actions, and teal for period frequency. Buttons center their labels horizontally and vertically. Checkboxes use ESO’s native checkbox widget; sliders have a narrow visible track and larger native thumb. No additional dependency is needed.
+
+A gold-tinted period card is the period selected for editing. A green indicator marks the currently active **saved** period, independently of the selected private draft. It updates once per second without rebuilding the editor, changing focus or resetting scroll. Hover over the indicator for an explanation. A green indicator does not mean a send is immediate: global sending state, startup delay, cooldowns, daily limits and chat protection still apply.
+
+Each card shows its name, Starts, Stops, and frequency in separate controls. Frequency has its own row beneath a divider. Heights are measured so wrapped dates/names do not consume the frequency row. One-time notices say Send once and do not invent an end time.

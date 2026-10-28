@@ -30,6 +30,7 @@ function S:SavePlannerWindowGeometry()
     self.savedVars.plannerWindowState={width=w:GetWidth(),height=w:GetHeight(),x=w:GetLeft(),y=w:GetTop()}
 end
 function S:HidePlannerWindow()
+    EVENT_MANAGER:UnregisterForUpdate('SCM_PlannerActivity')
     self:SavePlannerWindowGeometry();self.plannerWindow:SetHidden(true)
     if SCENE_MANAGER and self.plannerRegistered then SCENE_MANAGER:HideTopLevel(self.plannerWindow) end
 end
@@ -54,7 +55,7 @@ function S:OpenEventPlanner()
         win:SetHandler('OnResizeStop',function()self:SavePlannerWindowGeometry();self:RefreshEventPlanner()end)
         win:SetHandler('OnMoveStop',function()self:SavePlannerWindowGeometry()end)
         win:SetHandler('OnRectWidthChanged',function()if not self.plannerRefreshing then self:RefreshEventPlanner()end end)
-        win:SetHandler('OnEffectivelyHidden',function()self:SavePlannerWindowGeometry()end)
+        win:SetHandler('OnEffectivelyHidden',function()EVENT_MANAGER:UnregisterForUpdate('SCM_PlannerActivity');self:SavePlannerWindowGeometry()end)
         if SCENE_MANAGER then SCENE_MANAGER:RegisterTopLevel(win,true);self.plannerRegistered=true end
         local state=self.savedVars.plannerWindowState or {}
         win:SetDimensions(math.min(GuiRoot:GetWidth()-32,math.max(1080,state.width or 1420)),math.min(GuiRoot:GetHeight()-32,math.max(660,state.height or 860)))
@@ -69,10 +70,13 @@ function S:OpenEventPlanner()
         self.plannerModel=self:CreatePlannerDraft(id,guild)
     end
     if SCENE_MANAGER and self.plannerRegistered then SCENE_MANAGER:ShowTopLevel(win) else win:SetHidden(false);SetGameCameraUIMode(true) end
-    self:RefreshEventPlanner();return true
+    self:RefreshEventPlanner()
+    EVENT_MANAGER:RegisterForUpdate('SCM_PlannerActivity',1000,function()self:RefreshPlannerActivityIndicators()end)
+    return true
 end
 function S:RefreshPlannerEvents(parent,w,h)
     UI.hide(parent);UI.label(parent,'title','EVENTS',14,12,w-24,30,true)
+    parent.plannerControls.title:SetColor(unpack(UI.theme.teal))
     UI.edit(parent,'search',self.plannerSearch or '',12,48,w-24,32,function(text)self.plannerSearch=text;self:RefreshPlannerEventList()end,false,'Filter by command/event name.')
     UI.button(parent,'new','+ Event',12,88,w-24,function()self:RequestPlannerAction(function()self.plannerModel=self:CreatePlannerDraft(nil,self.plannerModel.guild);self.plannerModel.tab='event';self:RefreshEventPlanner()end)end)
     local scroll,child,cw=UI.scroll(parent,'events',8,128,w-16,h-232);UI.hide(child)
@@ -92,6 +96,7 @@ end
 function S:RefreshPlannerPeriods(parent,w,h)
     UI.hide(parent);local m=self.plannerModel
     UI.label(parent,'title',m.runAt=='SCHEDULED' and 'PERIODS' or 'MESSAGE POOL',14,12,w-24,30,true)
+    parent.plannerControls.title:SetColor(unpack(UI.theme.teal))
     UI.label(parent,'event',m.name~='' and m.name or 'New event',14,48,w-28,30,true)
     if m.runAt~='SCHEDULED' then
         UI.label(parent,'ordinary','All enabled messages share this command’s random pool. Choose Message library to edit them.',14,92,w-28,120)
@@ -102,23 +107,62 @@ function S:RefreshPlannerPeriods(parent,w,h)
     UI.label(parent,'summary',occurrence and self:FormatScheduleDateTime(occurrence.eventAtUtc,c)..'\n'..tostring(m.schedule.recurrence or 'NONE'):gsub('_',' ') or tostring(reason),14,83,w-28,64)
     local scroll,child,cw=UI.scroll(parent,'periods',8,154,w-16,h-208);UI.hide(child)
     local y=0
+    local function cardDate(at)
+        if not at then return 'Choose dates' end
+        local p=self:GetScheduleParts(at,c)
+        local months={'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'}
+        return string.format('%s %d, %d  %d:%02d %s %s',months[p.month],p.day,p.year,p.hour%12==0 and 12 or p.hour%12,p.min,p.hour>=12 and 'PM' or 'AM',p.timezone)
+    end
     for _,r in ipairs(m.schedule.reminders or {}) do
         local id=r.id;local card=UI.box(child,'period'..id,2,y,cw-4,100,m.periodId==id);card:SetMouseEnabled(true)
+        card.plannerSelected=m.periodId==id
         local function select()self:SelectPlannerPeriod(m,id);m.tab='period';self.plannerDetailScroll=0;self:RefreshEventPlanner()end
         card:SetHandler('OnMouseUp',function(_,button,inside)if button==MOUSE_BUTTON_INDEX_LEFT and inside then select()end end)
-        local label=UI.label(card,'name',(r.enabled==false or r.paused) and '|c888888'..r.label..' (disabled)|r' or r.label,10,6,cw-24,26,true)
+        local label=UI.label(card,'name',(r.enabled==false or r.paused) and '|c888888'..r.label..' (disabled)|r' or r.label,12,8,cw-54,10000,true)
+        local nameHeight=math.max(26,label:GetTextHeight()+2);label:SetHeight(nameHeight)
         label:SetMouseEnabled(true);label:SetHandler('OnMouseUp',function(_,button,inside)if button==MOUSE_BUTTON_INDEX_LEFT and inside then select()end end)
+        local dot=UI.control(card,'activeDot',CT_TEXTURE);UI.place(dot,cw-38,12,18,18)
+        dot:SetTexture('EsoUI/Art/Buttons/smoothsliderbutton_up.dds');dot:SetColor(unpack(UI.theme.green));dot:SetHidden(true)
+        UI.tooltip(dot,'Current period in the saved schedule. Gold background marks the period you are editing. Cooldowns, limits and chat protection still apply.')
         local first=occurrence and self:ResolveTimelineAnchor(c,occurrence,r.start)
         local last=occurrence and not (r.once and not r.onceUntilFinish) and self:ResolveTimelineAnchor(c,occurrence,r.finish)
-        local text=first and self:FormatScheduleDateTime(first,c) or 'Choose dates'
-        if last then text=text..'\n'..self:FormatScheduleDateTime(last,c) end
-        text=text..'\n'..(r.once and 'Send once' or 'Every '..self:FormatSchedulingMinutes(r.intervalMinutes or 30))
-        local detail=UI.label(card,'detail',text,10,33,cw-24,66);detail:SetMouseEnabled(true);detail:SetHandler('OnMouseUp',function(_,button,inside)if button==MOUSE_BUTTON_INDEX_LEFT and inside then select()end end)
-        for _,control in ipairs({card,label,detail})do control:SetHandler('OnMouseWheel',function(_,delta)ZO_Scroll_OnMouseWheel(scroll,delta)end)end
-        y=y+108
+        local lineY=12+nameHeight
+        local lines={}
+        for _,item in ipairs({{'starts','Starts  '..cardDate(first)},{'stops',last and 'Stops   '..cardDate(last) or 'One-time notice'}})do
+            local line=UI.label(card,item[1],item[2],12,lineY,cw-28,10000);line:SetFont(UI.fonts.small);line:SetColor(unpack(UI.theme.muted))
+            local lineHeight=math.max(22,line:GetTextHeight()+2);line:SetHeight(lineHeight);lineY=lineY+lineHeight+2
+            line:SetMouseEnabled(true);line:SetHandler('OnMouseUp',function(_,button,inside)if button==MOUSE_BUTTON_INDEX_LEFT and inside then select()end end);lines[#lines+1]=line
+        end
+        local divider=UI.control(card,'divider',CT_BACKDROP);UI.place(divider,12,lineY+3,cw-28,1)
+        divider:SetEdgeTexture('EsoUI/Art/Tooltips/UI-SliderBackdrop.dds',32,1);divider:SetEdgeColor(0.25,0.35,0.39,1);divider:SetMouseEnabled(false)
+        lineY=lineY+12
+        local frequency=UI.label(card,'frequency',r.once and 'Send once' or 'Every '..self:FormatSchedulingMinutes(r.intervalMinutes or 30),12,lineY,cw-28,10000)
+        frequency:SetColor(unpack(UI.theme.teal));local frequencyHeight=math.max(24,frequency:GetTextHeight()+2);frequency:SetHeight(frequencyHeight)
+        frequency:SetMouseEnabled(true);frequency:SetHandler('OnMouseUp',function(_,button,inside)if button==MOUSE_BUTTON_INDEX_LEFT and inside then select()end end)
+        card:SetHeight(lineY+frequencyHeight+12)
+        for _,control in ipairs({card,label,lines[1],lines[2],frequency,dot})do control:SetHandler('OnMouseWheel',function(_,delta)ZO_Scroll_OnMouseWheel(scroll,delta)end)end
+        y=y+card:GetHeight()+10
     end
     UI.scrollEnd(scroll,child,y)
     UI.button(parent,'add','+ Period',12,h-44,w-24,function()local r,error=self:AddPlannerPeriod(m);if not r then self:PlannerError(error);return end;m.tab='period';self:RefreshEventPlanner()end)
+end
+function S:RefreshPlannerActivityIndicators()
+    if not self.plannerWindow or self.plannerWindow:IsHidden() then return end
+    local sending=self.plannerWindow.plannerControls and self.plannerWindow.plannerControls.sending
+    if sending then sending:SetText('Scheduled sending: '..(self:IsScheduledSendingEnabled() and 'ON' or 'OFF'))end
+    local m=self.plannerModel;local pane=self.plannerPeriods
+    if not m or m.runAt~='SCHEDULED' or not pane or not pane.plannerControls.periods then return end
+    local live=m.commandId and self:GetGuildSchedule(m.commandId,m.guild)
+    local active=live and live.enabled and not live.paused and self:GetGuildRunAt(m.commandId,m.guild)=='SCHEDULED' and self:GetActiveTimelineReminder(live,GetTimeStamp())
+    if live and live.enabled and not live.paused and not active then
+        local _,limitedPeriod=self:GetScheduledDailyLimitNotice(m.commandId,m.guild)
+        active=limitedPeriod
+    end
+    local child=pane.plannerControls.periods:GetNamedChild('Scroll'):GetNamedChild('Child')
+    for _,row in ipairs(m.schedule.reminders or {})do
+        local card=child.plannerControls and child.plannerControls['period'..row.id]
+        if card and card.plannerControls.activeDot then card.plannerControls.activeDot:SetHidden(not active or active.id~=row.id)end
+    end
 end
 function S:PlannerNumber(parent,key,label,value,min,max,x,y,w,set,zero)
     UI.slider(parent,key,label,tonumber(value) or min,min,math.max(max,tonumber(value) or min),x,y,w,function(n)set(n);self:PlannerChanged()end,function(n)return n==0 and (zero or 'Off') or self:FormatSchedulingMinutes(n)end)
@@ -284,6 +328,7 @@ function S:RefreshEventPlanner()
     local width,height=win:GetWidth(),win:GetHeight();UI.hide(win)
     UI.box(win,'background',0,0,width,height,false)
     local title=UI.label(win,'title','SMARTCHATMSG — Event planner',18,12,width-380,38,true)
+    title:SetFont(UI.fonts.title)
     title:SetMouseEnabled(true)
     title:SetHandler('OnMouseDown',function(_,button)if button==MOUSE_BUTTON_INDEX_LEFT then win:StartMoving()end end)
     title:SetHandler('OnMouseUp',function()win:StopMovingOrResizing();self:SavePlannerWindowGeometry()end)
@@ -311,7 +356,7 @@ function S:RefreshEventPlanner()
     local preview=UI.box(detail,'preview',12,bodyHeight-160,rightW-24,148,false)
     UI.label(preview,'title','Preview — '..(m.runAt=='SCHEDULED' and 'during selected period' or 'current time'),10,5,rightW-50,25,true)
     self.plannerPreview=UI.label(preview,'output',self.plannerPreviewText or 'Click Test beside a message to preview substitutions here and in your chat.',10,34,rightW-50,108)
-    self.plannerPreview:SetFont('ZoFontGameSmall')
+    self.plannerPreview:SetFont(UI.fonts.small)
     self.plannerFooter=UI.label(win,'footer',m.dirty and 'Unsaved changes — Save changes applies this event; Cancel discards edits.' or 'Same saved data as the existing addon settings.',18,height-53,width-350,44)
     UI.button(win,'cancel','Cancel',width-314,height-52,130,function()self:RequestPlannerAction(function()self.plannerModel=nil;self:HidePlannerWindow()end)end)
     self.plannerSave=UI.button(win,'save','Save changes',width-170,height-52,150,function()
@@ -320,4 +365,5 @@ function S:RefreshEventPlanner()
         self:RefreshEventPlanner();self.plannerFooter:SetText('Saved. The addon is using these settings.');self:AddLocalChatMessage('[SmartChatMsg] '..self.plannerModel.guild..' ('..self.plannerModel.name..'): settings saved.')
     end,true)
     self.plannerRefreshing=false
+    self:RefreshPlannerActivityIndicators()
 end

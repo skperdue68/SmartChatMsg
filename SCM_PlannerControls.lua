@@ -2,7 +2,9 @@
 SmartChatMsg=SmartChatMsg or {}
 local S=SmartChatMsg
 local UI={};S.PlannerUI=UI
-local gold={0.90,0.76,0.43,1}
+local gold={0.78,0.65,0.36,1}
+UI.theme={gold=gold,text={0.91,0.90,0.87,1},muted={0.62,0.68,0.71,1},teal={0.56,0.74,0.71,1},green={0.38,0.84,0.47,1}}
+UI.fonts={body='$(MEDIUM_FONT)|18|soft-shadow-thin',heading='$(BOLD_FONT)|20|soft-shadow-thin',small='$(MEDIUM_FONT)|16|soft-shadow-thin',title='$(BOLD_FONT)|24|soft-shadow-thin'}
 function UI.control(parent,key,kind,virtual)
     parent.plannerControls=parent.plannerControls or {}
     local c=parent.plannerControls[key]
@@ -20,7 +22,7 @@ function UI.place(c,x,y,w,h)
     c:ClearAnchors();c:SetAnchor(TOPLEFT,c:GetParent(),TOPLEFT,x,y);c:SetDimensions(w,h);return c
 end
 function UI.hide(parent)
-    for _,c in pairs(parent.plannerControls or {}) do c:SetHidden(true) end
+    for key,c in pairs(parent.plannerControls or {}) do if key~='bg' then c:SetHidden(true) end end
 end
 function UI.tooltip(c,text)
     c:SetMouseEnabled(true)
@@ -28,14 +30,15 @@ function UI.tooltip(c,text)
     c:SetHandler('OnMouseExit',function()ClearTooltip(InformationTooltip)end)
 end
 function UI.label(parent,key,text,x,y,w,h,heading)
-    local c=UI.control(parent,key,CT_LABEL);c:SetFont(heading and 'ZoFontWinH3' or 'ZoFontGame')
-    c:SetColor(unpack(heading and gold or {0.86,0.86,0.81,1}));c:SetText(text);return UI.place(c,x,y,w,h or 28)
+    local c=UI.control(parent,key,CT_LABEL);c:SetFont(heading and UI.fonts.heading or UI.fonts.body)
+    c:SetHorizontalAlignment(TEXT_ALIGN_LEFT);c:SetVerticalAlignment(TEXT_ALIGN_TOP)
+    c:SetColor(unpack(UI.theme.text));c:SetText(text);return UI.place(c,x,y,w,h or 28)
 end
 function UI.box(parent,key,x,y,w,h,selected)
     local c=UI.control(parent,key,CT_CONTROL);UI.place(c,x,y,w,h)
     local bg=UI.control(c,'bg',nil,'ZO_DefaultBackdrop');bg:SetAnchorFill(c)
-    bg:SetCenterColor(selected and 0.16 or 0.025,selected and 0.13 or 0.025,0.035,0.97)
-    bg:SetEdgeColor(selected and 0.95 or 0.40,selected and 0.77 or 0.35,selected and 0.35 or 0.22,1)
+    bg:SetCenterColor(selected and 0.18 or 0.065,selected and 0.155 or 0.095,selected and 0.09 or 0.12,0.98)
+    bg:SetEdgeColor(selected and 0.78 or 0.23,selected and 0.65 or 0.30,selected and 0.36 or 0.34,1)
     bg:SetMouseEnabled(false);return c
 end
 function UI.button(parent,key,text,x,y,w,callback,primary,help)
@@ -44,15 +47,25 @@ function UI.button(parent,key,text,x,y,w,callback,primary,help)
     if not c.plannerBackdrop then
         c.plannerBackdrop=UI.control(c,'backdrop',nil,'ZO_DefaultBackdrop');c.plannerBackdrop:SetAnchorFill(c);c.plannerBackdrop:SetMouseEnabled(false)
     end
-    c.plannerBackdrop:SetCenterColor(primary and 0.28 or 0.07,primary and 0.22 or 0.07,primary and 0.09 or 0.075,1)
-    c.plannerBackdrop:SetEdgeColor(0.55,0.46,0.27,1)
-    c:SetFont('ZoFontGameBold');c:SetText(text);c:SetNormalFontColor(unpack(gold));c:SetMouseOverFontColor(1,0.93,0.67,1)
-    c:SetHandler('OnClicked',callback);if help then UI.tooltip(c,help) end;return c
+    c.plannerBackdrop:SetCenterColor(primary and 0.26 or 0.09,primary and 0.21 or 0.13,primary and 0.10 or 0.16,1)
+    c.plannerBackdrop:SetEdgeColor(primary and 0.78 or 0.28,primary and 0.65 or 0.37,primary and 0.36 or 0.41,1)
+    -- A label anchored to every edge remains centered even when rows are taller.
+    c:SetText('')
+    local label=UI.label(c,'buttonText',text,4,0,w-8,32)
+    label:ClearAnchors();label:SetAnchor(TOPLEFT,c,TOPLEFT,6,0);label:SetAnchor(BOTTOMRIGHT,c,BOTTOMRIGHT,-6,0)
+    label:SetHorizontalAlignment(TEXT_ALIGN_CENTER);label:SetVerticalAlignment(TEXT_ALIGN_CENTER);label:SetMouseEnabled(false)
+    label:SetColor(unpack(primary and gold or UI.theme.text))
+    c:SetHandler('OnMouseEnter',function(control)
+        label:SetColor(1,0.92,0.70,1)
+        if help then InitializeTooltip(InformationTooltip,control,TOP,0,8);SetTooltipText(InformationTooltip,help) end
+    end)
+    c:SetHandler('OnMouseExit',function()label:SetColor(unpack(primary and gold or UI.theme.text));if help then ClearTooltip(InformationTooltip)end end)
+    c:SetHandler('OnClicked',callback);return c
 end
 function UI.edit(parent,key,text,x,y,w,h,callback,multiline,help)
     local box=UI.box(parent,key,x,y,w,h)
     local edit=UI.control(box,'edit',CT_EDITBOX);UI.place(edit,8,4,w-16,h-8)
-    edit:SetFont('ZoFontGame');edit:SetColor(0.96,0.96,0.91,1);edit:SetMaxInputChars(multiline and 2000 or 120)
+    edit:SetFont(UI.fonts.body);edit:SetColor(unpack(UI.theme.text));edit:SetMaxInputChars(multiline and 2000 or 120)
     edit:SetMultiLine(multiline==true);edit:SetMouseEnabled(true)
     edit:SetEditEnabled(true)
     edit:SetHandler('OnTextChanged',nil);edit:SetText(tostring(text or ''))
@@ -63,15 +76,24 @@ function UI.edit(parent,key,text,x,y,w,h,callback,multiline,help)
 end
 function UI.check(parent,key,text,value,x,y,w,callback,help,disabled)
     local c=UI.control(parent,key,CT_BUTTON);UI.place(c,x,y,w,28);c:SetMouseEnabled(not disabled)
-    UI.label(c,'box',value and '[X]' or '[ ]',0,0,30,28)
-    local l=UI.label(c,'label',text,32,0,w-32,28);if disabled then l:SetColor(0.45,0.45,0.45,1) end
-    c:SetHandler('OnClicked',function()if not disabled then value=not value;c.plannerControls.box:SetText(value and '[X]' or '[ ]');callback(value)end end)
+    local box=UI.control(c,'box',nil,'ZO_CheckButton');UI.place(box,0,2,24,24);box:SetMouseEnabled(not disabled);box:SetAlpha(disabled and 0.4 or 1)
+    ZO_CheckButton_SetCheckState(box,value==true)
+    local l=UI.label(c,'label',text,32,0,w-32,28);l:SetVerticalAlignment(TEXT_ALIGN_CENTER)
+    if disabled then l:SetColor(0.45,0.49,0.51,1) end
+    local function changed(nextValue)
+        if disabled then ZO_CheckButton_SetCheckState(box,value==true);return end
+        value=nextValue==true;ZO_CheckButton_SetCheckState(box,value);callback(value)
+    end
+    ZO_CheckButton_SetToggleFunction(box,function(_,checked)changed(checked)end)
+    c:SetHandler('OnClicked',function()changed(not value)end)
+    if help then UI.tooltip(box,help);box:SetMouseEnabled(not disabled) end
     if help then UI.tooltip(c,help);c:SetMouseEnabled(true) end
     return c
 end
 function UI.combo(parent,key,labels,values,value,x,y,w,callback,help)
     local c=UI.control(parent,key,nil,'ZO_ComboBox');UI.place(c,x,y,w,32)
     local combo=ZO_ComboBox_ObjectFromContainer(c);combo:SetSortsItems(false);combo:ClearItems()
+    if combo.SetFont then combo:SetFont(UI.fonts.body) end
     local selected='Choose'
     for i,label in ipairs(labels) do
         local v=values and values[i] or label
@@ -83,12 +105,14 @@ end
 function UI.slider(parent,key,label,value,min,max,x,y,w,callback,format,help)
     local holder=UI.control(parent,key,CT_CONTROL);UI.place(holder,x,y,w,58)
     local labelControl=UI.label(holder,'label',label..' — '..format(value),0,0,w,27)
-    local c=UI.control(holder,'slider',CT_SLIDER);UI.place(c,4,32,w-12,16)
+    local c=UI.control(holder,'slider',CT_SLIDER);UI.place(c,8,30,w-24,24)
     c:SetOrientation(ORIENTATION_HORIZONTAL)
     c:SetMouseEnabled(true)
     c:SetMinMax(min,max);c:SetValueStep(1)
-    c:SetThumbTexture('EsoUI/Art/Miscellaneous/scrollbox_elevator.dds','EsoUI/Art/Miscellaneous/scrollbox_elevator_disabled.dds',nil,8,16)
-    local bg=UI.control(c,'track',CT_BACKDROP);bg:SetAnchorFill(c);bg:SetCenterColor(0.25,0.24,0.18,1);bg:SetEdgeColor(0.5,0.45,0.3,1);bg:SetMouseEnabled(false)
+    c:SetThumbTexture('EsoUI/Art/Buttons/smoothsliderbutton_up.dds','EsoUI/Art/Buttons/smoothsliderbutton_up.dds','EsoUI/Art/Buttons/smoothsliderbutton_up.dds',22,22)
+    local bg=UI.control(c,'track',CT_BACKDROP);UI.place(bg,0,9,w-24,6)
+    bg:SetCenterColor(0.09,0.14,0.18,1);bg:SetEdgeColor(0.34,0.45,0.49,1)
+    bg:SetEdgeTexture('EsoUI/Art/Tooltips/UI-SliderBackdrop.dds',32,2);bg:SetDrawLayer(DL_BACKGROUND);bg:SetMouseEnabled(false)
     c:SetHandler('OnValueChanged',nil);c:SetValue(value)
     c:SetHandler('OnValueChanged',function(_,v)if not S.plannerRefreshing then v=math.floor(v+0.5);callback(v);labelControl:SetText(label..' — '..format(v))end end)
     if help then UI.tooltip(holder,help) end;return holder
