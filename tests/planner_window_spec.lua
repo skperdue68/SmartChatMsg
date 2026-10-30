@@ -111,3 +111,12 @@ local disabled=s.PlannerUI.check(s.plannerWindow,'disabledTest','Unavailable',fa
 disabled.handlers.OnClicked();disabled.plannerControls.box.toggle(disabled.plannerControls.box,true);eq(disabled.plannerControls.box.checked,false)
 s:HidePlannerWindow();assert(not EVENT_MANAGER.updates.SCM_PlannerActivity)
 print('PASS planner theme roles, centered buttons, real checkboxes, slim sliders, distinct period lines and live activity')
+
+local commandParent=s.PlannerUI.control(s.plannerWindow,'condensedSettingsTest',CT_CONTROL)
+s:BuildPlannerEventEditor(commandParent,650)
+local condensed=assert(commandParent.plannerControls.condensedDateTime)
+local saved=s:GetGuildCondensedDateTime(model.commandId,model.guild)
+local value=condensed.plannerControls.box.checked
+condensed.handlers.OnClicked();eq(model.behavior.condensedDateTime,not value)
+eq(s:GetGuildCondensedDateTime(model.commandId,model.guild),saved,'native checkbox edits only the command draft')
+print('PASS native command settings exposes condensed format with private draft edits')

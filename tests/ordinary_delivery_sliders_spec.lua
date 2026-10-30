@@ -101,11 +101,19 @@ print('PASS ordinary sliders use LAM backdrop track and ASCII labels')
 local originalRunAt=s.GetGuildRunAt;s.GetGuildRunAt=function()return 'SCHEDULED'end
 s.settings.pendingGuildOpenStatusPanelOnRun=true
 container:RefreshEditor();option.refreshFunc(holder)
-eq(container.height,140);eq(holder.height,140)
+eq(container.height,178);eq(holder.height,178)
 for _,name in ipairs({'SCM_MessagesReminderSlider','SCM_MessagesReminderRetrySlider','SCM_MessagesAutoPopulateCooldownSlider','SCM_MessagesAutoPopulateCheckbox'})do eq(named[name].hidden,true)end
 eq(repeatSlider.mouse,false);eq(retry.mouse,false);eq(cooldown.mouse,false)
 eq(named.SCM_MessagesOpenStatusPanelOnRunCheckbox.mouse,true);eq(s.settings.pendingGuildOpenStatusPanelOnRun,true)
 s.GetGuildRunAt=function()return 'ON_DEMAND'end;container:RefreshEditor();option.refreshFunc(holder)
-eq(container.height,370);eq(holder.height,370);eq(repeatSlider.hidden,false);eq(cooldown.hidden,false)
+eq(container.height,408);eq(holder.height,408);eq(repeatSlider.hidden,false);eq(cooldown.hidden,false)
 s.GetGuildRunAt=originalRunAt
 print('PASS scheduled delivery hides ordinary sliders, reclaims height and retains status-panel preference')
+
+local compact=assert(named.SCM_MessagesCondensedDateTimeCheckbox)
+eq(compact.checked,false)
+compact.toggle(compact,true)
+eq(s:GetGuildCondensedDateTime('ad','Amber Traders'),true)
+container:RefreshEditor();eq(compact.checked,true)
+
+print('PASS original command settings condensed preference persists and refreshes')

@@ -1043,7 +1043,7 @@ end
 
 local function BuildMessagesBehaviorSettings(parent)
     local container = WINDOW_MANAGER:CreateControl("SCM_MessagesBehaviorSettingsContainer", parent, CT_CONTROL)
-    container:SetDimensions(ROW_WIDTH, 370)
+    container:SetDimensions(ROW_WIDTH, 408)
     local syncing=false
 
     local function HasActiveRepeatAfter()
@@ -1215,6 +1215,15 @@ local function BuildMessagesBehaviorSettings(parent)
         SmartChatMsg:RefreshSettingsUI()
     end)
 
+    local condensedCheckbox=WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesCondensedDateTimeCheckbox",container,"ZO_CheckButton")
+    condensedCheckbox:SetAnchor(TOPLEFT,openStatusPanelCheckbox,BOTTOMLEFT,0,12)
+    ZO_CheckButton_SetLabelText(condensedCheckbox,"Use condensed dates and times")
+    runAtLabel:ClearAnchors()
+    runAtLabel:SetAnchor(TOPLEFT,condensedCheckbox,BOTTOMLEFT,-70,12)
+    ZO_CheckButton_SetToggleFunction(condensedCheckbox,function(_,checked)
+        SmartChatMsg:SetGuildCondensedDateTime(SmartChatMsg.savedVars.selectedMessagesCommand,SmartChatMsg:GetSelectedGuildNameForMessages(),checked)
+    end)
+
     local cooldownLabel = WINDOW_MANAGER:CreateControl("SCM_MessagesAutoPopulateCooldownLabel", container, CT_LABEL)
     cooldownLabel:SetFont("ZoFontGame")
     cooldownLabel:SetText("Cooldown (mins)")
@@ -1376,8 +1385,11 @@ local function BuildMessagesBehaviorSettings(parent)
 
         ZO_CheckButton_SetCheckState(autoPopulateCheckbox, SmartChatMsg.settings.pendingGuildAutoPopulateOnZone == true)
 
+        ZO_CheckButton_SetCheckState(condensedCheckbox,SmartChatMsg:GetGuildCondensedDateTime(SmartChatMsg.savedVars.selectedMessagesCommand,SmartChatMsg:GetSelectedGuildNameForMessages()))
         local automationEnabled = CanOpenStatusPanel()
         ZO_CheckButton_SetCheckState(openStatusPanelCheckbox, automationEnabled and SmartChatMsg.settings.pendingGuildOpenStatusPanelOnRun == true)
+        condensedCheckbox:SetMouseEnabled(shouldShow)
+        condensedCheckbox:SetAlpha(shouldShow and 1 or 0.5)
         openStatusPanelCheckbox:SetMouseEnabled(automationEnabled)
         openStatusPanelCheckbox:SetAlpha(automationEnabled and 1 or 0.5)
 
@@ -1386,9 +1398,10 @@ local function BuildMessagesBehaviorSettings(parent)
         for _,control in ipairs({reminderLabel,reminderSlider,reminderBackdrop,reminderRetryLabel,retrySlider,reminderRetryBackdrop,cooldownLabel,cooldownSlider,cooldownBackdrop,autoPopulateCheckbox}) do control:SetHidden(not ordinary) end
         place(autoPopulateCheckbox,0,200)
         place(openStatusPanelCheckbox,0,scheduled and 0 or 232)
-        place(runAtLabel,0,scheduled and 36 or 268)
-        place(soundLabel,0,scheduled and 84 or 316)
-        container:SetHeight(scheduled and 140 or 370)
+        place(condensedCheckbox,0,scheduled and 36 or 268)
+        place(runAtLabel,0,scheduled and 74 or 306)
+        place(soundLabel,0,scheduled and 122 or 354)
+        container:SetHeight(scheduled and 178 or 408)
         local frequencyEnabled = ordinary and SmartChatMsg.settings.pendingGuildAutoPopulateOnZone ~= true
         reminderEditBox:SetMouseEnabled(frequencyEnabled)
         if reminderEditBox.SetEditEnabled then reminderEditBox:SetEditEnabled(frequencyEnabled) end
@@ -2035,7 +2048,7 @@ function SmartChatMsg:CreateSettingsPanel()
         name = "SmartChatMsg",
         displayName = "SmartChatMsg",
         author = "evainefaye",
-        version = "3.0",
+        version = "3.01",
         registerForRefresh = true,
         registerForDefaults = false,
     }
@@ -2220,9 +2233,9 @@ function SmartChatMsg:CreateSettingsPanel()
                 {
                     type = "custom",
                     reference = "SCM_MessagesBehaviorSettingsHolder",
-                    minHeight = 0, maxHeight = 370,
+                    minHeight = 0, maxHeight = 408,
                     createFunc = function(control)
-                        control:SetHeight(370)
+                        control:SetHeight(408)
                         messagesBehaviorSettingsHolder = BuildMessagesBehaviorSettings(control)
                         messagesBehaviorSettingsHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
                         control:SetHeight(messagesBehaviorSettingsHolder:GetHeight())

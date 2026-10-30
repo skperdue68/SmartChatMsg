@@ -118,8 +118,8 @@ function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName, commandId
         if commandId and eventKind=="eventcountdown" and self:GetGuildSchedule(commandId,guildName) then
             return field("eventcountdown")
         end
-        if commandId and eventKind=="eventtime" then
-            return resolved(token) or "%"..token.."%"
+        if commandId and (eventKind=="eventtime" or eventKind=="eventdate") and self:GetScheduledEventTokenValue(token,commandId,guildName) then
+            return field("eventvalue:"..token,{token=token,commandId=commandId,guildName=guildName,allowCountdown=eventKind=="eventtime" and not self:HasExplicitEventCountdown(template)})
         end
         if commandId and (eventKind == "eventdate" or eventKind == "eventtime" or eventKind == "eventfaction" or eventKind == "eventactivity") then
             return resolved(token) or "%"..token.."%"
@@ -184,7 +184,8 @@ function SmartChatMsg:BuildIncomingMessageMatcher(template, guildName, commandId
 end
 
 function SmartChatMsg:IsValidIncomingMatchCapture(capture,value)
- if capture.kind=='greeting' then return value=='morning' or value=='afternoon' or value=='evening'
+ if capture.kind:match('^eventvalue:') then return self:IsMatchingEventValue(value,capture.details)
+ elseif capture.kind=='greeting' then return value=='morning' or value=='afternoon' or value=='evening'
  elseif capture.kind=='zone' then return self:IsKnownIncomingZoneName(value)
  elseif capture.kind=='eventwhen' then return self:IsMatchingEventWhen(value,capture.details)
  elseif capture.kind=='eventcountdown' then
@@ -447,14 +448,32 @@ function SmartChatMsg:IsMatchingEventWhen(value,details)
     local now=GetTimeStamp()
     local occurrence=schedule and self:GetScheduleOccurrence(schedule,now)
     if not occurrence then return false end
-    local function formatted(clock)
-        return self:NormalizeIncomingChatText(self:GetScheduledEventTokenValue(details.token,details.commandId,details.guildName,{schedule=schedule,occurrence=occurrence,now=clock}) or "")
+    local function formatted(clock,condensed)
+        return self:NormalizeIncomingChatText(self:GetScheduledEventTokenValue(details.token,details.commandId,details.guildName,{schedule=schedule,occurrence=occurrence,now=clock,condensedDateTime=condensed}) or "")
     end
-    if value==formatted(now) or value==formatted(now-15*60) then return true end
+    for _,condensed in ipairs({false,true}) do
+        if value==formatted(now,condensed) or value==formatted(now-15*60,condensed) then return true end
+    end
     local _,offset,mark=self:ParseScheduledEventToken(details.token)
     if mark then local important=(schedule.importantTimes or {})[mark];if not important then return false end;offset=important.offsetMinutes*60 end
     local event=self:GetScheduleParts(occurrence.eventAtUtc+(offset or 0),schedule)
     local days={"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"}
     local absolute=string.format("%s %02d/%02d/%04d",days[event.wday],event.month,event.day,event.year)
-    return value==self:NormalizeIncomingChatText(absolute)
+    local compact=string.format("%s %02d/%02d",days[event.wday]:sub(1,3),event.month,event.day)
+    return value==self:NormalizeIncomingChatText(absolute) or value==self:NormalizeIncomingChatText(absolute:sub(1,-6)) or value==self:NormalizeIncomingChatText(compact)
+end
+
+-- Formatting differs between peers, but the resolved event clock and date must agree.
+function SmartChatMsg:IsMatchingEventValue(value,details)
+    local schedule=self:GetGuildSchedule(details.commandId,details.guildName)
+    if not schedule then return false end
+    if details.allowCountdown then
+        local clock,countdown=value:match("^(.-)%s*%(([^()]*)%)$")
+        if clock and (countdown=='now' or countdown=='passed' or self:IsGeneratedCountdownText(countdown,'soon') or self:IsGeneratedCountdownText(countdown,'starting soon') or self:IsGeneratedCountdownText(countdown,'ending soon')) then value=self:Trim(clock) end
+    end
+    for _,condensed in ipairs({false,true}) do
+        local expected=self:GetScheduledEventTokenValue(details.token,details.commandId,details.guildName,{schedule=schedule,condensedDateTime=condensed})
+        if expected and value==self:NormalizeIncomingChatText(expected) then return true end
+    end
+    return false
 end

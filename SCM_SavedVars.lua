@@ -213,6 +213,7 @@ function SmartChatMsg:InitializeSavedVars()
                         autoPopulateCooldownMinutes = self:NormalizeAutoPopulateCooldownMinutes(settings.autoPopulateCooldownMinutes),
                         runAt = self:NormalizeRunAt(settings.runAt),
                         openStatusPanelOnRun = self:NormalizeOpenStatusPanelOnRun(settings.openStatusPanelOnRun),
+                        condensedDateTime = settings.condensedDateTime == true,
                         populateSound = self:NormalizePopulateSound(settings.populateSound),
                         lastUsedAt = (type(settings.lastUsedAt) == "number" and settings.lastUsedAt >= 0) and math.floor(settings.lastUsedAt) or nil,
                         lastUsedParamText = self:Trim(settings.lastUsedParamText or ""),
@@ -276,6 +277,7 @@ function SmartChatMsg:InitializeSavedVars()
                     if settings.openStatusPanelOnRun == nil then
                         settings.openStatusPanelOnRun = self:NormalizeOpenStatusPanelOnRun(nil)
                     end
+                    settings.condensedDateTime = settings.condensedDateTime == true
                     if settings.populateSound == nil then
                         settings.populateSound = self:NormalizePopulateSound(nil)
                     end
@@ -591,6 +593,7 @@ function SmartChatMsg:BuildSlotExportString()
                         self:EscapeImportExportField(settings.populateSound or "DUEL_START"),
                         self:EscapeImportExportField(settings.runAt or "ON_DEMAND"),
                         self:EscapeImportExportField(settings.openStatusPanelOnRun == true and "1" or "0"),
+                        self:EscapeImportExportField(settings.condensedDateTime == true and "1" or "0"),
                     }, "|"))
                 end
             end
@@ -998,6 +1001,7 @@ elseif recordType == "GUILDSETTING" then
                     populateSound = self:NormalizePopulateSound(populateSound),
                     runAt = self:NormalizeRunAt(runAt),
                     openStatusPanelOnRun = self:NormalizeOpenStatusPanelOnRun(openStatusPanelOnRun),
+                    condensedDateTime = self:UnescapeImportExportField(parts[14] or "") == "1",
                 }
             end
         elseif recordType == "ACTIVE" then
@@ -2256,5 +2260,16 @@ function SmartChatMsg:DeleteCommand(commandId)
         self:RegisterDynamicCommands()
     end
 
+    return true
+end
+
+function SmartChatMsg:GetGuildCondensedDateTime(commandId,guildName)
+    local settings=self:GetCommandGuildSettings(commandId,guildName,false)
+    return settings and settings.condensedDateTime==true or false
+end
+function SmartChatMsg:SetGuildCondensedDateTime(commandId,guildName,value)
+    local settings=self:GetCommandGuildSettings(commandId,guildName,true)
+    if not settings then return false,'Choose a command and guild.' end
+    settings.condensedDateTime=value==true
     return true
 end
