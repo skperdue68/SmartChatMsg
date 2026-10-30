@@ -92,7 +92,7 @@ function SmartChatMsg:PrepareGuildTransfer(rawText)
         if row[1]=="COMMAND" then commandNames[row[2]]=row[3] end
         if version=="SCM_EXPORT_V1" then
             if row[1]=="MESSAGE" then remember(tonumber(row[4]),row[5]) end
-            if row[1]=="GUILDSETTING" and #row==14 then remember(tonumber(row[10]),row[3]) end
+            if row[1]=="GUILDSETTING" and #row>=14 then remember(tonumber(row[10]),row[3]) end
         end
     end
     local function resolve(name)

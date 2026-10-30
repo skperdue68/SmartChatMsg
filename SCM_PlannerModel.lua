@@ -139,7 +139,7 @@ function S:PreviewPlannerMessage(model,id)
         if not occurrence or not row then return nil,reason or 'Choose a period.' end
         local first,last=self:GetTimelineReminderWindow(c,occurrence,row)
         if not first or not last or last<=first then return nil,'The selected period is outside the event duration.' end
-        context={schedule=c,occurrence=occurrence,now=first+math.floor((last-first)/2),phase=row.id,reminderId=row.id}
+        context={condensedDateTime=model.behavior.condensedDateTime==true,schedule=c,occurrence=occurrence,now=first+math.floor((last-first)/2),phase=row.id,reminderId=row.id}
     end
     return self:ApplyMessageSubstitutions(entry.text,model.commandId,model.guild,context),context
 end
@@ -228,6 +228,7 @@ function S:SavePlannerDraft(model)
     end
     self:SetSavedChatChannel(model.commandId,model.guild,model.channel)
     local settings=self:GetCommandGuildSettings(model.commandId,model.guild,true)
+    settings.condensedDateTime=model.behavior.condensedDateTime==true
     settings.openStatusPanelOnRun=model.behavior.openStatusPanelOnRun==true
     if model.behavior.populateSound then settings.populateSound=model.behavior.populateSound end
     if self:GetCommandById(model.commandId).name~=self:SanitizeCommandName(model.name) then self:RenameCommand(model.commandId,model.name) end

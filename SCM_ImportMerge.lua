@@ -10,7 +10,7 @@ local function equal(a,b)
  for key,value in pairs(a) do if not equal(value,b[key]) then return false end end
  for key in pairs(b) do if a[key]==nil then return false end end;return true
 end
-local options={'runAt','reminderMinutes','reminderRetryMinutes','autoPopulateCooldownMinutes','autoPopulateOnZone','openStatusPanelOnRun','populateSound'}
+local options={'condensedDateTime','runAt','reminderMinutes','reminderRetryMinutes','autoPopulateCooldownMinutes','autoPopulateOnZone','openStatusPanelOnRun','populateSound'}
 local function key(self,name)return self:NormalizeKey(name or '')end
 local function commandKey(self,name)return key(self,self:SanitizeCommandName(name))end
 function S:MergeImportedSettings(incoming)

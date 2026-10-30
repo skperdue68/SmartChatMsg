@@ -584,12 +584,18 @@ function SmartChatMsg:GetScheduledEventTokenValue(token,commandId,guildName,cont
     if token=="eventfaction" then
         return occurrence and self:GetScheduleFactionName(schedule,occurrence.eventAtUtc)
     end
+    local condensed=context and context.condensedDateTime
+    if condensed==nil then condensed=self:GetGuildCondensedDateTime(commandId,guildName) end
     schedule=occurrence or schedule
+    local dateFormat=condensed and "%02d/%02d" or "%02d/%02d/%04d"
     local target=schedule.eventAtUtc+offset
     if token=="eventcountdown" then return self:FormatEventCountdown(target-now) end
     local event=self:GetScheduleParts(target,schedule)
-    if token=="eventdate" then return string.format("%02d/%02d/%04d",event.month,event.day,event.year) end
-    if token=="eventtime" then return self:FormatScheduleDateTime(target,schedule):sub(12) end
+    if token=="eventdate" then return string.format(dateFormat,event.month,event.day,event.year) end
+    if token=="eventtime" then
+        if condensed then return string.format("%d%s%s %s",event.hour%12==0 and 12 or event.hour%12,event.min==0 and "" or string.format("%02d",event.min),event.hour>=12 and "PM" or "AM",schedule.timeZone) end
+        return self:FormatScheduleDateTime(target,schedule):sub(12)
+    end
     if token=="eventwhen" then
         local current=self:GetScheduleParts(now,schedule)
         local day=self:ParseScheduleDateTime(string.format("%04d-%02d-%02d",current.year,current.month,current.day),"12:00 AM",nil,schedule)
@@ -598,7 +604,7 @@ function SmartChatMsg:GetScheduledEventTokenValue(token,commandId,guildName,cont
         local nextDay=os.date("!*t",day+self:GetTimeZoneUtcOffset(day,schedule.timeZone)*3600+86400)
         if nextDay.year==event.year and nextDay.yday==event.yday then return "tomorrow" end
         local weekdays={"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"}
-        return weekdays[event.wday].." "..string.format("%02d/%02d/%04d",event.month,event.day,event.year)
+        return weekdays[event.wday].." "..string.format(dateFormat,event.month,event.day,event.year)
     end
 end
 

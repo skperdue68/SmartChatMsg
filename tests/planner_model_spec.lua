@@ -42,3 +42,14 @@ assert(s:SavePlannerDraft(ordinary));assert(not s:IsOrdinaryMessageEnabled('ad',
 local retained=s:GetGuildSchedule('ad','Amber Traders');assert(retained and retained.timelineVersion==1)
 ordinary=s:CreatePlannerDraft('ad','Amber Traders');ordinary.behavior.disabledMessageIds.a=nil;assert(s:SavePlannerDraft(ordinary));assert(s:IsOrdinaryMessageEnabled('ad','Amber Traders','a'))
 ordinary.schedule.timelineVersion=nil;ordinary.runAt='SCHEDULED';local ok,error=s:SavePlannerDraft(ordinary);assert(not ok and error:find('current Period Timeline',1,true))
+
+for _,mode in ipairs({'ON_DEMAND','STARTUP','SCHEDULED'}) do
+ local draft=s:CreatePlannerDraft('ad','Amber Traders');draft.runAt=mode;draft.behavior.condensedDateTime=true
+ if mode=='SCHEDULED' then local preview=s:PreviewPlannerMessage(draft,'a');assert(preview:find('8PM ET',1,true),preview) end
+ assert(s:SavePlannerDraft(draft));eq(s:GetGuildCondensedDateTime('ad','Amber Traders'),true)
+ local fresh=s:CreatePlannerDraft('ad','Amber Traders');eq(fresh.behavior.condensedDateTime,true)
+ fresh.behavior.condensedDateTime=false
+ eq(s:GetGuildCondensedDateTime('ad','Amber Traders'),true,'private draft must not mutate saved format')
+ assert(s:SavePlannerDraft(fresh));eq(s:GetGuildCondensedDateTime('ad','Amber Traders'),false)
+end
+print('PASS native command draft condensed preference saves in all run modes')
