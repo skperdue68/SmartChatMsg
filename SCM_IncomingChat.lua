@@ -459,7 +459,8 @@ function SmartChatMsg:IsMatchingEventWhen(value,details)
     local event=self:GetScheduleParts(occurrence.eventAtUtc+(offset or 0),schedule)
     local days={"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"}
     local absolute=string.format("%s %02d/%02d/%04d",days[event.wday],event.month,event.day,event.year)
-    return value==self:NormalizeIncomingChatText(absolute) or value==self:NormalizeIncomingChatText(absolute:sub(1,-6))
+    local compact=string.format("%s %02d/%02d",days[event.wday]:sub(1,3),event.month,event.day)
+    return value==self:NormalizeIncomingChatText(absolute) or value==self:NormalizeIncomingChatText(absolute:sub(1,-6)) or value==self:NormalizeIncomingChatText(compact)
 end
 
 -- Formatting differs between peers, but the resolved event clock and date must agree.

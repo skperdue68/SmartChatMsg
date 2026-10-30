@@ -12,7 +12,7 @@ assert(s:SetGuildCondensedDateTime('ad',guild,true))
 eq(s:GetScheduledEventTokenValue('eventdate','ad',guild),'11/07')
 eq(s:GetScheduledEventTokenValue('eventtime','ad',guild),'8PM ET')
 eq(s:GetScheduledEventTokenValue('eventtime:tickets','ad',guild),'645PM ET')
-eq(s:GetScheduledEventTokenValue('eventwhen','ad',guild),'Saturday 11/07')
+eq(s:GetScheduledEventTokenValue('eventwhen','ad',guild),'Sat 11/07')
 local condensed=s:ApplyMessageSubstitutions(entry.text,'ad',guild)
 for _,enabled in ipairs({false,true}) do
  s:SetGuildCondensedDateTime('ad',guild,enabled)

@@ -604,7 +604,7 @@ function SmartChatMsg:GetScheduledEventTokenValue(token,commandId,guildName,cont
         local nextDay=os.date("!*t",day+self:GetTimeZoneUtcOffset(day,schedule.timeZone)*3600+86400)
         if nextDay.year==event.year and nextDay.yday==event.yday then return "tomorrow" end
         local weekdays={"Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"}
-        return weekdays[event.wday].." "..string.format(dateFormat,event.month,event.day,event.year)
+        return (condensed and weekdays[event.wday]:sub(1,3) or weekdays[event.wday]).." "..string.format(dateFormat,event.month,event.day,event.year)
     end
 end
 

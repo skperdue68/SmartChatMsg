@@ -249,7 +249,7 @@ function S:BuildPlannerEventEditor(parent,w)
         self:PlannerNumber(parent,'cooldown','Cooldown',b.autoPopulateCooldownMinutes or 60,15,480,8,y,w-16,function(v)b.autoPopulateCooldownMinutes=v;updateRetry()end,nil,9999,1);y=y+70
         UI.check(parent,'zone','Auto Populate Chat on Zone',b.autoPopulateOnZone==true,8,y,w-16,function(v)b.autoPopulateOnZone=v;self:PlannerChanged();self:RefreshEventPlanner()end);y=y+38
     end
-    UI.check(parent,'condensedDateTime','Condensed event dates and times',m.behavior.condensedDateTime==true,8,y,w-16,function(v)m.behavior.condensedDateTime=v;self:PlannerChanged()end,'Use MM/DD and compact clocks such as 8PM ET in event tokens.');y=y+38
+    UI.check(parent,'condensedDateTime','Use condensed dates and times',m.behavior.condensedDateTime==true,8,y,w-16,function(v)m.behavior.condensedDateTime=v;self:PlannerChanged()end,'Use MM/DD and compact clocks such as 8PM ET in event tokens.');y=y+38
     UI.check(parent,'status','Open Status Panel on Run',m.behavior.openStatusPanelOnRun==true,8,y,w-16,function(v)m.behavior.openStatusPanelOnRun=v;self:PlannerChanged()end);y=y+38
     local sounds=self:GetUsefulSoundOptions();local soundPresent=false;for _,key in ipairs(sounds)do if key==(m.behavior.populateSound or 'DUEL_START')then soundPresent=true end end
     if not soundPresent then sounds[#sounds+1]=m.behavior.populateSound end

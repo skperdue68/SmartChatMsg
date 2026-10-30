@@ -1217,7 +1217,7 @@ local function BuildMessagesBehaviorSettings(parent)
 
     local condensedCheckbox=WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesCondensedDateTimeCheckbox",container,"ZO_CheckButton")
     condensedCheckbox:SetAnchor(TOPLEFT,openStatusPanelCheckbox,BOTTOMLEFT,0,12)
-    ZO_CheckButton_SetLabelText(condensedCheckbox,"Condensed event dates and times")
+    ZO_CheckButton_SetLabelText(condensedCheckbox,"Use condensed dates and times")
     runAtLabel:ClearAnchors()
     runAtLabel:SetAnchor(TOPLEFT,condensedCheckbox,BOTTOMLEFT,-70,12)
     ZO_CheckButton_SetToggleFunction(condensedCheckbox,function(_,checked)
@@ -2048,7 +2048,7 @@ function SmartChatMsg:CreateSettingsPanel()
         name = "SmartChatMsg",
         displayName = "SmartChatMsg",
         author = "evainefaye",
-        version = "3.0",
+        version = "3.01",
         registerForRefresh = true,
         registerForDefaults = false,
     }

@@ -1,4 +1,4 @@
-# SmartChatMsg 3.0 — User Guide
+# SmartChatMsg 3.01 — User Guide
 
 ESO API 101051 · Companion: https://scm.perdues.me
 
@@ -6,7 +6,7 @@ ESO API 101051 · Companion: https://scm.perdues.me
 ## Start here
 
 SmartChatMsg prepares reusable announcements in ESO chat. You press Enter to send. It can prepare messages on demand, at startup, on zone arrival, or during scheduled promotion periods. It runs only while ESO is open and the addon is loaded; it cannot post while you are offline.
-Version 3.0 targets ESO API 101051. Required libraries: LibAddonMenu-2.0 version 34 or newer and LibAddonMenuDatePicker. Sliders are included in LibAddonMenu; no separate slider library is required. LibDebugLogger is optional.
+Version 3.01 targets ESO API 101051. Required libraries: LibAddonMenu-2.0 version 34 or newer and LibAddonMenuDatePicker. Sliders are included in LibAddonMenu; no separate slider library is required. LibDebugLogger is optional.
 
 
 ## Install, update, and back up
@@ -19,7 +19,9 @@ Open /scm for settings. If you are starting fresh, create a command, select its 
 
 For a larger editor and visual planning tools, visit https://scm.perdues.me. Install SmartChatMsg and run ESO with the addon enabled at least once, then exit ESO fully so it writes live/SavedVariables/SmartChatMsg.lua. Open that file in the companion app; it supplies your account and saved guild/configuration information.
 The web companion provides period editing, message libraries, previews, a schedule overview, and a draggable day view. You can also configure schedules directly in ESO. Download the updated Lua file, keep a backup, and install it as SmartChatMsg.lua in SavedVariables while ESO is closed. A browser download does not itself update your ESO installation. The addon still handles live chat detection and message preparation.
-When using the optional shared server library, saved configurations are public to its users. Loading a library copy opens it for editing; downloading includes your subsequently applied changes. Review the target account and guild before installing.
+The optional server library can save a full configuration or an event export containing selected events or all events. Event exports include their messages and delivery settings, including Use condensed dates and times. Load your own SavedVariables file first when merging shared events. Review and select the events to import; matching uses guild name and command name rather than the sender's guild slot or internal IDs. Unrelated local settings and recipient runtime history are preserved. Review each matching event because its imported configuration can update your existing event.
+
+Server-library records remain readable without a password. When saving a record, you may set an optional overwrite password to protect later replacement of that record. Overwriting a protected record requires password confirmation. The server stores a hash of the secret, and the password is not an ESO addon setting or a SavedVariables feature. Read access is not restricted by an overwrite password. Downloading a configuration includes your applied edits; review the target account and guild before installing.
 
 
 > SCREENSHOT PLACEHOLDER: 01-web-workflow.png — Capture SmartChatMsg-Web after loading a file: show account/guild selection and one event with its Period Timeline. Crop account identifiers if desired.
@@ -128,6 +130,17 @@ Ordinary commands have no scheduled event context. Use general tokens there. Rec
 > SCREENSHOT PLACEHOLDER: 09-important-times.png — Capture Important times with a named tickets deadline, calendar/time selectors and its substitution keys.
 
 
+## Condensed dates and times (3.01)
+
+Enable **Use condensed dates and times** for the selected command and guild in the original settings or the custom planner's Event/Command settings. It defaults to off, so existing messages keep their standard formatting. The setting is saved independently for each command/guild combination and travels with configuration and event exports.
+
+With it enabled, `%eventdate%` uses `MM/DD`, such as `11/03`; `%eventtime%` uses `8PM ET` or `645PM ET`, omitting zero minutes and spaces within the clock. `%eventwhen%` keeps relative words such as today/tomorrow and shortens weekday/date references. Offsets and named important-time forms use the same choice. It changes generated substitutions rather than literal date/time text you typed. Preview the expanded message before sending.
+
+Duplicate monitoring recognizes both standard and condensed generated date/time wording, regardless of your own selected output style. Countdown differences and supported dynamic tokens continue to be recognized. An abbreviated date does not alter the event's saved date, timezone, or schedule.
+
+> SCREENSHOT PLACEHOLDER: 13-condensed-format.png — Capture the Use condensed dates and times checkbox and matching preview examples with the option off and on. Show a whole-hour and a nonzero-minute event time.
+
+
 ## Duplicate detection, cooldowns, and chat safety
 
 Other players' matching announcements update your command/guild cooldowns even when you have not engaged that command. Guild and Officer matches require the correct guild and channel; Zone requires Zone and Group requires Group. Your own incoming messages are excluded from peer detection.
@@ -154,14 +167,14 @@ ESO Import / Export Settings now merges instead of replacing your collections. C
 Web event exports are selective JSON bundles; native ESO exports use SCM_EXPORT text. These transfer formats are not interchangeable. The SavedVariables Lua file is the common configuration file for the addon and web editor. Loading or replacing a whole Lua file is separate from merging an export.
 
 Use Import / Export Settings for portable configuration. Guild references are exported by name and resolved to the receiving player's current guild slots. Missing guild records are skipped with a local explanation. Matching command names are reconciled even if IDs differ. Review the import result before enabling automation.
-Configuration includes command/guild delivery settings, messages, schedules, periods, important times, recurrence, rotations and exceptions, availability, and daily-limit scope. Portable transfers preserve recipient cooldown/usage history rather than adopting another player's runtime counters. Full SavedVariables files contain account-specific data; choose the correct account when editing them in the web companion.
+Configuration includes command/guild delivery settings, messages, schedules, periods, important times, recurrence, rotations and exceptions, availability, daily-limit scope, and condensed date/time formatting. Portable transfers preserve recipient cooldown/usage history rather than adopting another player's runtime counters. Full SavedVariables files contain account-specific data; choose the correct account when editing them in the web companion.
 The Lock button is not exposed in the ESO editor. Existing personal/locked metadata is still respected by transfer code; do not assume a full Lua backup or public server-library file hides private content. Keep backups before any replacement.
 In ESO, Message name (optional) identifies a template in settings and pools, up to 60 characters, and is never sent in chat. Use Add for a new message or Update/Revert for existing name/text changes. A live right-aligned count such as 123/350 appears below each message box; it counts template characters before substitutions and flags values above 350. Test the final expanded output as well. The web editor also provides drag-and-drop message ordering.
 
 
 ## Screenshot capture checklist
 
-The illustrated placeholders throughout this guide are intentionally empty. Capture the current 3.0 interface with readable text, expanded relevant sections, and private account information cropped or blurred. Send the images with the numbered filenames below so they can replace the placeholders. The guide remains fully usable without them.
+The illustrated placeholders throughout this guide are intentionally empty. Capture the current 3.01 interface with readable text, expanded relevant sections, and private account information cropped or blurred. Send the images with the numbered filenames below so they can replace the placeholders. The guide remains fully usable without them.
 
 
 ## Context-sensitive settings
@@ -192,7 +205,7 @@ Drag the title to move the window; use its resize grip to resize. Position and d
 
 **Global settings** opens account defaults: default guild, default scheduling timezone, and the chat-clearing timeout. **Guild settings** changes the selected guild timezone or follows the global default. **Advanced** configures monthly rules, recurrence weekdays, rotations, cancellations and named important times. **Period** includes weekday/date availability overrides and resets; **Messages** includes message groups and individual Apply/Revert. **Import / Export** is available directly in the left column. Existing settings remains an optional alternate interface; none of these settings requires it. No new library dependency or SavedVariables schedule format is required.
 
-> SCREENSHOT PLACEHOLDER: 08-custom-planner.png — Capture the full custom ESO window with Tuesday Tours selected, the six period cards visible or scrollable, and one selected period’s message pool and parsed preview. Also capture Event settings and Message library tabs in separate images if space permits. This is the actual native interface; do not use the concept rendering as a product screenshot.
+> SCREENSHOT PLACEHOLDER: 11-custom-planner.png — Capture the full custom ESO window with Tuesday Tours selected, the six period cards visible or scrollable, and one selected period’s message pool and parsed preview. Also capture Event settings and Message library tabs in separate images if space permits. This is the actual native interface; do not use the concept rendering as a product screenshot.
 
 
 ### Planner visual indicators and controls
@@ -206,7 +219,7 @@ Each card shows its name, Starts, Stops, and frequency in separate controls. Fre
 
 ## Complete settings in the custom planner
 
-The new window now exposes every configuration control from the current original settings. See `ESO-Planner-Settings-Parity.md` for the control-by-control audit. There are no known original-only settings.
+The custom window exposes the configuration controls described below from the original settings. See `ESO-Planner-Settings-Parity.md` for the control-by-control audit. The 3.01 date/time formatting choice is also available in Event/Command settings.
 
 Use the left **Global settings** button for default guild, default timezone and **Auto-remove pending chat after** (30 seconds to 5 minutes, slider or exact entry). This is separate from the top Guild selector, which only chooses what you are editing. The top **Guild settings** button edits that guild’s timezone override.
 
@@ -216,7 +229,7 @@ The native **Import / Export** dialog uses the same guild-name matching and merg
 
 Sliders include exact-number entry. Invalid or out-of-range values are not saved. The planner also opens without guild membership for global settings and command management; a guild is required for messages and scheduling.
 
-> SCREENSHOT PLACEHOLDER: 09-planner-globals.png — Capture the new Global settings dialog with its default guild, default timezone and chat timeout slider. Capture Advanced monthly/rotation/important-time controls and Period availability override/reset controls separately for the parity guide.
+> SCREENSHOT PLACEHOLDER: 12-planner-globals.png — Capture the new Global settings dialog with its default guild, default timezone and chat timeout slider. Capture Advanced monthly/rotation/important-time controls and Period availability override/reset controls separately for the parity guide.
 
 
 ### Copying an export
@@ -233,3 +246,6 @@ Phase changes reflow only the period list, preserving its scroll anchor; ticking
 Guild settings uses its own centered dialog container. Saving or cancelling hides the dialog without moving the launch button or leaving dialog fields attached to it.
 
 Explicit `%eventcountdown%` substitutions (including offsets and named important times) show days, hours, and minutes without coarse rounding. For example, `10d 6h 17m` becomes `10d 5h 17m` with `%eventcountdown-1h%`. Positive durations round up only to the next minute; deadlines show `now` or `passed` when reached. Automatically inserted countdowns retain their approximate display.
+
+
+> SCREENSHOT PLACEHOLDER: 14-server-library.png — Capture saving selected/all event exports to the server library, the optional overwrite-password field, and event merge review after loading a recipient file. Use sample account/guild names; never capture a password.
