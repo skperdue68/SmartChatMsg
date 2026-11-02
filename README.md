@@ -32,3 +32,6 @@ Native settings import merges commands/messages, retaining items absent from the
 Use `/scm schedule` for the new resizable three-column ESO window: command/event list, period cards, and a wider editor with message previews. `/scm` retains the original settings as an alternate interface. The planner now includes Global settings, Guild settings, import/export and an Advanced tab. Drafts use Save/Cancel and preserve live cooldown/usage history. See the guide’s Custom ESO Event Planner section for the current scope and testing steps.
 
 [Original/new ESO settings parity checklist](docs/ESO-Planner-Settings-Parity.md) documents every control and its location.
+
+
+Share cooldowns between Guild and Officer chat is an optional command/guild setting in /scm and /scm schedule Command Settings. It defaults off. When enabled, matching announcements from other players in either channel for the same guild reset that combination’s cooldown and normal usage counters, including scheduled usage. Output routing stays as selected; Zone and Group do not participate. Reading Officer announcements does not require permission to send there. Settings exports preserve this option; older exports leave it off.

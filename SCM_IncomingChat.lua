@@ -421,7 +421,11 @@ function SmartChatMsg:HandleIncomingChatMessage(eventCode, messageType, fromName
         if type(entry) == "table" and type(entry.text) == "string" and self:GetCommandById(entry.commandId) then
             local guildName = entry.guildName
             if not guildName or guildName == "" then guildName = self:GetGuildNameByIndex(entry.guildIndex) end
-            if guildName and self:GetSavedChatChannel(entry.commandId, guildName) == channel
+            local output = guildName and self:GetSavedChatChannel(entry.commandId, guildName)
+            local shared = guildName and (output == "Guild" or output == "Officer")
+                and (channel == "Guild" or channel == "Officer")
+                and self:GetGuildShareGuildOfficerCooldowns(entry.commandId, guildName)
+            if guildName and (output == channel or shared)
                 and (channel == "Zone" or channel == "Group" or self:StringsEqualIgnoreCase(guildName, receivingGuild)) then
                 local key = self:GetReminderStateKey(entry.commandId, guildName)
                 if key and self:MatchesIncomingMessage(entry, guildName, normalizedText) then

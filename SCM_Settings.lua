@@ -999,13 +999,13 @@ end
 
 local function BuildMessagesChannelDropdown(parent)
     local container = WINDOW_MANAGER:CreateControl("SCM_MessagesChannelDropdownContainer", parent, CT_CONTROL)
-    container:SetDimensions(ROW_WIDTH, 40)
+    container:SetDimensions(ROW_WIDTH, 80)
 
     local label = WINDOW_MANAGER:CreateControl("SCM_MessagesChannelDropdownLabel", container, CT_LABEL)
     label:SetFont("ZoFontWinH4")
     label:SetText("Output Channel")
     label:SetDimensions(LABEL_WIDTH, 30)
-    label:SetAnchor(LEFT, container, LEFT, 0, 0)
+    label:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 0)
 
     local comboBoxControl = WINDOW_MANAGER:CreateControlFromVirtual("SCM_MessagesChannelDropdownCombo", container, "ZO_ComboBox")
     comboBoxControl:SetDimensions(DROPDOWN_WIDTH, 28)
@@ -1014,7 +1014,14 @@ local function BuildMessagesChannelDropdown(parent)
     local comboBox = ZO_ComboBox_ObjectFromContainer(comboBoxControl)
     comboBox:SetSortsItems(false)
 
+    local share = WINDOW_MANAGER:CreateControlFromVirtual("SCM_ShareGuildOfficerCooldowns", container, "ZO_CheckButton")
+    share:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 42)
+    ZO_CheckButton_SetLabelText(share, "Share cooldowns between Guild and Officer chat")
+    ZO_CheckButton_SetToggleFunction(share, function(_, checked)
+        SmartChatMsg:SetGuildShareGuildOfficerCooldowns(SmartChatMsg.savedVars.selectedMessagesCommand, SmartChatMsg:GetSelectedGuildNameForMessages(), checked)
+    end)
     local function RefreshDropdown()
+        ZO_CheckButton_SetCheckState(share, SmartChatMsg:GetGuildShareGuildOfficerCooldowns(SmartChatMsg.savedVars.selectedMessagesCommand, SmartChatMsg:GetSelectedGuildNameForMessages()))
         comboBox:ClearItems()
 
         local options = SmartChatMsg:GetChatChannelOptions()
@@ -2218,7 +2225,7 @@ function SmartChatMsg:CreateSettingsPanel()
                     type = "custom",
                     reference = "SCM_MessagesChannelDropdownHolder",
                     createFunc = function(control)
-                        control:SetHeight(40)
+                        control:SetHeight(80)
                         messagesChannelDropdownHolder = BuildMessagesChannelDropdown(control)
                         messagesChannelDropdownHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
                     end,
@@ -2227,7 +2234,7 @@ function SmartChatMsg:CreateSettingsPanel()
                             messagesChannelDropdownHolder:RefreshDropdown()
                         end
 
-                        control:SetHeight(SmartChatMsg:IsMessagesSelectionComplete() and 40 or 0)
+                        control:SetHeight(SmartChatMsg:IsMessagesSelectionComplete() and 80 or 0)
                     end,
                 },
                 {

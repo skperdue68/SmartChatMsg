@@ -61,7 +61,7 @@ for _,mode in ipairs({'ON_DEMAND','STARTUP','SCHEDULED'}) do
  assert(s:ImportSettingsFromString(export))
  eq(s:GetGuildCondensedDateTime('ad',guild),true)
  eq(s:GetGuildRunAt('ad',guild),mode)
- local old=export:gsub('(GUILDSETTING[^\n]*)',function(line)return line:gsub('|1$','')end)
+ local old=export:gsub('(GUILDSETTING[^\n]*)',function(line)return line:gsub('|[^|]*$',''):gsub('|1$','')end)
  assert(s:ImportSettingsFromString(old))
  eq(s:GetGuildCondensedDateTime('ad',guild),false)
  s:SetGuildCondensedDateTime('ad',guild,true)

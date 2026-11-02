@@ -249,3 +249,6 @@ Explicit `%eventcountdown%` substitutions (including offsets and named important
 
 
 > SCREENSHOT PLACEHOLDER: 14-server-library.png — Capture saving selected/all event exports to the server library, the optional overwrite-password field, and event merge review after loading a recipient file. Use sample account/guild names; never capture a password.
+
+
+Share cooldowns between Guild and Officer chat is an optional command/guild setting in /scm and /scm schedule Command Settings. It defaults off. When enabled, matching announcements from other players in either channel for the same guild reset that combination’s cooldown and normal usage counters, including scheduled usage. Output routing stays as selected; Zone and Group do not participate. Reading Officer announcements does not require permission to send there. Settings exports preserve this option; older exports leave it off.
