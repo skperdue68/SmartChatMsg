@@ -37,6 +37,7 @@ function S:CreatePlannerDraft(commandId,guild)
         behavior=copy(settings or {}),messages={},removedMessages={},dirty=false,tab='period',
         schedule=source and copy(source) or {mode='EVENT',timelineVersion=1,enabled=true,paused=false,delivery='REPEAT',timeZone=zone,eventDate=date,eventTime='08:00 PM',recurrence='NONE',specialPattern='NONE',importantTimes={},reminders={},messageVariants={}}}
     model.channel=model.channel or 'Guild'
+    model.behavior.condensedDateTime=model.behavior.condensedDateTime~=false
     model.behavior.shareGuildOfficerCooldowns=model.behavior.shareGuildOfficerCooldowns==true
     if commandId then
         model.behavior.reminderMinutes=self:GetGuildReminderMinutes(commandId,guild)
@@ -140,7 +141,7 @@ function S:PreviewPlannerMessage(model,id)
         if not occurrence or not row then return nil,reason or 'Choose a period.' end
         local first,last=self:GetTimelineReminderWindow(c,occurrence,row)
         if not first or not last or last<=first then return nil,'The selected period is outside the event duration.' end
-        context={condensedDateTime=model.behavior.condensedDateTime==true,schedule=c,occurrence=occurrence,now=first+math.floor((last-first)/2),phase=row.id,reminderId=row.id}
+        context={condensedDateTime=model.behavior.condensedDateTime~=false,schedule=c,occurrence=occurrence,now=first+math.floor((last-first)/2),phase=row.id,reminderId=row.id}
     end
     return self:ApplyMessageSubstitutions(entry.text,model.commandId,model.guild,context),context
 end
@@ -230,7 +231,7 @@ function S:SavePlannerDraft(model)
     self:SetSavedChatChannel(model.commandId,model.guild,model.channel)
     local settings=self:GetCommandGuildSettings(model.commandId,model.guild,true)
     settings.shareGuildOfficerCooldowns=model.behavior.shareGuildOfficerCooldowns==true
-    settings.condensedDateTime=model.behavior.condensedDateTime==true
+    settings.condensedDateTime=model.behavior.condensedDateTime~=false
     settings.openStatusPanelOnRun=model.behavior.openStatusPanelOnRun==true
     if model.behavior.populateSound then settings.populateSound=model.behavior.populateSound end
     if self:GetCommandById(model.commandId).name~=self:SanitizeCommandName(model.name) then self:RenameCommand(model.commandId,model.name) end

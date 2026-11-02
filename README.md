@@ -35,3 +35,5 @@ Use `/scm schedule` for the new resizable three-column ESO window: command/event
 
 
 Share cooldowns between Guild and Officer chat is an optional command/guild setting in /scm and /scm schedule Command Settings. It defaults off. When enabled, matching announcements from other players in either channel for the same guild reset that combination’s cooldown and normal usage counters, including scheduled usage. Output routing stays as selected; Zone and Group do not participate. Reading Officer announcements does not require permission to send there. Settings exports preserve this option; older exports leave it off.
+
+Condensed dates and times now default on when a command/guild has no saved preference. An explicit false keeps long formatting, including through imports and planner saves. The web companion also provides password-required loading for protected configurations and message Lock/Unlock controls; locked messages can still be disabled in pools.
