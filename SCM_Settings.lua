@@ -2055,7 +2055,7 @@ function SmartChatMsg:CreateSettingsPanel()
         name = "SmartChatMsg",
         displayName = "SmartChatMsg",
         author = "evainefaye",
-        version = "3.01",
+        version = "3.03",
         registerForRefresh = true,
         registerForDefaults = false,
     }

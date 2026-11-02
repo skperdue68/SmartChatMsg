@@ -1,8 +1,8 @@
-[B][SIZE=4]SmartChatMsg 3.01[/SIZE][/B]
+[B][SIZE=4]SmartChatMsg 3.03[/SIZE][/B]
 
 A comprehensive update to the original announcement addon: reusable custom commands now sit alongside a native event planner, recurring schedules, multiple promotion periods, richer message substitutions and tools for coordinating announcements with other players.
 
-[B]New in 3.01: optional condensed dates and times[/B]
+[B]New in 3.03: optional condensed dates and times[/B]
 [LIST]
 [*]Use condensed dates and times is a separate checkbox for each command and guild, available in the original settings and custom Event Planner.
 [*]It defaults on when no preference is saved; explicitly unchecked preferences retain standard output. Use it for dates such as 11/03 and times such as 8PM ET or 645PM ET, plus shortened weekday/date references.
@@ -74,4 +74,4 @@ Recognized matching announcements from other players can update cooldowns and da
 [B]Requirements[/B]
 ESO API 101051. Requires LibAddonMenu-2.0 (version 34 or newer) and LibAddonMenuDatePicker. No separate slider library is needed.
 
-The updated SmartChatMsg_Help_Guide_v3.01.html is included with full setup instructions and examples.
+The updated SmartChatMsg_Help_Guide_v3.03.html is included with full setup instructions and examples.

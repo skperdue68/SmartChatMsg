@@ -1,7 +1,7 @@
-SmartChatMsg 3.01
+SmartChatMsg 3.03
 ESO API 101051
 
-Open SmartChatMsg_Help_Guide_v3.01.html for complete offline help.
+Open SmartChatMsg_Help_Guide_v3.03.html for complete offline help.
 Required: LibAddonMenu-2.0 >=34 and LibAddonMenuDatePicker.
 Open /scm for settings; press Enter to send prepared messages.
 Companion: https://scm.perdues.me
