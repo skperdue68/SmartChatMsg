@@ -67,3 +67,6 @@ Use Lua 5.1, matching ESO's Lua language version. The suite executes the real
 addon matching, usage, timer, and SavedVariables logic with ESO event/UI APIs
 represented by a small fixture. It does not require a live game or send chat.
 In-game event/UI behavior still needs the two-player checks above.
+
+
+Share cooldowns between Guild and Officer chat is an optional command/guild setting in /scm and /scm schedule Command Settings. It defaults off. When enabled, matching announcements from other players in either channel for the same guild reset that combination’s cooldown and normal usage counters, including scheduled usage. Output routing stays as selected; Zone and Group do not participate. Reading Officer announcements does not require permission to send there. Settings exports preserve this option; older exports leave it off.

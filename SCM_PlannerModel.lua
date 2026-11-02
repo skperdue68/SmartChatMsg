@@ -37,6 +37,7 @@ function S:CreatePlannerDraft(commandId,guild)
         behavior=copy(settings or {}),messages={},removedMessages={},dirty=false,tab='period',
         schedule=source and copy(source) or {mode='EVENT',timelineVersion=1,enabled=true,paused=false,delivery='REPEAT',timeZone=zone,eventDate=date,eventTime='08:00 PM',recurrence='NONE',specialPattern='NONE',importantTimes={},reminders={},messageVariants={}}}
     model.channel=model.channel or 'Guild'
+    model.behavior.shareGuildOfficerCooldowns=model.behavior.shareGuildOfficerCooldowns==true
     if commandId then
         model.behavior.reminderMinutes=self:GetGuildReminderMinutes(commandId,guild)
         model.behavior.reminderRetryMinutes=self:GetGuildReminderRetryMinutes(commandId,guild)
@@ -228,6 +229,7 @@ function S:SavePlannerDraft(model)
     end
     self:SetSavedChatChannel(model.commandId,model.guild,model.channel)
     local settings=self:GetCommandGuildSettings(model.commandId,model.guild,true)
+    settings.shareGuildOfficerCooldowns=model.behavior.shareGuildOfficerCooldowns==true
     settings.condensedDateTime=model.behavior.condensedDateTime==true
     settings.openStatusPanelOnRun=model.behavior.openStatusPanelOnRun==true
     if model.behavior.populateSound then settings.populateSound=model.behavior.populateSound end

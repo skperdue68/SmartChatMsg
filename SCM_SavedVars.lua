@@ -214,6 +214,7 @@ function SmartChatMsg:InitializeSavedVars()
                         runAt = self:NormalizeRunAt(settings.runAt),
                         openStatusPanelOnRun = self:NormalizeOpenStatusPanelOnRun(settings.openStatusPanelOnRun),
                         condensedDateTime = settings.condensedDateTime == true,
+                        shareGuildOfficerCooldowns = settings.shareGuildOfficerCooldowns == true,
                         populateSound = self:NormalizePopulateSound(settings.populateSound),
                         lastUsedAt = (type(settings.lastUsedAt) == "number" and settings.lastUsedAt >= 0) and math.floor(settings.lastUsedAt) or nil,
                         lastUsedParamText = self:Trim(settings.lastUsedParamText or ""),
@@ -594,6 +595,7 @@ function SmartChatMsg:BuildSlotExportString()
                         self:EscapeImportExportField(settings.runAt or "ON_DEMAND"),
                         self:EscapeImportExportField(settings.openStatusPanelOnRun == true and "1" or "0"),
                         self:EscapeImportExportField(settings.condensedDateTime == true and "1" or "0"),
+                        self:EscapeImportExportField(settings.shareGuildOfficerCooldowns == true and "1" or "0"),
                     }, "|"))
                 end
             end
@@ -1002,6 +1004,7 @@ elseif recordType == "GUILDSETTING" then
                     runAt = self:NormalizeRunAt(runAt),
                     openStatusPanelOnRun = self:NormalizeOpenStatusPanelOnRun(openStatusPanelOnRun),
                     condensedDateTime = self:UnescapeImportExportField(parts[14] or "") == "1",
+                    shareGuildOfficerCooldowns = self:UnescapeImportExportField(parts[15] or "") == "1",
                 }
             end
         elseif recordType == "ACTIVE" then
@@ -2271,5 +2274,17 @@ function SmartChatMsg:SetGuildCondensedDateTime(commandId,guildName,value)
     local settings=self:GetCommandGuildSettings(commandId,guildName,true)
     if not settings then return false,'Choose a command and guild.' end
     settings.condensedDateTime=value==true
+    return true
+end
+
+-- Independent per command and guild; missing values intentionally mean disabled.
+function SmartChatMsg:GetGuildShareGuildOfficerCooldowns(commandId, guildName)
+    local settings = self:GetCommandGuildSettings(commandId, guildName, false)
+    return settings ~= nil and settings.shareGuildOfficerCooldowns == true
+end
+function SmartChatMsg:SetGuildShareGuildOfficerCooldowns(commandId, guildName, enabled)
+    local settings = self:GetCommandGuildSettings(commandId, guildName, true)
+    if not settings then return false end
+    settings.shareGuildOfficerCooldowns = enabled == true
     return true
 end
