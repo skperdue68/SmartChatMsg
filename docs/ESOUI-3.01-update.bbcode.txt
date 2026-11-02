@@ -5,7 +5,7 @@ A comprehensive update to the original announcement addon: reusable custom comma
 [B]New in 3.01: optional condensed dates and times[/B]
 [LIST]
 [*]Use condensed dates and times is a separate checkbox for each command and guild, available in the original settings and custom Event Planner.
-[*]It defaults to off, preserving standard output. Enable it for dates such as 11/03 and times such as 8PM ET or 645PM ET, plus shortened weekday/date references.
+[*]It defaults on when no preference is saved; explicitly unchecked preferences retain standard output. Use it for dates such as 11/03 and times such as 8PM ET or 645PM ET, plus shortened weekday/date references.
 [*]Offset and named important-time substitutions follow the same choice. Literal text is unchanged.
 [*]Incoming matching recognizes both standard and condensed generated wording. The choice is included in settings and event transfers.
 [/LIST]
@@ -62,7 +62,7 @@ For a larger editor, message previews and a visual day-by-day schedule, visit [U
 
 Save full configurations or selected/all event exports to the optional server library. Load your own file first, review the selected events, and merge by guild name and command name while retaining unrelated local settings and recipient runtime history. Event bundles include all event delivery settings, including condensed formatting. Native ESO SCM_EXPORT text and web JSON event bundles are separate formats.
 
-Library records are readable without a password. An optional overwrite password protects replacement of a saved record; replacing a protected record requires password confirmation. The server stores a hash of the secret. This is a web-library feature, with no addon password setting.
+Unprotected configurations and event exports remain publicly readable. Protected configurations require their password to load. An optional overwrite password protects replacement of a saved record; replacing a protected record requires password confirmation. The server stores a hash of the secret. This is a web-library feature, with no addon password setting.
 
 Install SmartChatMsg and run ESO with it enabled at least once, then exit ESO so it writes your SavedVariables file. Open live/SavedVariables/SmartChatMsg.lua in the web companion. Back up first, and close ESO before installing a downloaded replacement file.
 

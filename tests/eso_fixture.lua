@@ -82,6 +82,9 @@ local function entry(id, command, guild, text, channel)
     local value = { id = id, commandId = command, guildName = guild, text = text }
     table.insert(scm.savedVars.messages, value)
     scm:SetSavedChatChannel(command, guild, channel or "Zone")
+    -- Most existing fixtures explicitly exercise the long format; missing settings are tested separately.
+    local settings=scm:GetCommandGuildSettings(command,guild,true)
+    if settings.condensedDateTime==nil then settings.condensedDateTime=false end
     return value
 end
 local function incoming(channel, text, sender, display)

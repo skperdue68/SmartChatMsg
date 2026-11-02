@@ -47,7 +47,7 @@ for _,enabled in ipairs({false,true}) do
  assert(not s:MatchesIncomingMessage(entry,guild,s:NormalizeIncomingChatText('Raffle at 9PM ET (2d).')))
 end
 -- Guild isolation and compact midnight/noon, minutes and timezone season rules.
-eq(s:GetGuildCondensedDateTime('ad','Blue Traders'),false)
+eq(s:GetGuildCondensedDateTime('ad','Blue Traders'),true)
 local c=s:GetGuildSchedule('ad',guild)
 for _,zone in ipairs({'ET','CT','MT','PT'}) do
  local config=assert(s:NormalizeSchedule({mode='EVENT',eventDate='2026-10-31',eventTime='12:00 AM',timeZone=zone,promotionDays=3,endDelayMinutes=60,intervalMinutes=60}))
@@ -63,7 +63,7 @@ for _,mode in ipairs({'ON_DEMAND','STARTUP','SCHEDULED'}) do
  eq(s:GetGuildRunAt('ad',guild),mode)
  local old=export:gsub('(GUILDSETTING[^\n]*)',function(line)return line:gsub('|[^|]*$',''):gsub('|1$','')end)
  assert(s:ImportSettingsFromString(old))
- eq(s:GetGuildCondensedDateTime('ad',guild),false)
+ eq(s:GetGuildCondensedDateTime('ad',guild),true)
  s:SetGuildCondensedDateTime('ad',guild,true)
 end
 print('PASS condensed dates, clocks, signed/named tokens, exact peer matching, guild isolation and all-mode transfer')
