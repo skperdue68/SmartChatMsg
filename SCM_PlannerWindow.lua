@@ -81,9 +81,9 @@ function S:RefreshPlannerEvents(parent,w,h)
     UI.button(parent,'new','+ Event',12,88,w-24,function()self:RequestPlannerAction(function()self.plannerModel=self:CreatePlannerDraft(nil,self.plannerModel.guild);self.plannerModel.tab='event';self:RefreshEventPlanner()end)end)
     local scroll,child,cw=UI.scroll(parent,'events',8,128,w-16,h-280);UI.hide(child)
     local y=0;local m=self.plannerModel
-    for _,command in ipairs(self:GetCommands()) do if (command.name or ''):lower():find((self.plannerSearch or ''):lower(),1,true) then
+    for _,command in ipairs(self:GetCommands()) do if (self:GetCommandDisplayName(command)..' '..(command.name or '')):lower():find((self.plannerSearch or ''):lower(),1,true) then
         local id=command.id
-        local button=UI.button(child,'event'..id,command.name,4,y,cw-8,function()self:RequestPlannerAction(function()self.plannerModel=self:CreatePlannerDraft(id,m.guild);self:RefreshEventPlanner()end)end,id==m.commandId)
+        local button=UI.button(child,'event'..id,self:GetCommandDisplayName(command),4,y,cw-8,function()self:RequestPlannerAction(function()self.plannerModel=self:CreatePlannerDraft(id,m.guild);self:RefreshEventPlanner()end)end,id==m.commandId)
         button:SetHeight(45);y=y+51
     end end
     UI.scrollEnd(scroll,child,y)
@@ -98,7 +98,7 @@ function S:RefreshPlannerPeriods(parent,w,h)
     UI.hide(parent);local m=self.plannerModel
     UI.label(parent,'title',m.runAt=='SCHEDULED' and 'PERIODS' or 'MESSAGE POOL',14,12,w-24,30,true)
     parent.plannerControls.title:SetColor(unpack(UI.theme.teal))
-    UI.label(parent,'event',m.name~='' and m.name or 'New event',14,48,w-28,30,true)
+    UI.label(parent,'event',(m.displayName or m.name)~='' and (m.displayName or m.name) or 'New event',14,48,w-28,30,true)
     if not self:GetGuildSlotByName(m.guild)then UI.label(parent,'noGuild','Join a guild to configure message pools and schedules. Global settings and command management are available now.',14,94,w-28,150);return end
     if m.runAt~='SCHEDULED' then
         UI.label(parent,'ordinary','All enabled messages share this command’s random pool. Choose Message library to edit them.',14,92,w-28,120)
@@ -195,9 +195,15 @@ function S:PlannerNumber(parent,key,label,value,min,max,x,y,w,set,zero,exactMax,
     UI.slider(parent,key,label,tonumber(value) or min,min,math.max(max,tonumber(value) or min),x,y,w,function(n)set(n);self:PlannerChanged()end,function(n)return n==0 and (zero or 'Off') or self:FormatSchedulingMinutes(n)end,nil,exactMax,exactMin)
 end
 function S:BuildPlannerEventEditor(parent,w)
-    local m=self.plannerModel;local d=m.schedule;local y=12
-    UI.label(parent,'nameLabel','Event / command name',8,y,w-16,26)
-    UI.edit(parent,'name',m.name,8,y+28,w-16,34,function(v)m.name=v;self:PlannerChanged()end,false,'1-25 letters/numbers. Renaming applies to all guilds and preserves this command ID.');y=y+80
+    local m=self.plannerModel;local d=m.schedule;local y=12;m.requireDisplayName=true
+    UI.label(parent,'displayNameLabel','Display name',8,y,w-16,26)
+    if m.slashCustomized==nil then m.slashCustomized=self:SanitizeCommandName(m.displayName or m.name)~=m.name end
+    UI.edit(parent,'displayName',m.displayName or m.name,8,y+28,w-16,34,function(v)
+        m.displayName=v;if not m.slashCustomized then m.name=self:SanitizeCommandName(v);local box=parent.plannerControls.name;if box and box.edit then local customized=m.slashCustomized;box.edit:SetText(m.name);m.slashCustomized=customized end end;self:PlannerChanged()
+    end,false,'Friendly name, up to 80 characters. Spaces and punctuation are allowed.',80);y=y+80
+    UI.label(parent,'nameLabel','Slash-command name',8,y,w-16,26)
+    local slash=UI.edit(parent,'name',m.name,8,y+28,w-16,34,function(v)m.name=v;m.slashCustomized=true;self:PlannerChanged()end,false,'Editable; spaces and punctuation are removed before saving. 1–25 letters/numbers; reserved names are unavailable.')
+    slash.edit:SetHandler('OnFocusLost',function(c)local custom=m.slashCustomized;m.name=self:SanitizeCommandName(c:GetText());c:SetText(m.name);m.slashCustomized=custom end);y=y+80
     if m.commandId then UI.button(parent,'deleteCommand','Delete command (all guilds)',8,y,w-16,function()self:DeletePlannerCommand()end);y=y+44 end
     if not self:GetGuildSlotByName(m.guild)then UI.label(parent,'noGuildHelp','You can create, rename or delete commands and edit Global settings without a guild. Join a guild to configure message delivery.',8,y,w-16,120);return y+128 end
     UI.label(parent,'runLabel','Run at',8,y,w-16,25)
@@ -420,6 +426,9 @@ function S:RefreshEventPlanner()
     self.plannerFooter=UI.label(win,'footer',m.dirty and 'Unsaved changes — Save changes applies this event; Cancel discards edits.' or 'Same saved data as the existing addon settings.',18,height-53,width-350,44)
     UI.button(win,'cancel','Cancel',width-314,height-52,130,function()self:RequestPlannerAction(function()self.plannerModel=nil;self:HidePlannerWindow()end)end)
     self.plannerSave=UI.button(win,'save','Save changes',width-170,height-52,150,function()
+        self.plannerModel.name=self:SanitizeCommandName(self.plannerModel.name)
+        local nameField=child.plannerControls.name
+        if m.tab=='event' and nameField and nameField.edit then local custom=m.slashCustomized;nameField.edit:SetText(m.name);m.slashCustomized=custom end
         local ok,error=self:SavePlannerDraft(self.plannerModel)
         if not ok then self:PlannerError(error);return end
         self:RefreshEventPlanner();self.plannerFooter:SetText('Saved. The addon is using these settings.');self:AddLocalChatMessage('[SmartChatMsg] '..self.plannerModel.guild..' ('..self.plannerModel.name..'): settings saved.')

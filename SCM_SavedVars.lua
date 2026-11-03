@@ -174,7 +174,9 @@ function SmartChatMsg:InitializeSavedVars()
 
     for _, command in ipairs(self.savedVars.commands) do
         if type(command) == "table" then
+            local originalName=command.name
             command.name = self:SanitizeCommandName(command.name or "")
+            command.displayName=self:NormalizeCommandDisplayName(command.displayName or originalName) or command.name
             command.reminderMinutes = self:NormalizeReminderMinutes(command.reminderMinutes)
 
             if type(command.lastUsedAt) ~= "number" or command.lastUsedAt < 0 then
@@ -361,6 +363,16 @@ function SmartChatMsg:SanitizeCommandName(value)
     return (trimmed:gsub("[^%w]", ""))
 end
 
+function SmartChatMsg:NormalizeCommandDisplayName(value)
+    if type(value)~='string' then return nil end
+    value=self:Trim(value);local _,length=value:gsub('[^\128-\191]','')
+    if value=='' or length>80 then return nil end;return value
+end
+function SmartChatMsg:GetCommandDisplayName(command)
+    if type(command)=='string' then command=self:GetCommandById(command) end
+    return command and (self:NormalizeCommandDisplayName(command.displayName) or command.name) or ''
+end
+
 function SmartChatMsg:NormalizeReminderMinutes(value)
     if value == nil then
         return nil
@@ -528,6 +540,7 @@ function SmartChatMsg:BuildSlotExportString()
                 self:EscapeImportExportField(command.reminderMinutes or ""),
                 self:EscapeImportExportField(command.lastUsedAt or ""),
             }, "|"))
+            table.insert(lines,table.concat({'COMMANDDISPLAY_V1',self:EscapeImportExportField(command.id),self:EscapeImportExportField(self:GetCommandDisplayName(command))},'|'))
         end
     end
 
@@ -784,6 +797,7 @@ function SmartChatMsg:ImportSlotSettingsFromString(rawText, transfer)
         activeAutoPopulate = nil,
     }
 
+    local commandDisplayNames = {}
     local commandIds = {}
     local messageIds = {}
     local scheduleRecords = {}
@@ -861,6 +875,11 @@ function SmartChatMsg:ImportSlotSettingsFromString(rawText, transfer)
                     lastUsedAt = lastUsedAt and math.floor(lastUsedAt) or nil,
                 })
             end
+        elseif recordType=='COMMANDDISPLAY_V1' then
+            local id=self:UnescapeImportExportField(parts[1] or '')
+            local display=self:NormalizeCommandDisplayName(self:UnescapeImportExportField(parts[2] or ''))
+            if id=='' or not display or commandDisplayNames[id] then return false,'Invalid or duplicate imported display name.' end
+            commandDisplayNames[id]=display
         elseif recordType == "MESSAGE" then
             local id = self:UnescapeImportExportField(parts[1] or "")
             local commandId = self:UnescapeImportExportField(parts[2] or "")
@@ -1019,6 +1038,7 @@ elseif recordType == "GUILDSETTING" then
         end
     end
 
+    for _,command in ipairs(imported.commands) do command.displayName=commandDisplayNames[command.id] end
     for _,record in ipairs(disabledMessageRecords) do
         imported.commandGuildSettings[record.commandId]=imported.commandGuildSettings[record.commandId] or {}
         local guilds=imported.commandGuildSettings[record.commandId];guilds[record.guild]=guilds[record.guild] or {}
@@ -1570,7 +1590,7 @@ function SmartChatMsg:GetCommandOptions()
         for _, command in ipairs(self:GetCommands()) do
             if type(command) == "table" and type(command.id) == "string" and type(command.name) == "string" then
                 table.insert(options, {
-                    name = command.name,
+                    name = self:GetCommandDisplayName(command),
                     value = command.id,
                     mode = "edit",
                 })
@@ -1603,7 +1623,7 @@ function SmartChatMsg:GetSelectedCommand()
     local command = self:GetCommandById(selectedId)
     if command then
         return {
-            name = command.name,
+            name = self:GetCommandDisplayName(command),
             value = command.id,
             mode = "edit",
         }
@@ -1631,7 +1651,7 @@ function SmartChatMsg:SetSelectedCommand(commandId)
     self.savedVars.selectedCommand = command.id
 end
 
-function SmartChatMsg:AddCommand(name, reminderMinutes, autoPopulateOnZone)
+function SmartChatMsg:AddCommand(name, reminderMinutes, autoPopulateOnZone, displayName)
     local sanitized = self:SanitizeCommandName(name)
     if self:IsReservedCommandName(sanitized) then return false,"That name is reserved for a built-in SmartChatMsg command." end
 
@@ -1647,9 +1667,11 @@ function SmartChatMsg:AddCommand(name, reminderMinutes, autoPopulateOnZone)
         return false, "That Command already exists."
     end
 
+    local friendly=self:NormalizeCommandDisplayName(displayName or name);if not friendly then return false,'Display name must contain 1 to 80 characters.' end
     local command = {
         id = self:GenerateUuid(),
         name = sanitized,
+        displayName = friendly,
         reminderMinutes = nil,
         lastUsedAt = nil,
     }
@@ -1828,7 +1850,7 @@ function SmartChatMsg:GetMessagesCommandOptions()
     for _, command in ipairs(self:GetCommands()) do
         if type(command) == "table" and type(command.id) == "string" and type(command.name) == "string" then
             table.insert(options, {
-                name = command.name,
+                name = self:GetCommandDisplayName(command),
                 value = command.id,
             })
         end
@@ -1850,7 +1872,7 @@ function SmartChatMsg:GetMessagesSelectedCommand()
     local command = self:GetCommandById(selectedId)
     if command then
         return {
-            name = command.name,
+            name = self:GetCommandDisplayName(command),
             value = command.id,
         }
     end
@@ -2185,7 +2207,7 @@ function SmartChatMsg:DeleteMessageEntries(entryIds)
     return true
 end
 
-function SmartChatMsg:RenameCommand(commandId, newName, reminderMinutes, autoPopulateOnZone)
+function SmartChatMsg:RenameCommand(commandId, newName, reminderMinutes, autoPopulateOnZone, displayName)
     local sanitizedNew = self:SanitizeCommandName(newName)
     if self:IsReservedCommandName(sanitizedNew) then return false,"That name is reserved for a built-in SmartChatMsg command." end
 
@@ -2206,7 +2228,9 @@ function SmartChatMsg:RenameCommand(commandId, newName, reminderMinutes, autoPop
         return false, "That Command already exists."
     end
 
+    if displayName~=nil and not self:NormalizeCommandDisplayName(displayName) then return false,"Display name must contain 1 to 80 characters." end
     command.name = sanitizedNew
+    if displayName~=nil then command.displayName=self:NormalizeCommandDisplayName(displayName) end
     self:SortCommands()
 
     if self.RegisterDynamicCommands then

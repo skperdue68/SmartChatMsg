@@ -75,3 +75,6 @@ Recognized matching announcements from other players can update cooldowns and da
 ESO API 101051. Requires LibAddonMenu-2.0 (version 34 or newer) and LibAddonMenuDatePicker. No separate slider library is needed.
 
 The updated SmartChatMsg_Help_Guide_v3.03.html is included with full setup instructions and examples.
+
+[B]Display names and editable slash names[/B]
+Use a friendly name such as Sunday Fishing and a custom slash name such as fftg. Slash names are generated until customized, cleaned on screen before saving, and checked for duplicates and reserved names. Both fields are retained in web/native transfers without changing message IDs or usage history.

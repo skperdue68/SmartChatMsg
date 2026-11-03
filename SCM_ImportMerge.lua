@@ -31,7 +31,7 @@ function S:MergeImportedSettings(incoming)
   if #matches>1 then return nil,'Cannot merge ambiguous command name: '..tostring(source.name) end
   local target=matches[1]
   if not target then target=copy(source);target.name=self:SanitizeCommandName(source.name);target.id=unique(commandIds,source.id);target.lastUsedAt=nil;result.commands[#result.commands+1]=target;names[commandKey(self,source.name)]={target}
-  else target.reminderMinutes=source.reminderMinutes end
+  else target.reminderMinutes=source.reminderMinutes;if source.displayName~=nil then target.displayName=source.displayName end end
   commands[source.id]=target.id
  end
  local function settings(id,guild) return imported.commandGuildSettings and imported.commandGuildSettings[id] and imported.commandGuildSettings[id][guild] end

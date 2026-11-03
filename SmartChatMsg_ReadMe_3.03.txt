@@ -7,5 +7,8 @@ Open /scm for settings; press Enter to send prepared messages.
 Companion: https://scm.perdues.me
 Install and run the addon at least once, then exit ESO to write SavedVariables before opening that file in the web editor. Back up files and close ESO before replacing SavedVariables.
 
+Open /scm schedule for the optional resizable Event Planner. /scm keeps the existing settings available. Save changes applies one command/guild draft; Cancel discards edits after confirmation.
 
-Share cooldowns between Guild and Officer chat is an optional command/guild setting in /scm and /scm schedule Command Settings. It defaults off. When enabled, matching announcements from other players in either channel for the same guild reset that combination’s cooldown and normal usage counters, including scheduled usage. Output routing stays as selected; Zone and Group do not participate. Reading Officer announcements does not require permission to send there. Settings exports preserve this option; older exports leave it off.
+The custom planner includes Global settings (default guild/timezone and chat timeout), Guild settings, Advanced scheduling, and Import / Export. The original settings remain optional.
+
+Display name and Slash-command name are separate: Sunday Fishing can use /fftg. Invalid slash characters are removed before saving.
