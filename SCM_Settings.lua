@@ -4,6 +4,8 @@ SmartChatMsg.settings = SmartChatMsg.settings or {
     createMode = false,
     editMode = false,
     pendingCommand = "",
+    pendingDisplayName = "",
+    commandNameCustomized = false,
     pendingReminderMinutes = "",
     pendingAutoPopulateOnZone = false,
     pendingGuildReminderMinutes = "",
@@ -282,6 +284,8 @@ end
 
 function SmartChatMsg.settings:InitializeState()
     self.pendingCommand = ""
+    self.pendingDisplayName = ""
+    self.commandNameCustomized = false
     self.pendingReminderMinutes = ""
     self.pendingAutoPopulateOnZone = false
     self.pendingGuildReminderMinutes = ""
@@ -448,13 +452,13 @@ function SmartChatMsg.settings:EnableCreateState()
     self.editMode = false
     self.editingOriginalCommandId = nil
     self.pendingCommand = ""
+    self.pendingDisplayName = ""
+    self.commandNameCustomized = false
     self.pendingReminderMinutes = ""
 
     SmartChatMsg:SetSelectedCommand(nil)
 
-    if self.controls.commandEditBox then
-        self.controls.commandEditBox:SetText("")
-    end
+    self:RefreshCommandNameFields()
 
     if self.controls.commandReminderEditBox then
         self.controls.commandReminderEditBox:SetText("")
@@ -474,14 +478,14 @@ function SmartChatMsg.settings:EnableEditState(commandId)
     self.editMode = true
     self.editingOriginalCommandId = command.id
     self.pendingCommand = command.name or ""
+    self.pendingDisplayName = SmartChatMsg:GetCommandDisplayName(command)
+    self.commandNameCustomized = self.pendingCommand~=SmartChatMsg:SanitizeCommandName(self.pendingDisplayName)
     self.pendingReminderMinutes = ""
     self.pendingAutoPopulateOnZone = false
 
     SmartChatMsg:SetSelectedCommand(command.id)
 
-    if self.controls.commandEditBox then
-        self.controls.commandEditBox:SetText(self.pendingCommand)
-    end
+    self:RefreshCommandNameFields()
 
     if self.controls.commandReminderEditBox then
         self.controls.commandReminderEditBox:SetText(self.pendingReminderMinutes)
@@ -494,8 +498,17 @@ function SmartChatMsg.settings:EnableEditState(commandId)
     SmartChatMsg:RefreshSettingsUI()
 end
 
+function SmartChatMsg.settings:RefreshCommandNameFields()
+    self.updatingCommandNames=true
+    if self.controls.commandDisplayNameEditBox then local value=self.pendingDisplayName or self.pendingCommand or '';if self.controls.commandDisplayNameEditBox:GetText()~=value then self.controls.commandDisplayNameEditBox:SetText(value) end end
+    if self.controls.commandEditBox then local value=self.pendingCommand or '';if self.controls.commandEditBox:GetText()~=value then self.controls.commandEditBox:SetText(value) end end
+    self.updatingCommandNames=false
+end
+
 function SmartChatMsg.settings:ResetEditorState()
     self.pendingCommand = ""
+    self.pendingDisplayName = ""
+    self.commandNameCustomized = false
     self.pendingReminderMinutes = ""
     self.pendingAutoPopulateOnZone = false
     self.editingOriginalCommandId = nil
@@ -509,9 +522,7 @@ function SmartChatMsg.settings:ResetEditorState()
 
     SmartChatMsg:SetSelectedCommand(nil)
 
-    if self.controls.commandEditBox then
-        self.controls.commandEditBox:SetText("")
-    end
+    self:RefreshCommandNameFields()
 
     if self.controls.commandAutoPopulateCheckbox then
         ZO_CheckButton_SetCheckState(self.controls.commandAutoPopulateCheckbox, false)
@@ -521,10 +532,14 @@ function SmartChatMsg.settings:ResetEditorState()
 end
 
 function SmartChatMsg.settings:SaveCommand()
-    local text = self.pendingCommand or ""
+    local text = SmartChatMsg:SanitizeCommandName(self.pendingCommand or "")
+    local friendly=self.pendingDisplayName;if not self.controls.commandDisplayNameEditBox and (friendly==nil or friendly=='') then friendly=text end
+    local display=SmartChatMsg:NormalizeCommandDisplayName(friendly)
+    self.pendingCommand=text;self:RefreshCommandNameFields()
+    if not display then ZO_Alert(UI_ALERT_CATEGORY_ERROR,SOUNDS.NEGATIVE_CLICK,'Display name must contain 1 to 80 characters.');return end
 
     if self.createMode then
-        local ok, err = SmartChatMsg:AddCommand(text)
+        local ok, err = SmartChatMsg:AddCommand(text,nil,nil,display)
 
         if not ok then
             ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
@@ -538,7 +553,7 @@ function SmartChatMsg.settings:SaveCommand()
 
     if self.editMode then
         local commandId = self.editingOriginalCommandId
-        local ok, err = SmartChatMsg:RenameCommand(commandId, text)
+        local ok, err = SmartChatMsg:RenameCommand(commandId, text,nil,nil,display)
 
         if not ok then
             ZO_Alert(UI_ALERT_CATEGORY_ERROR, SOUNDS.NEGATIVE_CLICK, err)
@@ -797,13 +812,25 @@ end
 
 local function BuildCommandEditor(parent)
     local container = WINDOW_MANAGER:CreateControl("SCM_CommandEditorContainer", parent, CT_CONTROL)
-    container:SetDimensions(ROW_WIDTH, 96)
+    container:SetDimensions(ROW_WIDTH, 174)
 
     local label = WINDOW_MANAGER:CreateControl("SCM_CommandEditorLabel", container, CT_LABEL)
     label:SetFont("ZoFontWinH4")
-    label:SetText("Enter Command Name")
+    label:SetText("Slash-command name")
     label:SetDimensions(LABEL_WIDTH, 30)
-    label:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 0)
+    label:SetAnchor(TOPLEFT, container, TOPLEFT, 0, 74)
+    local displayLabel=WINDOW_MANAGER:CreateControl('SCM_CommandDisplayNameLabel',container,CT_LABEL)
+    displayLabel:SetFont('ZoFontWinH4');displayLabel:SetText('Display name');displayLabel:SetDimensions(LABEL_WIDTH,30);displayLabel:SetAnchor(TOPLEFT,container,TOPLEFT,0,0)
+    local displayBackdrop=WINDOW_MANAGER:CreateControlFromVirtual('SCM_CommandDisplayNameBackdrop',container,'ZO_EditBackdrop')
+    displayBackdrop:SetDimensions(DROPDOWN_WIDTH,30);displayBackdrop:SetAnchor(TOPLEFT,displayLabel,BOTTOMLEFT,0,4)
+    local displayEdit=WINDOW_MANAGER:CreateControlFromVirtual('SCM_CommandDisplayNameEditBox',displayBackdrop,'ZO_DefaultEditForBackdrop')
+    displayEdit:SetAnchorFill(displayBackdrop);displayEdit:SetMaxInputChars(80)
+    displayEdit:SetHandler('OnTextChanged',function(c)
+        local state=SmartChatMsg.settings;if state.updatingCommandNames then return end
+        state.pendingDisplayName=c:GetText() or ''
+        if not state.commandNameCustomized then state.pendingCommand=SmartChatMsg:SanitizeCommandName(state.pendingDisplayName);state:RefreshCommandNameFields() end
+    end)
+    SmartChatMsg.settings.controls.commandDisplayNameEditBox=displayEdit
 
     local backdrop = WINDOW_MANAGER:CreateControlFromVirtual("SCM_CommandEditorBackdrop", container, "ZO_EditBackdrop")
     backdrop:SetDimensions(DROPDOWN_WIDTH, 30)
@@ -811,18 +838,15 @@ local function BuildCommandEditor(parent)
 
     local editBox = WINDOW_MANAGER:CreateControlFromVirtual("SCM_CommandEditorEditBox", backdrop, "ZO_DefaultEditForBackdrop")
     editBox:SetAnchorFill(backdrop)
-    editBox:SetMaxInputChars(25)
+    editBox:SetMaxInputChars(120)
     editBox:SetText("")
 
-    editBox:SetHandler("OnTextChanged", function(self)
-        local text = self:GetText() or ""
-
-        if zo_strlen(text) > 25 then
-            text = zo_strsub(text, 1, 25)
-            self:SetText(text)
-        end
-
-        SmartChatMsg.settings.pendingCommand = text
+    editBox:SetHandler('OnTextChanged',function(c)
+        local state=SmartChatMsg.settings;if state.updatingCommandNames then return end
+        state.pendingCommand=c:GetText() or '';state.commandNameCustomized=true
+    end)
+    editBox:SetHandler('OnFocusLost',function(c)
+        local state=SmartChatMsg.settings;state.pendingCommand=SmartChatMsg:SanitizeCommandName(c:GetText());state:RefreshCommandNameFields()
     end)
 
     local saveButton = WINDOW_MANAGER:CreateControlFromVirtual("SCM_CommandEditorSaveButton", container, "ZO_DefaultButton")
@@ -849,9 +873,7 @@ local function BuildCommandEditor(parent)
     end)
 
     container.RefreshEditor = function()
-        if SmartChatMsg.settings.controls.commandEditBox then
-            SmartChatMsg.settings.controls.commandEditBox:SetText(SmartChatMsg.settings.pendingCommand or "")
-        end
+        SmartChatMsg.settings:RefreshCommandNameFields()
 
         if SmartChatMsg.settings.createMode then
             saveButton:SetText("Add")
@@ -2158,7 +2180,7 @@ function SmartChatMsg:CreateSettingsPanel()
                     type = "custom",
                     reference = "SCM_CommandEditorHolder",
                     createFunc = function(control)
-                        control:SetHeight(96)
+                        control:SetHeight(174)
                         commandEditorHolder = BuildCommandEditor(control)
                         commandEditorHolder:SetAnchor(TOPLEFT, control, TOPLEFT, 0, 0)
                     end,
@@ -2168,7 +2190,7 @@ function SmartChatMsg:CreateSettingsPanel()
                         end
 
                         if SmartChatMsg.settings:IsEditorVisible() then
-                            control:SetHeight(96)
+                            control:SetHeight(174)
                         else
                             control:SetHeight(0)
                         end

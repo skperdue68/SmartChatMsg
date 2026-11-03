@@ -328,7 +328,7 @@ function SmartChatMsg:GetRepeatStatusPanelRows()
                             end
                             statusText=statusText.." — "..description
                         elseif reminderMinutes then statusText=statusText.." — every "..tostring(reminderMinutes).." minutes" end
-                        local displayName=scheduled and (command.name or "Scheduled message") or (self:BuildSlashCommandName(command.name or "command") or "/command")
+                        local displayName=scheduled and (self:GetCommandDisplayName(command) or "Scheduled message") or (self:BuildSlashCommandName(command.name or "command") or "/command")
                         local runAt=self:GetGuildRunAt(command.id,guildName)
                         displayName=displayName..(scheduled and " (Scheduled)" or runAt=="STARTUP" and " (Startup)" or " (On Demand)")
                         if occurrence and type(occurrence.eventAtUtc)=="number" then

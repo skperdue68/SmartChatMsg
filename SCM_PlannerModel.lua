@@ -8,7 +8,7 @@ end
 S.CopyPlannerValue=copy
 local function snapshot(model)
     local result={messages={}}
-    for _,key in ipairs({'name','guild','runAt','channel','behavior','schedule'})do result[key]=copy(model[key])end
+    for _,key in ipairs({'name','displayName','guild','runAt','channel','behavior','schedule'})do result[key]=copy(model[key])end
     for _,m in ipairs(model.messages)do result.messages[m.id]={text=m.text,name=m.name,displayOrder=m.displayOrder}end
     return result
 end
@@ -32,7 +32,7 @@ function S:CreatePlannerDraft(commandId,guild)
     local p=self:GetTimeZoneParts(GetTimeStamp(),zone)
     local date=string.format('%04d-%02d-%02d',p.year,p.month,p.day)
     local command=commandId and self:GetCommandById(commandId)
-    local model={commandId=commandId,guild=guild,name=command and command.name or '',source=source,
+    local model={commandId=commandId,guild=guild,name=command and command.name or '',displayName=command and self:GetCommandDisplayName(command) or '',source=source,
         runAt=commandId and self:GetGuildRunAt(commandId,guild) or 'ON_DEMAND',channel=commandId and self:GetSavedChatChannel(commandId,guild) or 'Guild',
         behavior=copy(settings or {}),messages={},removedMessages={},dirty=false,tab='period',
         schedule=source and copy(source) or {mode='EVENT',timelineVersion=1,enabled=true,paused=false,delivery='REPEAT',timeZone=zone,eventDate=date,eventTime='08:00 PM',recurrence='NONE',specialPattern='NONE',importantTimes={},reminders={},messageVariants={}}}
@@ -146,7 +146,11 @@ function S:PreviewPlannerMessage(model,id)
     return self:ApplyMessageSubstitutions(entry.text,model.commandId,model.guild,context),context
 end
 function S:ValidatePlannerDraft(model)
-    local name=self:SanitizeCommandName(model.name)
+    model.name=self:SanitizeCommandName(model.name)
+    local name=model.name
+    if not model.requireDisplayName and (model.displayName==nil or model.displayName=='') then model.displayName=model.name end
+    if not self:NormalizeCommandDisplayName(model.displayName or model.name) then return nil,'Display name must contain 1 to 80 characters.' end
+    model.displayName=self:NormalizeCommandDisplayName(model.displayName)
     if name=='' or #name>25 or self:IsReservedCommandName(name) then return nil,'Use a command name of 1–25 letters/numbers that is not reserved.' end
     local command=model.commandId and self:GetCommandById(model.commandId)
     if model.commandId and not command then return nil,'This command was removed in another editor. Cancel and reopen the planner.' end
@@ -191,11 +195,12 @@ function S:SavePlannerDraft(model)
     local originalMessages=self.savedVars.messages
     local newCommand=not model.commandId
     if newCommand then
-        local ok,error=self:AddCommand(model.name);if not ok then return false,error end
+        local ok,error=self:AddCommand(model.name,nil,nil,model.displayName);if not ok then return false,error end
         for _,c in ipairs(self:GetCommands()) do if c.name==self:SanitizeCommandName(model.name) then model.commandId=c.id;break end end
     end
+    if model.displayName then self:GetCommandById(model.commandId).displayName=self:NormalizeCommandDisplayName(model.displayName) end
     if normalized=='COMMAND_ONLY' then
-        if self:GetCommandById(model.commandId).name~=self:SanitizeCommandName(model.name) then self:RenameCommand(model.commandId,model.name) end
+        if self:GetCommandById(model.commandId).name~=self:SanitizeCommandName(model.name) then self:RenameCommand(model.commandId,model.name,nil,nil,model.displayName) end
         model.name=self:GetCommandById(model.commandId).name;model.dirty=false;model.baseline=snapshot(model)
         return true
     end
@@ -234,7 +239,7 @@ function S:SavePlannerDraft(model)
     settings.condensedDateTime=model.behavior.condensedDateTime~=false
     settings.openStatusPanelOnRun=model.behavior.openStatusPanelOnRun==true
     if model.behavior.populateSound then settings.populateSound=model.behavior.populateSound end
-    if self:GetCommandById(model.commandId).name~=self:SanitizeCommandName(model.name) then self:RenameCommand(model.commandId,model.name) end
+    if self:GetCommandById(model.commandId).name~=self:SanitizeCommandName(model.name) then self:RenameCommand(model.commandId,model.name,nil,nil,model.displayName) end
     model.source=self:GetGuildSchedule(model.commandId,model.guild);model.dirty=false
     if model.source then model.schedule=copy(model.source) end
     local fresh=self:CreatePlannerDraft(model.commandId,model.guild)

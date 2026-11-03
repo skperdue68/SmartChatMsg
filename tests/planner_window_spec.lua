@@ -120,3 +120,20 @@ local value=condensed.plannerControls.box.checked
 condensed.handlers.OnClicked();eq(model.behavior.condensedDateTime,not value)
 eq(s:GetGuildCondensedDateTime(model.commandId,model.guild),saved,'native checkbox edits only the command draft')
 print('PASS native command settings exposes condensed format with private draft edits')
+
+-- Friendly names generate a slash identity until explicitly customized.
+model.displayName='';model.name='';model.slashCustomized=false
+local namesParent=s.PlannerUI.control(s.plannerWindow,'namesTest',CT_CONTROL);s:BuildPlannerEventEditor(namesParent,650)
+local display=namesParent.plannerControls.displayName.edit;display:SetText('Sunday Fishing');display.handlers.OnTextChanged(display)
+eq(model.displayName,'Sunday Fishing');eq(model.name,'SundayFishing');eq(model.slashCustomized,false)
+local slash=namesParent.plannerControls.name.edit;slash:SetText(' /ff-tg! ');slash.handlers.OnTextChanged(slash);slash.handlers.OnFocusLost(slash)
+eq(model.name,'fftg');eq(slash:GetText(),'fftg')
+display:SetText('Sunday Fishing for the Guild');display.handlers.OnTextChanged(display);eq(model.name,'fftg')
+print('PASS planner display-name generation and visible slash-name normalization')
+
+local savedCommand=s:GetCommandById('ad');savedCommand.name='fftg';savedCommand.displayName='Sunday Fishing';s.plannerSearch=''
+local sidebar=native(GuiRoot);s:RefreshPlannerEvents(sidebar,260,650)
+local sidebarChild=sidebar.plannerControls.events:GetNamedChild('Scroll'):GetNamedChild('Child')
+local entry=sidebarChild.plannerControls.eventad;assert(entry.plannerControls.buttonText.text:find('Sunday Fishing',1,true));assert(entry.plannerControls.buttonText.text:find('Command: fftg',1,true));eq(entry.height,64)
+savedCommand.displayName='FFTG';s:RefreshPlannerEvents(sidebar,260,650);entry=sidebarChild.plannerControls.eventad;assert(not entry.plannerControls.buttonText.text:find('Command:',1,true));eq(entry.height,45)
+print('PASS sidebar shows distinct aliases and omits case-only duplicates')

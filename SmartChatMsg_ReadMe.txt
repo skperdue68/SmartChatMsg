@@ -10,3 +10,5 @@ Install and run the addon at least once, then exit ESO to write SavedVariables b
 Open /scm schedule for the optional resizable Event Planner. /scm keeps the existing settings available. Save changes applies one command/guild draft; Cancel discards edits after confirmation.
 
 The custom planner includes Global settings (default guild/timezone and chat timeout), Guild settings, Advanced scheduling, and Import / Export. The original settings remain optional.
+
+Display name and Slash-command name are separate: Sunday Fishing can use /fftg. Invalid slash characters are removed before saving.
