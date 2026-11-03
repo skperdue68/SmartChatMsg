@@ -196,7 +196,7 @@ function SmartChatMsg:ExportScheduleRecords()
                 if s.monthlyWeek~=nil or s.monthlyWeekday~=nil then
                     lines[#lines+1]=encode({'SCHEDULEMONTHLY_V1',id,guild,tostring(s.monthlyWeek or ''),tostring(s.monthlyWeekday or '')})
                 end
-                lines[#lines+1]=encode({"SCHEDULEPATTERN_V1",id,guild,s.specialPattern or "NONE",tostring(s.rotationWeeks or 4),table.concat(s.rotationFactions or {"AD","EP","DC"},",")})
+                lines[#lines+1]=encode({"SCHEDULEPATTERN_V1",id,guild,s.specialPattern or "NONE",tostring(s.rotationWeeks or 4),table.concat(s.rotationFactions or {"AD","EP","DC"},","),s.regularEventLabel or "",s.monthFinalEventLabel or ""})
                 lines[#lines+1]=encode({'SCHEDULEEVENTROTATION_V1',id,guild,tostring(s.rotationEvery or 1)})
                 for _,activity in ipairs(s.rotationEvents or {}) do lines[#lines+1]=encode({'SCHEDULEACTIVITY_V1',id,guild,activity.id,activity.name}) end
                 local exceptionDates={};for date in pairs(s.occurrenceExceptions or {}) do exceptionDates[#exceptionDates+1]=date end;table.sort(exceptionDates)
@@ -246,6 +246,7 @@ function SmartChatMsg:ImportScheduleRecords(records,imported)
                 d.monthlyWeek,d.monthlyWeekday=row[4],row[5]
             elseif kind=="SCHEDULEPATTERN_V1" then
                 d.specialPattern,d.rotationWeeks=row[4],row[5]
+                d.regularEventLabel,d.monthFinalEventLabel=row[7],row[8]
                 d.rotationFactions={};for faction in (row[6] or ""):gmatch("[^,]+") do d.rotationFactions[#d.rotationFactions+1]=faction end
             elseif kind=='SCHEDULEEVENTROTATION_V1' then
                 if not row[4] or row[4]=='' then return false,'Imported activity rotation needs its occurrence count.' end

@@ -11,6 +11,11 @@ function SmartChatMsg:NormalizeEventPattern(data,result)
     if result.specialPattern~='NONE' and (result.mode~='EVENT' or result.recurrence=='NONE') then
         return false,'Special patterns require a repeating Promote an event schedule.'
     end
+    for _,key in ipairs({'regularEventLabel','monthFinalEventLabel'}) do
+        local value=data[key]
+        if value~=nil and (type(value)~='string' or characterCount(value)>80) then return false,'Event labels must be text of up to 80 characters.' end
+        if value~=nil then result[key]=self:Trim(value) end
+    end
     result.rotationWeeks=tonumber(data.rotationWeeks or 4)
     if not result.rotationWeeks or result.rotationWeeks<1 or result.rotationWeeks>52 or result.rotationWeeks~=math.floor(result.rotationWeeks) then
         if result.specialPattern=='FACTION_ROTATION' then return false,'Weeks per faction must be a whole number from 1 to 52.' end
@@ -127,6 +132,10 @@ end
 
 function SmartChatMsg:GetScheduleVariantLabel(variant,pattern,schedule)
     if schedule then for _,activity in ipairs(schedule.rotationEvents or {}) do if activity.id==variant then return activity.name end end end
+    if schedule and pattern=='MONTH_FINAL' then
+        local label=variant=='FINAL' and schedule.monthFinalEventLabel or variant=='REGULAR' and schedule.regularEventLabel
+        if type(label)=='string' and self:Trim(label)~='' then return self:Trim(label) end
+    end
     if pattern=='EVENT_ROTATION' and variant=='ALL' then return 'All activities' end
     if variant=='ALL' and pattern=='MONTH_FINAL' then return 'All events' end
     return factions[variant] or ({ALL='All selected factions',REGULAR='Regular events',FINAL='Month-final events'})[variant] or variant
