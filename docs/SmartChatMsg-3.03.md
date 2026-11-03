@@ -1,4 +1,4 @@
-# SmartChatMsg 3.01 — User Guide
+# SmartChatMsg 3.03 — User Guide
 
 ESO API 101051 · Companion: https://scm.perdues.me
 
@@ -6,7 +6,7 @@ ESO API 101051 · Companion: https://scm.perdues.me
 ## Start here
 
 SmartChatMsg prepares reusable announcements in ESO chat. You press Enter to send. It can prepare messages on demand, at startup, on zone arrival, or during scheduled promotion periods. It runs only while ESO is open and the addon is loaded; it cannot post while you are offline.
-Version 3.01 targets ESO API 101051. Required libraries: LibAddonMenu-2.0 version 34 or newer and LibAddonMenuDatePicker. Sliders are included in LibAddonMenu; no separate slider library is required. LibDebugLogger is optional.
+Version 3.03 targets ESO API 101051. Required libraries: LibAddonMenu-2.0 version 34 or newer and LibAddonMenuDatePicker. Sliders are included in LibAddonMenu; no separate slider library is required. LibDebugLogger is optional.
 
 
 ## Install, update, and back up
@@ -130,7 +130,7 @@ Ordinary commands have no scheduled event context. Use general tokens there. Rec
 > SCREENSHOT PLACEHOLDER: 09-important-times.png — Capture Important times with a named tickets deadline, calendar/time selectors and its substitution keys.
 
 
-## Condensed dates and times (3.01)
+## Condensed dates and times (3.03)
 
 Enable **Use condensed dates and times** for the selected command and guild in the original settings or the custom planner's Event/Command settings. It defaults to on when no formatting preference is saved; explicitly unchecked preferences retain standard formatting. The setting is saved independently for each command/guild combination and travels with configuration and event exports.
 
@@ -174,7 +174,7 @@ In ESO, Message name (optional) identifies a template in settings and pools, up 
 
 ## Screenshot capture checklist
 
-The illustrated placeholders throughout this guide are intentionally empty. Capture the current 3.01 interface with readable text, expanded relevant sections, and private account information cropped or blurred. Send the images with the numbered filenames below so they can replace the placeholders. The guide remains fully usable without them.
+The illustrated placeholders throughout this guide are intentionally empty. Capture the current 3.03 interface with readable text, expanded relevant sections, and private account information cropped or blurred. Send the images with the numbered filenames below so they can replace the placeholders. The guide remains fully usable without them.
 
 
 ## Context-sensitive settings
@@ -219,7 +219,7 @@ Each card shows its name, Starts, Stops, and frequency in separate controls. Fre
 
 ## Complete settings in the custom planner
 
-The custom window exposes the configuration controls described below from the original settings. See `ESO-Planner-Settings-Parity.md` for the control-by-control audit. The 3.01 date/time formatting choice is also available in Event/Command settings.
+The custom window exposes the configuration controls described below from the original settings. See `ESO-Planner-Settings-Parity.md` for the control-by-control audit. The 3.03 date/time formatting choice is also available in Event/Command settings.
 
 Use the left **Global settings** button for default guild, default timezone and **Auto-remove pending chat after** (30 seconds to 5 minutes, slider or exact entry). This is separate from the top Guild selector, which only chooses what you are editing. The top **Guild settings** button edits that guild’s timezone override.
 

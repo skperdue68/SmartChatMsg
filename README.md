@@ -1,9 +1,9 @@
-# SmartChatMsg 3.01
+# SmartChatMsg 3.03
 
 ESO chat announcements, on demand or on a scheduled Period Timeline. SmartChatMsg prepares chat; press Enter to send.
 
-- [Complete 3.01 user guide](docs/SmartChatMsg-3.01.md)
-- [Standalone HTML help guide](SmartChatMsg_Help_Guide_v3.01.html)
+- [Complete 3.03 user guide](docs/SmartChatMsg-3.03.md)
+- [Standalone HTML help guide](SmartChatMsg_Help_Guide_v3.03.html)
 - [Optional web companion](https://scm.perdues.me)
 
 Requires ESO API 101051, LibAddonMenu-2.0 >=34 and LibAddonMenuDatePicker. LibDebugLogger is optional. Sliders are built into LibAddonMenu.
@@ -17,7 +17,7 @@ Requires ESO API 101051, LibAddonMenu-2.0 >=34 and LibAddonMenuDatePicker. LibDe
 
 For easier planning, install and run the addon at least once, exit ESO fully, and open live/SavedVariables/SmartChatMsg.lua at https://scm.perdues.me. Apply edits, download updated Lua, and replace the saved file only while ESO is closed. Back up first.
 
-## Version 3.01
+## Version 3.03
 
 Multiple periods per event provide different timing, frequencies and message pools. Includes recurrence, rotations/cancellations, named important times, time-sensitive one-time notices, availability hours, per-period or shared daily limits, incoming duplicate detection and readable status. See the guide for full settings, examples and screenshot capture placeholders.
 
