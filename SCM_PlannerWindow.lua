@@ -83,8 +83,11 @@ function S:RefreshPlannerEvents(parent,w,h)
     local y=0;local m=self.plannerModel
     for _,command in ipairs(self:GetCommands()) do if (self:GetCommandDisplayName(command)..' '..(command.name or '')):lower():find((self.plannerSearch or ''):lower(),1,true) then
         local id=command.id
-        local button=UI.button(child,'event'..id,self:GetCommandDisplayName(command),4,y,cw-8,function()self:RequestPlannerAction(function()self.plannerModel=self:CreatePlannerDraft(id,m.guild);self:RefreshEventPlanner()end)end,id==m.commandId)
-        button:SetHeight(45);y=y+51
+        local friendly=self:GetCommandDisplayName(command)
+        local distinct=zo_strlower(friendly)~=zo_strlower(command.name or '')
+        local caption=friendly..(distinct and ('\n|c9AAFC4Command: '..command.name..'|r') or '')
+        local button=UI.button(child,'event'..id,caption,4,y,cw-8,function()self:RequestPlannerAction(function()self.plannerModel=self:CreatePlannerDraft(id,m.guild);self:RefreshEventPlanner()end)end,id==m.commandId)
+        local height=distinct and 64 or 45;button:SetHeight(height);y=y+height+6
     end end
     UI.scrollEnd(scroll,child,y)
     UI.button(parent,'globals','Global settings',12,h-138,w-24,function()self:OpenPlannerGlobalSettings()end,false,'Default guild, default timezone, and chat-clearing timeout for this account.')
