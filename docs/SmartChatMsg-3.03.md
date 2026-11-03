@@ -252,3 +252,9 @@ Explicit `%eventcountdown%` substitutions (including offsets and named important
 
 
 Share cooldowns between Guild and Officer chat is an optional command/guild setting in /scm and /scm schedule Command Settings. It defaults off. When enabled, matching announcements from other players in either channel for the same guild reset that combination’s cooldown and normal usage counters, including scheduled usage. Output routing stays as selected; Zone and Group do not participate. Reading Officer announcements does not require permission to send there. Settings exports preserve this option; older exports leave it off.
+
+## Month-final occurrence labels
+
+For a repeating Last event of month pattern, optional **Regular event label** and **Last event of month label** fields name the two occurrence types (up to 80 characters each). Use, for example, Bi-weekly raffle and Bi-weekly + 50/50. The custom planner exposes these in Advanced; the original scheduling settings expose them below Special event pattern. Labels do not change the message pools, event dates, or delivery rules. Blank labels retain the standard names. Full SavedVariables and native import/export preserve both labels, including files edited by the web companion.
+
+The web sidebar shows the next scheduled occurrence date, not the original recurrence anchor. It adds the selected faction, rotating activity, or regular/month-final label. The Event Date field still edits the recurrence anchor. Upcoming events shows the type for each listed date; past one-off events have no upcoming occurrence.

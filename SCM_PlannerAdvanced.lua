@@ -83,6 +83,11 @@ function S:BuildPlannerAdvancedEditor(parent,w)
  if d.mode=='EVENT' and d.recurrence~='NONE' then
   combo('pattern','Special event pattern',{'None','Faction rotation','Rotating event','Last event of month'},{'NONE','FACTION_ROTATION','EVENT_ROTATION','MONTH_FINAL'},d.specialPattern or 'NONE',function(v)d.specialPattern=v;changed(true)end)
  end
+ if d.specialPattern=='MONTH_FINAL' then
+  label('monthLabelHelp','Optional occurrence names; leave blank for Regular event and Last event of month.',50)
+  edit('regularEventLabel','Regular event label',d.regularEventLabel or '',function(v)d.regularEventLabel=v;changed()end)
+  edit('monthFinalEventLabel','Last event of month label',d.monthFinalEventLabel or '',function(v)d.monthFinalEventLabel=v;changed()end)
+ end
  if d.specialPattern=='FACTION_ROTATION' then
   local function cycleText()
    local count=0;for _,code in ipairs(d.rotationFactions or {'AD','EP','DC'})do if code~='NONE'then count=count+1 end end

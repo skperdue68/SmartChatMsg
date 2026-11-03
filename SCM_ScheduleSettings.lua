@@ -626,6 +626,11 @@ function SmartChatMsg:BuildScheduleOptionControls()
     local pattern=dropdown("Special event pattern",{"None","Faction rotation","Rotating event","Last event of month"},{"NONE","FACTION_ROTATION","EVENT_ROTATION","MONTH_FINAL"},"specialPattern")
     pattern.disabled=function() return draft().mode~="EVENT" or draft().recurrence=="NONE" end
     controls[#controls+1]=pattern
+    for _,info in ipairs({{'Regular event label','regularEventLabel'},{'Last event of month label','monthFinalEventLabel'}}) do
+        local key=info[2]
+        controls[#controls+1]={type='editbox',name=info[1],tooltip='Optional occurrence name, up to 80 characters. Does not change message pools or timing.',getFunc=function()return draft()[key] or '' end,setFunc=function(v)draft()[key]=v;refresh()end,disabled=function()return draft().specialPattern~='MONTH_FINAL' end}
+    end
+
     local rotation={
         {type="description",text="The Event date under Event and promotion timing anchors the first faction's block. The order repeats automatically, including weeks you are offline. Use %eventfaction% in message text to show the proper full faction name for each event."},
         number("Faction frequency (weeks)","rotationWeeks","Each selected faction runs for this many calendar weeks. Total cycle = frequency × selected factions."),
